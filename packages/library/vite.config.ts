@@ -3,7 +3,6 @@ import path from 'path'
 import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({ 
-  assetsInclude: ['wasm/*.wasm'],
   plugins: [wasm()],
   build: {
     lib: {

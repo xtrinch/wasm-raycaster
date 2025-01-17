@@ -11,7 +11,6 @@
     "@workspace/library": "workspace:*",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
-    "vite-plugin-wasm": "^3.0.0",
-    "vite-plugin-top-level-await": "^1.0.0"
+    "vite-plugin-wasm": "^3.0.0"
   }
 }

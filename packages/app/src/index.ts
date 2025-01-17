@@ -1,5 +1,4 @@
-import * as library from '@workspace/library'
+import { test, wasm_test } from '@workspace/library'
 
-console.log(library)
-console.log(library.test())
-console.log(library.wasm_test())
+console.log(test())
+console.log(wasm_test())
