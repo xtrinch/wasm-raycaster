@@ -13,7 +13,7 @@ Before you begin, ensure you have the following installed:
 - [pnpm](https://pnpm.io/installation)
 
 ## Project Structure
-
+```
 .
 ├── packages/
 │   ├── app/          # Frontend application
@@ -23,7 +23,7 @@ Before you begin, ensure you have the following installed:
 │   └── lib.rs        # Rust WASM module source
 ├── package.json      # Workspace configuration
 └── pnpm-workspace.yaml  # PNPM workspace configuration
-
+```
 The project uses pnpm workspaces to organize the codebase into three main parts:
 1. Rust WASM module (root/src)
 2. TypeScript wrapper library (packages/library)
