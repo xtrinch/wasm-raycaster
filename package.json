@@ -8,7 +8,8 @@
     "build:wasm": "wasm-pack build  --out-dir packages/library/wasm --out-name index",
     "build:library": "pnpm --filter library run build",
     "build:app": "pnpm --filter app run build",
-    "start": "pnpm --filter app run start"
+    "start": "pnpm --filter app run start",
+    "dev": "pnpm --filter app run run-dev"
   },
   "keywords": [],
   "author": "",
