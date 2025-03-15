@@ -1,10 +1,10 @@
-import { test, wasm_test } from "@workspace/library";
 import { observer } from "mobx-react";
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import Map from "./vector-game/map/map";
 import { GameContextProvider } from "./vector-game/state/gameContext";
+import { test, wasm_test } from "./wasm";
 
 const App = observer(() => {
   useEffect(() => {

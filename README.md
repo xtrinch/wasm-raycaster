@@ -55,7 +55,6 @@ pnpm run build
 
 This command executes the following steps:
 - `build:wasm`: Compiles Rust code to WebAssembly
-- `build:library`: Builds the TypeScript wrapper library
 - `build:app`: Builds the application
 
 4. Run the script with node:

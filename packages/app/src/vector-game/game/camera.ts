@@ -1,5 +1,10 @@
-import { sortBy } from "lodash";
+import { flatten, sortBy } from "lodash";
 import { makeAutoObservable } from "mobx";
+import {
+  draw_ceiling_floor_raycast,
+  raycast_visible_coordinates,
+} from "../../../wasm";
+import { draw_walls_raycast } from "../../wasm";
 import { drawArbitraryQuadImage, FILL_METHOD } from "../arbitrary-quads";
 import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
@@ -54,10 +59,10 @@ export class Camera {
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
     this.height = canvas.height = window.innerHeight;
-    this.widthResolution = 620;
+    this.widthResolution = this.width; //620;
     this.heightResolution = 420;
-    this.ceilingHeightResolution = 250;
-    this.ceilingWidthResolution = 350;
+    this.ceilingHeightResolution = 350;
+    this.ceilingWidthResolution = 550;
     this.widthSpacing = this.width / this.widthResolution;
     this.heightSpacing = this.height / this.heightResolution;
     this.ceilingWidthSpacing = this.width / this.ceilingWidthResolution;
@@ -198,6 +203,29 @@ export class Camera {
       transformY,
     };
   }
+
+  raycastVisibleCoordinatesWasm(
+    spriteMap: SpriteMap,
+    player: Player,
+    map: GridMap
+  ): { coords: Coords; sprites: Sprite[] } {
+    const data: { coords: Map<any, any>; sprites: Sprite[] } =
+      raycast_visible_coordinates(
+        this.widthResolution,
+        this.range,
+        player.position.x,
+        player.position.y,
+        player.position.dirX,
+        player.position.dirY,
+        player.position.planeX,
+        player.position.planeY,
+        map.wallGrid, // 1D array instead of 2D
+        map.size, // Width of original 2D array
+        new Float64Array(flatten(spriteMap.sprites))
+      );
+    return { sprites: data.sprites, coords: Object.fromEntries(data.coords) };
+  }
+
   raycastVisibleCoordinates(
     spriteMap: SpriteMap,
     player: Player,
@@ -581,6 +609,58 @@ export class Camera {
     }
   }
 
+  async drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
+    const data: {
+      black_pixels: Uint8Array<ArrayBuffer>;
+      texture_pixels: Uint8Array<ArrayBuffer>;
+    } = draw_ceiling_floor_raycast(
+      this.ceilingWidthResolution,
+      this.ceilingHeightResolution,
+      this.lightRange,
+      map.light,
+      player.position.x,
+      player.position.y,
+      player.position.dirX,
+      player.position.dirY,
+      player.position.planeX,
+      player.position.planeY,
+      player.position.pitch,
+      player.position.z,
+      new Uint8Array(this.floorData),
+      map.floorTexture.width,
+      map.floorTexture.height,
+      new Uint8Array(this.ceilingData),
+      map.ceilingTexture.width,
+      map.ceilingTexture.height,
+      map.wallGrid, // 1D array instead of 2D
+      map.size, // Width of original 2D array
+      map.size,
+      this.height
+    );
+
+    // scale image to canvas width/height
+    var img0 = new ImageData(
+      new Uint8ClampedArray(data.black_pixels),
+      this.ceilingWidthResolution,
+      this.ceilingHeightResolution
+    );
+
+    const renderer0 = await createImageBitmap(img0);
+    this.ctx.drawImage(renderer0, 0, 0, this.width, this.height);
+    // this.ctx.putImageData(img0, 0, 0);
+
+    // scale image to canvas width/height
+    var img = new ImageData(
+      new Uint8ClampedArray(data.texture_pixels),
+      this.ceilingWidthResolution,
+      this.ceilingHeightResolution
+    );
+
+    const renderer = await createImageBitmap(img);
+    this.ctx.drawImage(renderer, 0, 0, this.width, this.height);
+    // this.ctx.putImageData(img, 0, 0);
+  }
+
   // draws columns left to right
   async drawCeilingFloorRaycast(player: Player, map: GridMap) {
     if (!this.floorData || !this.ceilingData) {
@@ -713,6 +793,7 @@ export class Camera {
 
     const renderer0 = await createImageBitmap(img0);
     this.ctx.drawImage(renderer0, 0, 0, this.width, this.height);
+    // this.ctx.putImageData(img0, 0, 0);
 
     // scale image to canvas width/height
     var img = new ImageData(
@@ -723,6 +804,7 @@ export class Camera {
 
     const renderer = await createImageBitmap(img);
     this.ctx.drawImage(renderer, 0, 0, this.width, this.height);
+    // this.ctx.putImageData(img, 0, 0);
   }
 
   // draws columns left to right
@@ -957,6 +1039,58 @@ export class Camera {
         }
       }
     }
+  }
+
+  drawWallsRaycastWasm(
+    player: Player,
+    map: GridMap
+  ): { [key: number]: number } {
+    const columns = draw_walls_raycast(
+      player.position.x,
+      player.position.y,
+      player.position.dirX,
+      player.position.dirY,
+      player.position.planeX,
+      player.position.planeY,
+      map.wallGrid, // 1D array instead of 2D
+      map.size, // Width of original 2D array
+      this.widthResolution,
+      this.height,
+      this.width,
+      this.widthSpacing,
+      this.lightRange,
+      this.range,
+      player.position.planeYInitial,
+      player.position.pitch,
+      player.position.z,
+      map.wallTexture.width
+    );
+    let width = Math.ceil(this.widthSpacing);
+    for (let idx = 0; idx < columns.length; idx++) {
+      let column = columns[idx];
+      if (column.hit) {
+        this.ctx.drawImage(
+          map.wallTexture.image,
+          column.tex_x, // sx
+          0, // sy
+          1, // sw
+          map.wallTexture.height, // sh
+          column.left, // dx
+          column.draw_start_y, // dy - yes we go into minus here, it'll be ignored anyway
+          width, // dw
+          column.wall_height // dh
+        );
+        this.ctx.globalAlpha = column.global_alpha;
+        this.ctx.fillRect(
+          column.left,
+          column.draw_start_y,
+          width,
+          column.wall_height
+        );
+        this.ctx.globalAlpha = 1;
+      }
+    }
+    return columns.map((c) => c.perp_wall_dist);
   }
 
   // draws columns left to right
@@ -1266,16 +1400,24 @@ export class Camera {
   async drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
     this.ctx.save();
 
-    const { coords, sprites } = this.raycastVisibleCoordinates(
+    // const { coords, sprites } = this.raycastVisibleCoordinates(
+    //   spriteMap,
+    //   player,
+    //   map
+    // );
+    const { coords, sprites } = this.raycastVisibleCoordinatesWasm(
       spriteMap,
       player,
       map
     );
-    this.drawCeilingFloorTexture(coords, player, map);
+    // this.drawCeilingFloorTexture(coords, player, map);
     // this.drawCeilingFloorNoTexture(coords, player, map);
     // await this.drawCeilingFloorRaycast(player, map);
+    await this.drawCeilingFloorRaycastWasm(player, map);
 
-    let ZBuffer = this.drawWallsRaycast(player, map);
+    let ZBuffer = this.drawWallsRaycastWasm(player, map);
+    // let ZBuffer = this.drawWallsRaycast(player, map);
+
     // this.drawWallQuad(coords, player, map);
     this.drawSprites(sprites, player, map, ZBuffer);
 

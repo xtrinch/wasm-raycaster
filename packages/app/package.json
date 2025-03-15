@@ -9,7 +9,6 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@workspace/library": "workspace:*",
     "typescript": "^5.7.3",
     "vite-plugin-wasm": "^3.0.0",
     "@tailwindcss/vite": "^4.0.7",
