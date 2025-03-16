@@ -60,14 +60,21 @@ export class Camera {
   public myWasmArrayPtr: number;
   public myWasmArray: Uint8Array;
   public f: WasmUint8Array;
+  public myWasmArrayPtr1: number;
+  public myWasmArray1: Uint8Array;
+  public f1: WasmUint8Array;
+
   constructor(canvas: HTMLCanvasElement, map: GridMap) {
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
     this.height = canvas.height = window.innerHeight;
     this.widthResolution = this.width; //620;
     this.heightResolution = 420;
-    this.ceilingHeightResolution = 350;
-    this.ceilingWidthResolution = 550;
+    const factor = 1 / 2;
+    this.ceilingHeightResolution =
+      this.width * factor - ((this.width * factor) % 2); //650;
+    this.ceilingWidthResolution =
+      this.height * factor - ((this.height * factor) % 2); //550;
     this.widthSpacing = this.width / this.widthResolution;
     this.heightSpacing = this.height / this.heightResolution;
     this.ceilingWidthSpacing = this.width / this.ceilingWidthResolution;
@@ -101,6 +108,11 @@ export class Camera {
     this.f = f;
     this.myWasmArray = f.buffer;
     this.myWasmArrayPtr = f.ptr;
+
+    const f1 = new WasmUint8Array(length);
+    this.f1 = f1;
+    this.myWasmArray1 = f1.buffer;
+    this.myWasmArrayPtr1 = f1.ptr;
     makeAutoObservable(this);
   }
 
@@ -640,6 +652,7 @@ export class Camera {
       texture_pixels: Uint8Array<ArrayBuffer>;
     } = draw_ceiling_floor_raycast(
       this.myWasmArrayPtr,
+      this.myWasmArrayPtr1,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution,
       this.lightRange,
@@ -666,11 +679,14 @@ export class Camera {
 
     this.myWasmArray = this.f.buffer;
     this.myWasmArrayPtr = this.f.ptr;
+
+    this.myWasmArray1 = this.f1.buffer;
+    this.myWasmArrayPtr1 = this.f1.ptr;
     // return;
 
     // scale image to canvas width/height
     var img0 = new ImageData(
-      new Uint8ClampedArray(data.black_pixels),
+      new Uint8ClampedArray(this.myWasmArray1),
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );

@@ -291,7 +291,7 @@ pub fn raycast_visible_coordinates(
 
 #[derive(Serialize, Deserialize)]
 pub struct CeilingFloorResult {
-    pub black_pixels: Vec<u8>,
+    // pub black_pixels: Vec<u8>,
     // pub texture_pixels:Vec<u8>
 }
 
@@ -356,6 +356,7 @@ fn copy_to_raw_pointer(ptr: *mut u8, index: usize, data: &[u8]) {
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
     array_ptr: *mut u8,
+    array_ptr1: *mut u8,
     ceiling_width_resolution: usize,
     ceiling_height_resolution: usize,
     light_range: f32,
@@ -382,7 +383,8 @@ pub fn draw_ceiling_floor_raycast(
     unsafe  {
         let mut ceiling_floor_img =array_ptr;
         // let mut ceiling_floor_img = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
-        let mut floor_img_black_pixels = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
+        // let mut floor_img_black_pixels = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
+        let mut floor_img_black_pixels =array_ptr1;
 
         let ray_dir_x0 = player_dir_x - player_plane_x;
         let ray_dir_y0 = player_dir_y - player_plane_y;
@@ -431,6 +433,7 @@ pub fn draw_ceiling_floor_raycast(
                 if map_data.get(map_idx) != Some(&2) {
                     // ceiling_floor_img[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 0]);
                     copy_to_raw_pointer(array_ptr, pixel_idx, &[0, 0, 0, 0]);
+                    copy_to_raw_pointer(array_ptr1, pixel_idx, &[0, 0, 0, 0]);
                     continue;
                 }
 
@@ -445,13 +448,14 @@ pub fn draw_ceiling_floor_raycast(
                     // ceiling_floor_img[pixel_idx..pixel_idx + 3].copy_from_slice(slice);
                     // ceiling_floor_img[pixel_idx + 3] = row_alpha;
                     copy_to_raw_pointer(array_ptr, pixel_idx, &[*slice.get_unchecked(0), *slice.get_unchecked(   1), *slice.get_unchecked(2), row_alpha]);
-                    floor_img_black_pixels[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 255]);
+                    copy_to_raw_pointer(array_ptr1, pixel_idx, &[0,0,0,255]);
+                    // floor_img_black_pixels[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 255]);
                 }
             }
         }
 
         let result = CeilingFloorResult { 
-            black_pixels:floor_img_black_pixels, 
+            // black_pixels:floor_img_black_pixels, 
             // texture_pixels:ceiling_floor_img//.to_vec() 
         };
         to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
