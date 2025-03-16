@@ -292,14 +292,70 @@ pub fn raycast_visible_coordinates(
 #[derive(Serialize, Deserialize)]
 pub struct CeilingFloorResult {
     pub black_pixels: Vec<u8>,
-    pub texture_pixels:Vec<u8>
+    // pub texture_pixels:Vec<u8>
 }
 
-use rayon::prelude::*;
+use std::cell::RefCell;
 
+// Store allocated buffers so they don't get freed
+thread_local! {
+    static ALLOCATED_BUFFERS: RefCell<Vec<Vec<u8>>> = RefCell::new(Vec::new());
+}
+
+#[wasm_bindgen]
+pub struct WasmUint8Array(Vec<u8>);
+
+#[wasm_bindgen]
+impl WasmUint8Array {
+    #[wasm_bindgen(constructor)]
+    pub fn new(size: usize) -> Self {
+        let buffer = vec![0; size];
+        Self { 0: buffer }
+    }
+
+    #[wasm_bindgen(getter, js_name = buffer)]
+    pub fn buffer(&mut self) -> js_sys::Uint8Array {
+        unsafe { js_sys::Uint8Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
+    }
+
+    #[wasm_bindgen(getter, js_name = ptr)]
+    pub fn ptr(&mut self) ->* mut u8 {
+        self.0.as_mut_ptr()
+    }
+}
+
+#[wasm_bindgen]
+pub fn allocate_u8_array(size: usize) -> *mut u8 {
+    let vec = vec![0; size]; // Allocate zero-initialized memory
+    let boxed_slice = vec.into_boxed_slice(); // Convert Vec<u8> to Box<[u8]>
+    let ptr = Box::into_raw(boxed_slice) as *mut u8; // Convert Box into raw pointer
+    ptr
+
+    // let mut vec = Vec::with_capacity(size);
+    // let ptr = vec.as_mut_ptr();
+
+    // // Prevent Rust from deallocating by storing it
+    // // ALLOCATED_BUFFERS.with(|buffers| buffers.borrow_mut().push(vec));
+
+    // std::mem::forget(vec); // Prevent Rust from deallocating memory
+    // ptr
+}
+
+fn copy_to_raw_pointer(ptr: *mut u8, index: usize, data: &[u8]) {
+    unsafe {
+        // Get a pointer to the memory location at 'index'
+        let target_ptr = ptr.add(index);
+
+        // Copy the data to the memory location
+        for (i, &byte) in data.iter().enumerate() {
+            *target_ptr.add(i) = byte; // Write each byte to the appropriate location
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
+    array_ptr: *mut u8,
     ceiling_width_resolution: usize,
     ceiling_height_resolution: usize,
     light_range: f32,
@@ -323,71 +379,81 @@ pub fn draw_ceiling_floor_raycast(
     map_height: usize,
     base_height: f32
 ) -> JsValue {
-    let mut ceiling_floor_img = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
-    let mut floor_img_black_pixels = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
+    unsafe  {
+        let mut ceiling_floor_img =array_ptr;
+        // let mut ceiling_floor_img = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
+        let mut floor_img_black_pixels = vec![0; ceiling_width_resolution * ceiling_height_resolution * 4];
 
-    let ray_dir_x0 = player_dir_x - player_plane_x;
-    let ray_dir_y0 = player_dir_y - player_plane_y;
-    let ray_dir_x1 = player_dir_x + player_plane_x;
-    let ray_dir_y1 = player_dir_y + player_plane_y;
-    let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
-    let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
+        let ray_dir_x0 = player_dir_x - player_plane_x;
+        let ray_dir_y0 = player_dir_y - player_plane_y;
+        let ray_dir_x1 = player_dir_x + player_plane_x;
+        let ray_dir_y1 = player_dir_y + player_plane_y;
+        let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
+        let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
-    let half_height = ceiling_height_resolution as f32 / 2.0;
-    let scale = ceiling_height_resolution as f32 / base_height;
-    let scaled_pitch = player_pitch * scale;
-    let scaled_z = player_z * scale;
+        let half_height = ceiling_height_resolution as f32 / 2.0;
+        let scale = ceiling_height_resolution as f32 / base_height;
+        let scaled_pitch = player_pitch * scale;
+        let scaled_z = player_z * scale;
 
-    for y in 0..ceiling_height_resolution {
-        let is_floor = (y as f32) > half_height + scaled_pitch;
-        
-        let p = if is_floor {
-            y as f32 - half_height - scaled_pitch
-        } else {
-            half_height - y as f32 + scaled_pitch
-        };
-        let cam_z = if is_floor { half_height + scaled_z } else { half_height - scaled_z };
-        let row_distance = cam_z / p;
-        let mut alpha = (row_distance + 0.0) / light_range - map_light;
-        alpha = alpha.min(0.8);
+        for y in 0..ceiling_height_resolution {
+            let is_floor = (y as f32) > half_height + scaled_pitch;
+            
+            let p = if is_floor {
+                y as f32 - half_height - scaled_pitch
+            } else {
+                half_height - y as f32 + scaled_pitch
+            };
+            let cam_z = if is_floor { half_height + scaled_z } else { half_height - scaled_z };
+            let row_distance = cam_z / p;
+            let mut alpha = (row_distance + 0.0) / light_range - map_light;
+            alpha = alpha.min(0.8);
 
-        let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
-        let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
-        let mut floor_x = player_x + row_distance * ray_dir_x0;
-        let mut floor_y = player_y + row_distance * ray_dir_y0;
-        let row_alpha = ((1.0 - alpha) * 255.0) as u8;
+            let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
+            let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
+            let mut floor_x = player_x + row_distance * ray_dir_x0;
+            let mut floor_y = player_y + row_distance * ray_dir_y0;
+            let row_alpha = ((1.0 - alpha) * 255.0) as u8;
 
-        let (texture, texture_width, texture_height) = if is_floor {
-            (floor_texture, floor_texture_width, floor_texture_height)
-        } else {
-            (ceiling_texture, ceiling_texture_width, ceiling_texture_height)
-        };
+            let (texture, texture_width, texture_height) = if is_floor {
+                (floor_texture, floor_texture_width, floor_texture_height)
+            } else {
+                (ceiling_texture, ceiling_texture_width, ceiling_texture_height)
+            };
 
-        for x in 0..ceiling_width_resolution {
-            floor_x += floor_step_x;
-            floor_y += floor_step_y;
+            for x in 0..ceiling_width_resolution {
+                floor_x += floor_step_x;
+                floor_y += floor_step_y;
 
-            let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
-            if map_data.get(map_idx) != Some(&2) {
-                continue;
-            }
-
-            let cell_x = floor_x.fract();
-            let cell_y = floor_y.fract();
-
-            let tx = (texture_width as f32 * cell_x) as usize;
-            let ty = (texture_height as f32 * cell_y) as usize;
-            let tex_idx = (ty * texture_width + tx) * 4;
-
-            if let Some(slice) = texture.get(tex_idx..tex_idx + 3) {
+                let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
                 let pixel_idx = (y * ceiling_width_resolution + x) * 4;
-                ceiling_floor_img[pixel_idx..pixel_idx + 3].copy_from_slice(slice);
-                ceiling_floor_img[pixel_idx + 3] = row_alpha;
-                floor_img_black_pixels[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 255]);
+
+                if map_data.get(map_idx) != Some(&2) {
+                    // ceiling_floor_img[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 0]);
+                    copy_to_raw_pointer(array_ptr, pixel_idx, &[0, 0, 0, 0]);
+                    continue;
+                }
+
+                let cell_x = floor_x.fract();
+                let cell_y = floor_y.fract();
+
+                let tx = (texture_width as f32 * cell_x) as usize;
+                let ty = (texture_height as f32 * cell_y) as usize;
+                let tex_idx = (ty * texture_width + tx) * 4;
+
+                if let Some(slice) = texture.get(tex_idx..tex_idx + 3) {
+                    // ceiling_floor_img[pixel_idx..pixel_idx + 3].copy_from_slice(slice);
+                    // ceiling_floor_img[pixel_idx + 3] = row_alpha;
+                    copy_to_raw_pointer(array_ptr, pixel_idx, &[*slice.get_unchecked(0), *slice.get_unchecked(   1), *slice.get_unchecked(2), row_alpha]);
+                    floor_img_black_pixels[pixel_idx..pixel_idx + 4].copy_from_slice(&[0, 0, 0, 255]);
+                }
             }
         }
-    }
 
-    let result = CeilingFloorResult { black_pixels:floor_img_black_pixels, texture_pixels:ceiling_floor_img };
-    to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
+        let result = CeilingFloorResult { 
+            black_pixels:floor_img_black_pixels, 
+            // texture_pixels:ceiling_floor_img//.to_vec() 
+        };
+        to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
+    }
 }

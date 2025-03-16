@@ -1,9 +1,12 @@
 import { flatten, sortBy } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
+  allocate_u8_array,
   draw_ceiling_floor_raycast,
   raycast_visible_coordinates,
+  WasmUint8Array,
 } from "../../../wasm";
+import { memory } from "../../../wasm/index_bg.wasm";
 import { draw_walls_raycast } from "../../wasm";
 import { drawArbitraryQuadImage, FILL_METHOD } from "../arbitrary-quads";
 import { Bitmap } from "./bitmap";
@@ -54,7 +57,9 @@ export class Camera {
   public floorData: Uint8ClampedArray<ArrayBufferLike>;
   public ceilingData: Uint8ClampedArray<ArrayBufferLike>;
   public originalCanvas: HTMLCanvasElement;
-
+  public myWasmArrayPtr: number;
+  public myWasmArray: Uint8Array;
+  public f: WasmUint8Array;
   constructor(canvas: HTMLCanvasElement, map: GridMap) {
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
@@ -76,6 +81,26 @@ export class Camera {
     this.originalCanvas = canvas;
     this.intializeTexture(this.map.floorTexture, "floorData");
     this.intializeTexture(this.map.ceilingTexture, "ceilingData");
+    // Preemptively grow memory (10 * 64KB = 640KB)
+    // memory.grow(1000);
+
+    let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
+    // Allocate memory in WebAssembly
+    console.log("Memory buffer before:", memory.buffer.byteLength);
+
+    this.myWasmArrayPtr = allocate_u8_array(length);
+
+    console.log("Memory buffer after:", memory.buffer.byteLength);
+    this.myWasmArray = new Uint8Array(
+      memory.buffer,
+      this.myWasmArrayPtr,
+      length
+    );
+
+    const f = new WasmUint8Array(length);
+    this.f = f;
+    this.myWasmArray = f.buffer;
+    this.myWasmArrayPtr = f.ptr;
     makeAutoObservable(this);
   }
 
@@ -614,6 +639,7 @@ export class Camera {
       black_pixels: Uint8Array<ArrayBuffer>;
       texture_pixels: Uint8Array<ArrayBuffer>;
     } = draw_ceiling_floor_raycast(
+      this.myWasmArrayPtr,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution,
       this.lightRange,
@@ -638,6 +664,10 @@ export class Camera {
       this.height
     );
 
+    this.myWasmArray = this.f.buffer;
+    this.myWasmArrayPtr = this.f.ptr;
+    // return;
+
     // scale image to canvas width/height
     var img0 = new ImageData(
       new Uint8ClampedArray(data.black_pixels),
@@ -651,7 +681,9 @@ export class Camera {
 
     // scale image to canvas width/height
     var img = new ImageData(
-      new Uint8ClampedArray(data.texture_pixels),
+      // new Uint8ClampedArray(data.texture_pixels),
+      new Uint8ClampedArray(this.myWasmArray),
+      // this.myWasmArray as any as Uint8ClampedArray,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );
