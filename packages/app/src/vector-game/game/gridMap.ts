@@ -9,7 +9,9 @@ import treeTexture from "../../assets/trees/pyramid.png";
 import treeTextureVase from "../../assets/trees/vase.png";
 import wallTexture from "../../assets/wall_texture.jpg";
 import { Bitmap } from "./bitmap";
+import { Sprite } from "./camera";
 import { perlinNoise } from "./constants";
+import { SpriteType } from "./spriteMap";
 
 export interface Point {
   x: number; // x coordinate on the grid
@@ -182,5 +184,35 @@ export class GridMap {
   public update = (seconds: number) => {
     if (this.light > 0) this.light = Math.max(this.light - 10 * seconds, 0);
     // else if (Math.random() * 5 < seconds) this.light = 2;
+  };
+
+  public getSpriteTexture = (sprite: Sprite) => {
+    let texture: Bitmap;
+    let spriteTextureHeight = 1;
+
+    switch (sprite.type) {
+      case SpriteType.TREE_CONE:
+        texture = this.treeTexture;
+        spriteTextureHeight = 1.2;
+        break;
+      case SpriteType.TREE_VASE:
+        texture = this.treeTextureVase;
+        spriteTextureHeight = 0.3;
+        break;
+      case SpriteType.TREE_COLUMNAR:
+        texture = this.treeTextureColumnar;
+        spriteTextureHeight = 1.3;
+        break;
+      case SpriteType.PILLAR:
+        texture = this.pillarTexture;
+        spriteTextureHeight = 0.8;
+        break;
+      case SpriteType.BUSH1:
+        texture = this.bush1Texture;
+        spriteTextureHeight = 1;
+        break;
+    }
+
+    return { texture, spriteTextureHeight };
   };
 }

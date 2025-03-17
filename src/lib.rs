@@ -1,5 +1,9 @@
+use helpers::copy_to_raw_pointer;
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
+mod helpers;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 #[wasm_bindgen]
@@ -18,6 +22,7 @@ pub struct Position {
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
     columns_array: *mut i32,
+    zbuffer_array: *mut f32,
     position: JsValue,
     map_data: Vec<u8>, // 2D array representing the grid map
     map_width: i32,    // Needed to index into 1D map
@@ -150,15 +155,12 @@ pub fn draw_walls_raycast(
                 draw_start_y as i32,
                 wall_height,
                 (global_alpha * 100.0) as i32,
-                (perp_wall_dist * 100.0) as i32,
                 hit as i32,
             ],
         );
+        copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
     }
 }
-
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // Data structures
 #[derive(Serialize, Deserialize)]
@@ -301,66 +303,6 @@ pub fn raycast_visible_coordinates(
 
     let result = RaycastResult { coords, sprites };
     to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
-}
-
-#[wasm_bindgen]
-pub struct WasmUint8Array(Vec<u8>);
-
-#[wasm_bindgen]
-impl WasmUint8Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::Uint8Array {
-        unsafe { js_sys::Uint8Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut u8 {
-        self.0.as_mut_ptr()
-    }
-
-    // set data from a JavaScript Uint8Array
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: js_sys::Uint8Array) {
-        let len = self.0.len().min(data.length() as usize);
-        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmInt32Array(Vec<i32>);
-
-#[wasm_bindgen]
-impl WasmInt32Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::Int32Array {
-        unsafe { js_sys::Int32Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut i32 {
-        self.0.as_mut_ptr()
-    }
-}
-
-fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
-    unsafe {
-        let target_ptr = ptr.add(index);
-        for (i, &value) in data.iter().enumerate() {
-            *target_ptr.add(i) = value;
-        }
-    }
 }
 
 #[wasm_bindgen]

@@ -19,12 +19,9 @@ export class GameLoop {
   constructor() {
     this.map = new GridMap(32);
     this.spriteMap = new SpriteMap();
-    // this.player = new Player(15.3, -1.2, Math.PI * 0.3);
-    // this.map.randomize();
     this.display = document.getElementById("display") as HTMLCanvasElement;
-    // this.map.generateWorld();
     this.controls = new Controls();
-    this.camera = new Camera(this.display, this.map);
+    this.camera = new Camera(this.display, this.map, this.spriteMap);
     this.player = this.findSpawnPoint();
     this.fps = 0;
     this.frameTime = 0;
