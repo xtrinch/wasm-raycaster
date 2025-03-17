@@ -230,14 +230,9 @@ export class Camera {
   ): { coords: Coords; sprites: Sprite[] } {
     const data: { coords: Map<any, any>; sprites: Sprite[] } =
       raycast_visible_coordinates(
+        player.toRustPosition(),
         this.widthResolution,
         this.range,
-        player.position.x,
-        player.position.y,
-        player.position.dirX,
-        player.position.dirY,
-        player.position.planeX,
-        player.position.planeY,
         map.wallGrid, // 1D array instead of 2D
         map.size, // Width of original 2D array
         new Float32Array(flatten(spriteMap.sprites))
@@ -250,6 +245,7 @@ export class Camera {
       return;
     }
     draw_ceiling_floor_raycast(
+      player.toRustPosition(),
       this.ceilingFloorPixelsRef.ptr,
       this.ceilingFloorBlackPixelsRef.ptr,
       this.floorTextureRef.ptr,
@@ -258,14 +254,6 @@ export class Camera {
       this.ceilingHeightResolution,
       this.lightRange,
       map.light,
-      player.position.x,
-      player.position.y,
-      player.position.dirX,
-      player.position.dirY,
-      player.position.planeX,
-      player.position.planeY,
-      player.position.pitch,
-      player.position.z,
       map.floorTexture.width,
       map.floorTexture.height,
       map.ceilingTexture.width,
@@ -410,15 +398,7 @@ export class Camera {
         distance,
         full_height: fullHeight,
       } = translate_coordinate_to_camera(
-        player.position.x,
-        player.position.y,
-        player.position.planeX,
-        player.position.planeY,
-        player.position.dirX,
-        player.position.dirY,
-        player.position.pitch,
-        player.position.z,
-        player.position.planeYInitial,
+        player.toRustPosition(),
         sprite.x,
         sprite.y,
         spriteTextureHeight,

@@ -184,18 +184,15 @@ pub struct RaycastResult {
 
 #[wasm_bindgen]
 pub fn raycast_visible_coordinates(
+    position: JsValue,
     width_resolution: usize,
     range: i32,
-    player_x: f64,
-    player_y: f64,
-    dir_x: f64,
-    dir_y: f64,
-    plane_x: f64,
-    plane_y: f64,
     map_data: Vec<u8>,   // 2D array representing the grid map
     map_width: i32,      // Needed to index into 1D map
     sprite_data: &[f32], // Flattened array [x1, y1, type1, x2, y2, type2, ...]
 ) -> JsValue {
+    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites: Vec<Sprite> = Vec::new();
 
@@ -220,12 +217,12 @@ pub fn raycast_visible_coordinates(
     }
 
     for column in 0..width_resolution {
-        let camera_x = 2.0 * column as f64 / width_resolution as f64 - 1.0;
-        let ray_dir_x = dir_x + plane_x * camera_x;
-        let ray_dir_y = dir_y + plane_y * camera_x;
+        let camera_x = 2.0 * column as f32 / width_resolution as f32 - 1.0;
+        let ray_dir_x = position.dir_x + position.plane_x * camera_x;
+        let ray_dir_y = position.dir_y + position.plane_y * camera_x;
 
-        let mut map_x = player_x.floor() as i32;
-        let mut map_y = player_y.floor() as i32;
+        let mut map_x = position.x.floor() as i32;
+        let mut map_y = position.y.floor() as i32;
 
         let delta_dist_x = (1.0 / ray_dir_x).abs();
         let delta_dist_y = (1.0 / ray_dir_y).abs();
@@ -237,18 +234,18 @@ pub fn raycast_visible_coordinates(
 
         if ray_dir_x < 0.0 {
             step_x = -1;
-            side_dist_x = (player_x - map_x as f64) * delta_dist_x;
+            side_dist_x = (position.x - map_x as f32) * delta_dist_x;
         } else {
             step_x = 1;
-            side_dist_x = ((map_x + 1) as f64 - player_x) * delta_dist_x;
+            side_dist_x = ((map_x + 1) as f32 - position.x) * delta_dist_x;
         }
 
         if ray_dir_y < 0.0 {
             step_y = -1;
-            side_dist_y = (player_y - map_y as f64) * delta_dist_y;
+            side_dist_y = (position.y - map_y as f32) * delta_dist_y;
         } else {
             step_y = 1;
-            side_dist_y = ((map_y + 1) as f64 - player_y) * delta_dist_y;
+            side_dist_y = ((map_y + 1) as f32 - position.y) * delta_dist_y;
         }
 
         let mut hit = false;
@@ -368,6 +365,7 @@ fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
 
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
+    position: JsValue,
     ceiling_floor_img: *mut u8,
     floor_img_black_pixels: *mut u8,
     floor_texture: *mut u8,
@@ -376,14 +374,6 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_height_resolution: usize,
     light_range: f32,
     map_light: f32,
-    player_x: f32,
-    player_y: f32,
-    player_dir_x: f32,
-    player_dir_y: f32,
-    player_plane_x: f32,
-    player_plane_y: f32,
-    player_pitch: f32,
-    player_z: f32,
     floor_texture_width: usize,
     floor_texture_height: usize,
     ceiling_texture_width: usize,
@@ -392,18 +382,20 @@ pub fn draw_ceiling_floor_raycast(
     map_width: usize,
     base_height: f32,
 ) -> () {
+    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+
     unsafe {
-        let ray_dir_x0 = player_dir_x - player_plane_x;
-        let ray_dir_y0 = player_dir_y - player_plane_y;
-        let ray_dir_x1 = player_dir_x + player_plane_x;
-        let ray_dir_y1 = player_dir_y + player_plane_y;
+        let ray_dir_x0 = position.dir_x - position.plane_x;
+        let ray_dir_y0 = position.dir_y - position.plane_y;
+        let ray_dir_x1 = position.dir_x + position.plane_x;
+        let ray_dir_y1 = position.dir_y + position.plane_y;
         let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
         let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
         let half_height = ceiling_height_resolution as f32 / 2.0;
         let scale = ceiling_height_resolution as f32 / base_height;
-        let scaled_pitch = player_pitch * scale;
-        let scaled_z = player_z * scale;
+        let scaled_pitch = position.pitch * scale;
+        let scaled_z = position.z * scale;
 
         for y in 0..ceiling_height_resolution {
             let is_floor = (y as f32) > half_height + scaled_pitch + scaled_z;
@@ -423,8 +415,8 @@ pub fn draw_ceiling_floor_raycast(
 
             let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
             let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
-            let mut floor_x = player_x + row_distance * ray_dir_x0;
-            let mut floor_y = player_y + row_distance * ray_dir_y0;
+            let mut floor_x = position.x + row_distance * ray_dir_x0;
+            let mut floor_y = position.y + row_distance * ray_dir_y0;
             let row_alpha = ((1.0 - alpha) * 255.0) as u8;
 
             let (texture, texture_width, texture_height) = if is_floor {
@@ -472,48 +464,42 @@ pub fn draw_ceiling_floor_raycast(
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct TranslationResult {
-    pub screen_x: f64,
-    pub screen_y_floor: f64,
-    pub screen_y_ceiling: f64,
-    pub distance: f64,
-    pub full_height: f64,
-    pub transform_x: f64,
-    pub transform_y: f64,
+    pub screen_x: f32,
+    pub screen_y_floor: f32,
+    pub screen_y_ceiling: f32,
+    pub distance: f32,
+    pub full_height: f32,
+    pub transform_x: f32,
+    pub transform_y: f32,
 }
 
 #[wasm_bindgen]
 pub fn translate_coordinate_to_camera(
-    player_x: f64,
-    player_y: f64,
-    plane_x: f64,
-    plane_y: f64,
-    dir_x: f64,
-    dir_y: f64,
-    pitch: f64,
-    z: f64,
-    plane_y_initial: f64,
-    point_x: f64,
-    point_y: f64,
-    height_multiplier: f64,
-    width: f64,
-    height: f64,
+    position: JsValue,
+    point_x: f32,
+    point_y: f32,
+    height_multiplier: f32,
+    width: f32,
+    height: f32,
 ) -> TranslationResult {
+    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+
     // translate x, y position to relative to camera
-    let sprite_x = point_x - player_x;
-    let sprite_y = point_y - player_y;
+    let sprite_x = point_x - position.x;
+    let sprite_y = point_y - position.y;
 
     // inverse camera matrix calculation
-    let inv_det = (plane_x * dir_y - dir_x * plane_y).abs();
-    let transform_x = inv_det * (dir_y * sprite_x - dir_x * sprite_y);
-    let transform_y = inv_det * (-plane_y * sprite_x + plane_x * sprite_y);
+    let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
+    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y);
+    let transform_y = inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y);
 
-    let screen_x = (width / 2.0) * (1.0 + transform_x / transform_y);
+    let screen_x = (width / 2.0) * (1.0 + (transform_x / transform_y));
 
     // to control the pitch/jump
-    let v_move_screen = pitch + z;
+    let v_move_screen = position.pitch + position.z;
 
     // divide by focal length (length of the plane vector)
-    let y_height_before_adjustment = (width / 2.0 / plane_y_initial / transform_y).abs();
+    let y_height_before_adjustment = (width / 2.0 / position.plane_y_initial / transform_y).abs();
     let y_height = y_height_before_adjustment * height_multiplier;
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = height / 2.0 - y_height / 2.0;
