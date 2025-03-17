@@ -4,12 +4,11 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 import Map from "./vector-game/map/map";
 import { GameContextProvider } from "./vector-game/state/gameContext";
-import { test, wasm_test } from "./wasm";
+import { test } from "./wasm";
 
 const App = observer(() => {
   useEffect(() => {
     console.log(test());
-    console.log(wasm_test());
   });
 
   return (

@@ -1,10 +1,10 @@
 import { makeAutoObservable } from "mobx";
+import { Position as RustPosition } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
 import { ControlStates } from "./controls";
 import { GridMap } from "./gridMap";
-
 export interface Position {
   x: number; // pos x of player
   y: number; // pos y of player
@@ -142,4 +142,18 @@ export class Player {
     if (this.position.z > 0)
       this.position.z = Math.max(0, this.position.z - 100 * frameTime);
   };
+
+  toRustPosition(): RustPosition {
+    return {
+      x: this.position.x,
+      y: this.position.y,
+      dir_x: this.position.dirX,
+      dir_y: this.position.dirY,
+      plane_x: this.position.planeX,
+      plane_y: this.position.planeY,
+      z: this.position.z,
+      plane_y_initial: this.position.planeYInitial,
+      pitch: this.position.pitch,
+    } as RustPosition;
+  }
 }
