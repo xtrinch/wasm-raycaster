@@ -88,6 +88,7 @@ export class Camera {
 
     let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
 
+    // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.ceilingFloorBlackPixelsRef = new WasmUint8Array(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
