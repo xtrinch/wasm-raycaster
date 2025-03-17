@@ -373,9 +373,8 @@ pub fn draw_ceiling_floor_raycast(
             } else {
                 half_height - y as f32 + scaled_pitch + scaled_z
             };
-            // let cam_z = if is_floor { half_height + scaled_z } else { half_height - scaled_z };
             let cam_z = half_height;
-            let row_distance = cam_z / p;
+            let row_distance = cam_z / p / (ceiling_width_resolution as f32 / ceiling_height_resolution as f32) / 2.0;
             let mut alpha = (row_distance + 0.0) / light_range - map_light;
             alpha = alpha.min(0.8);
 
