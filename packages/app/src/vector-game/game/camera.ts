@@ -1,12 +1,10 @@
 import { flatten, sortBy } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
-  allocate_u8_array,
   draw_ceiling_floor_raycast,
   raycast_visible_coordinates,
   WasmUint8Array,
 } from "../../../wasm";
-import { memory } from "../../../wasm/index_bg.wasm";
 import { draw_walls_raycast } from "../../wasm";
 import { drawArbitraryQuadImage, FILL_METHOD } from "../arbitrary-quads";
 import { Bitmap } from "./bitmap";
@@ -57,12 +55,12 @@ export class Camera {
   public floorData: Uint8ClampedArray<ArrayBufferLike>;
   public ceilingData: Uint8ClampedArray<ArrayBufferLike>;
   public originalCanvas: HTMLCanvasElement;
-  public myWasmArrayPtr: number;
-  public myWasmArray: Uint8Array;
-  public f: WasmUint8Array;
-  public myWasmArrayPtr1: number;
-  public myWasmArray1: Uint8Array;
-  public f1: WasmUint8Array;
+  public ceilingFloorPixelsPtr: number;
+  public ceilingFloorPixels: Uint8Array;
+  public ceilingFloorPixelsRef: WasmUint8Array;
+  public ceilingFloorBlackPixelsPtr: number;
+  public ceilingFloorBlackPixels: Uint8Array;
+  public ceilingFloorBlackPixelsRef: WasmUint8Array;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap) {
     this.ctx = canvas.getContext("2d");
@@ -88,31 +86,18 @@ export class Camera {
     this.originalCanvas = canvas;
     this.intializeTexture(this.map.floorTexture, "floorData");
     this.intializeTexture(this.map.ceilingTexture, "ceilingData");
-    // Preemptively grow memory (10 * 64KB = 640KB)
-    // memory.grow(1000);
 
     let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
-    // Allocate memory in WebAssembly
-    console.log("Memory buffer before:", memory.buffer.byteLength);
-
-    this.myWasmArrayPtr = allocate_u8_array(length);
-
-    console.log("Memory buffer after:", memory.buffer.byteLength);
-    this.myWasmArray = new Uint8Array(
-      memory.buffer,
-      this.myWasmArrayPtr,
-      length
-    );
 
     const f = new WasmUint8Array(length);
-    this.f = f;
-    this.myWasmArray = f.buffer;
-    this.myWasmArrayPtr = f.ptr;
+    this.ceilingFloorPixelsRef = f;
+    this.ceilingFloorPixels = f.buffer;
+    this.ceilingFloorPixelsPtr = f.ptr;
 
-    const f1 = new WasmUint8Array(length);
-    this.f1 = f1;
-    this.myWasmArray1 = f1.buffer;
-    this.myWasmArrayPtr1 = f1.ptr;
+    const ceilingFloorBlackPixelsRef = new WasmUint8Array(length);
+    this.ceilingFloorBlackPixelsRef = ceilingFloorBlackPixelsRef;
+    this.ceilingFloorBlackPixels = ceilingFloorBlackPixelsRef.buffer;
+    this.ceilingFloorBlackPixelsPtr = ceilingFloorBlackPixelsRef.ptr;
     makeAutoObservable(this);
   }
 
@@ -647,12 +632,9 @@ export class Camera {
   }
 
   async drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
-    const data: {
-      black_pixels: Uint8Array<ArrayBuffer>;
-      texture_pixels: Uint8Array<ArrayBuffer>;
-    } = draw_ceiling_floor_raycast(
-      this.myWasmArrayPtr,
-      this.myWasmArrayPtr1,
+    draw_ceiling_floor_raycast(
+      this.ceilingFloorPixelsPtr,
+      this.ceilingFloorBlackPixelsPtr,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution,
       this.lightRange,
@@ -663,6 +645,7 @@ export class Camera {
       player.position.dirY,
       player.position.planeX,
       player.position.planeY,
+      player.position.planeYInitial,
       player.position.pitch,
       player.position.z,
       new Uint8Array(this.floorData),
@@ -677,16 +660,9 @@ export class Camera {
       this.height
     );
 
-    this.myWasmArray = this.f.buffer;
-    this.myWasmArrayPtr = this.f.ptr;
-
-    this.myWasmArray1 = this.f1.buffer;
-    this.myWasmArrayPtr1 = this.f1.ptr;
-    // return;
-
     // scale image to canvas width/height
     var img0 = new ImageData(
-      new Uint8ClampedArray(this.myWasmArray1),
+      new Uint8ClampedArray(this.ceilingFloorBlackPixelsRef.buffer),
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );
@@ -698,8 +674,8 @@ export class Camera {
     // scale image to canvas width/height
     var img = new ImageData(
       // new Uint8ClampedArray(data.texture_pixels),
-      new Uint8ClampedArray(this.myWasmArray),
-      // this.myWasmArray as any as Uint8ClampedArray,
+      new Uint8ClampedArray(this.ceilingFloorPixelsRef.buffer),
+      // this.ceilingFloorPixels as any as Uint8ClampedArray,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );
