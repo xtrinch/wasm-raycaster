@@ -363,16 +363,18 @@ pub fn draw_ceiling_floor_raycast(
         let half_height = ceiling_height_resolution as f32 / 2.0;
         let scale = ceiling_height_resolution as f32 / base_height;
         let scaled_pitch = player_pitch * scale;
+        let scaled_z = player_z * scale;
 
         for y in 0..ceiling_height_resolution {
-            let is_floor = (y as f32) > half_height + scaled_pitch;
+            let is_floor = (y as f32) > half_height + scaled_pitch + scaled_z;
             
             let p = if is_floor {
-                y as f32 - half_height - scaled_pitch
+                y as f32 - half_height - scaled_pitch - scaled_z
             } else {
-                half_height - y as f32 + scaled_pitch
+                half_height - y as f32 + scaled_pitch + scaled_z
             };
-            let cam_z = if is_floor { half_height + player_z } else { half_height - player_z };
+            // let cam_z = if is_floor { half_height + scaled_z } else { half_height - scaled_z };
+            let cam_z = half_height;
             let row_distance = cam_z / p;
             let mut alpha = (row_distance + 0.0) / light_range - map_light;
             alpha = alpha.min(0.8);
