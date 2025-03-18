@@ -123,7 +123,7 @@ export class Camera {
   drawSky(player: Player, sky: Bitmap, ambient: number) {
     const direction =
       Math.atan2(player.position.dirX, player.position.dirY) + Math.PI;
-    const y = player.position.pitch + player.position.z;
+    const y = player.position.pitch;
 
     let width = sky.width * (this.height / sky.height) * 2;
     let CIRCLE = Math.PI * 2;

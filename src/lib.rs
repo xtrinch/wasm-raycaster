@@ -114,8 +114,10 @@ pub fn draw_walls_raycast(
         perp_wall_dist = perp_wall_dist * position.plane_y_initial;
         let line_height = width as f32 / 2.0 / perp_wall_dist;
 
-        let draw_start_y = -line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
-        let draw_end_y = line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
+        let draw_start_y =
+            -line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z / perp_wall_dist;
+        let draw_end_y =
+            line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z / perp_wall_dist;
 
         wall_x -= wall_x.floor();
 
@@ -346,14 +348,19 @@ pub fn draw_ceiling_floor_raycast(
         let scaled_z = position.z * scale;
 
         for y in 0..ceiling_height_resolution {
-            let is_floor = (y as f32) > half_height + scaled_pitch + scaled_z;
+            let is_floor = (y as f32) > half_height + scaled_pitch;
 
             let p = if is_floor {
-                y as f32 - half_height - scaled_pitch - scaled_z
+                y as f32 - half_height - scaled_pitch
             } else {
-                half_height - y as f32 + scaled_pitch + scaled_z
+                half_height - y as f32 + scaled_pitch
             };
-            let cam_z = half_height;
+            let cam_z = if is_floor {
+                half_height + scaled_z
+            } else {
+                half_height - scaled_z
+            };
+
             let row_distance = cam_z
                 / p
                 / (ceiling_width_resolution as f32 / ceiling_height_resolution as f32)
@@ -440,10 +447,10 @@ pub fn translate_coordinate_to_camera(
     let transform_y = (inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y))
         / position.plane_y_initial;
 
-    let screen_x = ((width as f32 / 2.0) * (1.0 + (transform_x / transform_y)));
+    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
 
     // to control the pitch/jump
-    let v_move_screen = position.pitch + position.z;
+    let v_move_screen = position.pitch + position.z / transform_y;
 
     // divide by focal length (length of the plane vector)
     let y_height_before_adjustment = (width as f32 / 2.0 / (transform_y)).abs();
