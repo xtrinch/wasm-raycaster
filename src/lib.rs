@@ -104,17 +104,18 @@ pub fn draw_walls_raycast(
             perp_wall_dist = side_dist_y - delta_dist_y;
         }
 
-        let line_height = width as f32 / 2.0 / position.plane_y_initial / perp_wall_dist;
-
-        let draw_start_y = -line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
-        let draw_end_y = line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
-
         let mut wall_x: f32;
         if side == 0 {
             wall_x = position.y + perp_wall_dist * ray_dir_y;
         } else {
             wall_x = position.x + perp_wall_dist * ray_dir_x;
         }
+
+        perp_wall_dist = perp_wall_dist * position.plane_y_initial;
+        let line_height = width as f32 / 2.0 / perp_wall_dist;
+
+        let draw_start_y = -line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
+        let draw_end_y = line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z;
 
         wall_x -= wall_x.floor();
 
@@ -356,7 +357,8 @@ pub fn draw_ceiling_floor_raycast(
             let row_distance = cam_z
                 / p
                 / (ceiling_width_resolution as f32 / ceiling_height_resolution as f32)
-                / 2.0;
+                / 2.0
+                / position.plane_y_initial;
             let mut alpha = (row_distance + 0.0) / light_range - map_light;
             alpha = alpha.min(0.8);
 
@@ -419,54 +421,7 @@ pub struct TranslationResult {
     pub transform_y: f32,
 }
 
-#[wasm_bindgen]
 pub fn translate_coordinate_to_camera(
-    position: JsValue,
-    point_x: f32,
-    point_y: f32,
-    height_multiplier: f32,
-    width: i32,
-    height: i32,
-) -> TranslationResult {
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-
-    // translate x, y position to relative to camera
-    let sprite_x = point_x - position.x;
-    let sprite_y = point_y - position.y;
-
-    // inverse camera matrix calculation
-    let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
-    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y);
-    let transform_y = inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y);
-
-    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
-
-    // to control the pitch/jump
-    let v_move_screen = position.pitch + position.z;
-
-    // divide by focal length (length of the plane vector)
-    let y_height_before_adjustment =
-        (width as f32 / 2.0 / position.plane_y_initial / transform_y).abs();
-    let y_height = y_height_before_adjustment * height_multiplier;
-    let height_distance = y_height_before_adjustment - y_height;
-    let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
-    let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
-    let sprite_floor_screen_y = screen_floor_y + v_move_screen + height_distance / 2.0;
-    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2.0;
-    let full_height = sprite_ceiling_screen_y - sprite_floor_screen_y;
-
-    TranslationResult {
-        screen_x,
-        screen_y_floor: sprite_floor_screen_y,
-        screen_y_ceiling: sprite_ceiling_screen_y,
-        distance: transform_y,
-        full_height,
-        transform_x,
-        transform_y,
-    }
-}
-
-pub fn translate_coordinate_to_camera_internal(
     position: Position,
     point_x: f32,
     point_y: f32,
@@ -480,17 +435,18 @@ pub fn translate_coordinate_to_camera_internal(
 
     // inverse camera matrix calculation
     let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
-    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y);
-    let transform_y = inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y);
+    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y)
+        / position.plane_y_initial;
+    let transform_y = (inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y))
+        / position.plane_y_initial;
 
-    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
+    let screen_x = ((width as f32 / 2.0) * (1.0 + (transform_x / transform_y)));
 
     // to control the pitch/jump
     let v_move_screen = position.pitch + position.z;
 
     // divide by focal length (length of the plane vector)
-    let y_height_before_adjustment =
-        (width as f32 / 2.0 / position.plane_y_initial / transform_y).abs();
+    let y_height_before_adjustment = (width as f32 / 2.0 / (transform_y)).abs();
     let y_height = y_height_before_adjustment * height_multiplier;
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
@@ -570,7 +526,7 @@ pub fn draw_sprites_wasm(
 
         let aspect_ratio = texture_width as f32 / texture_height as f32;
 
-        let projection = translate_coordinate_to_camera_internal(
+        let projection = translate_coordinate_to_camera(
             position,
             sprite.x,
             sprite.y,
