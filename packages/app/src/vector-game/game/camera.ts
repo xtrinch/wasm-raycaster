@@ -44,7 +44,6 @@ export class Camera {
   public originalCanvas: HTMLCanvasElement;
   public ceilingFloorPixelsPtr: number;
   public ceilingFloorPixelsRef: WasmUint8Array;
-  public ceilingFloorBlackPixelsRef: WasmUint8Array;
   public columnsRef: WasmInt32Array;
   public floorTextureRef: WasmUint8Array;
   public ceilingTextureRef: WasmUint8Array;
@@ -81,7 +80,6 @@ export class Camera {
 
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
-    this.ceilingFloorBlackPixelsRef = new WasmUint8Array(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
     this.spritesRef = new WasmFloat32Array(spriteMap.size * 3); // this will be the max sprites there will ever be in here
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
@@ -193,7 +191,6 @@ export class Camera {
     draw_ceiling_floor_raycast(
       player.toRustPosition(),
       this.ceilingFloorPixelsRef.ptr,
-      this.ceilingFloorBlackPixelsRef.ptr,
       this.floorTextureRef.ptr,
       this.ceilingTextureRef.ptr,
       this.ceilingWidthResolution,
@@ -208,13 +205,6 @@ export class Camera {
       map.size, // Width of original 2D array
       this.height
     );
-
-    const tempCanvas = this.scaleCanvasImage(
-      this.ceilingFloorBlackPixelsRef.buffer,
-      this.ceilingWidthResolution,
-      this.ceilingHeightResolution
-    );
-    this.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height);
 
     const tempCanvas1 = this.scaleCanvasImage(
       this.ceilingFloorPixelsRef.buffer,
@@ -241,15 +231,8 @@ export class Camera {
     );
     let width = Math.ceil(this.widthSpacing);
     for (let idx = 0; idx < this.columnsRef.buffer.length / 7; idx += 7) {
-      let [tex_x, left, draw_start_y, wall_height, global_alpha, hit] = [
-        this.columnsRef.buffer[idx],
-        this.columnsRef.buffer[idx + 1],
-        this.columnsRef.buffer[idx + 2],
-        this.columnsRef.buffer[idx + 3],
-        this.columnsRef.buffer[idx + 4],
-        this.columnsRef.buffer[idx + 5],
-        this.columnsRef.buffer[idx + 6],
-      ];
+      let [tex_x, left, draw_start_y, wall_height, global_alpha, hit] =
+        this.columnsRef.buffer.slice(idx, idx + 6);
 
       if (hit) {
         this.ctx.drawImage(

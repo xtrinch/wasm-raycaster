@@ -52,14 +52,6 @@ export class Player {
   public rotate = (angle: number) => {
     const rotSpeed = angle;
 
-    //  //both camera direction and camera plane must be rotated
-    //  double oldDirX = dirX;
-    //  dirX = dirX * cos(-rotSpeed) - dirY * sin(-rotSpeed);
-    //  dirY = oldDirX * sin(-rotSpeed) + dirY * cos(-rotSpeed);
-    //  double oldPlaneX = planeX;
-    //  planeX = planeX * cos(-rotSpeed) - planeY * sin(-rotSpeed);
-    //  planeY = oldPlaneX * sin(-rotSpeed) + planeY * cos(-rotSpeed);
-
     let oldDirX = this.position.dirX;
     this.position.dirX =
       this.position.dirX * Math.cos(-rotSpeed) -
@@ -84,12 +76,6 @@ export class Player {
     let safetyX = dx > 0 ? safety : -safety;
     let safetyY = dy > 0 ? safety : -safety;
 
-    // if (
-    //   map.get(this.position.x + dx + safetyX, this.position.y + dy + safetyY) ==
-    //   1
-    // ) {
-    //   return;
-    // }
     if (map.get(this.position.x + dx + safetyX, this.position.y) != 1) {
       this.position.x += dx;
     }

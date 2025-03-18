@@ -194,6 +194,7 @@ pub fn raycast_visible_coordinates(
 ) -> JsValue {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
+    // to make sure we dedupe the sprites
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites: Vec<Sprite> = Vec::new();
 
@@ -308,7 +309,6 @@ pub fn raycast_visible_coordinates(
 pub fn draw_ceiling_floor_raycast(
     position: JsValue,
     ceiling_floor_img: *mut u8,
-    floor_img_black_pixels: *mut u8,
     floor_texture: *mut u8,
     ceiling_texture: *mut u8,
     ceiling_width_resolution: usize,
@@ -326,6 +326,12 @@ pub fn draw_ceiling_floor_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
     unsafe {
+        // blank out the whole image buffer
+        std::ptr::write_bytes(
+            ceiling_floor_img,
+            0,
+            ceiling_width_resolution * ceiling_height_resolution * 4,
+        );
         let ray_dir_x0 = position.dir_x - position.plane_x;
         let ray_dir_y0 = position.dir_y - position.plane_y;
         let ray_dir_x1 = position.dir_x + position.plane_x;
@@ -358,7 +364,6 @@ pub fn draw_ceiling_floor_raycast(
             let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
             let mut floor_x = position.x + row_distance * ray_dir_x0;
             let mut floor_y = position.y + row_distance * ray_dir_y0;
-            let row_alpha = ((1.0 - alpha) * 255.0) as u8;
 
             let (texture, texture_width, texture_height) = if is_floor {
                 (floor_texture, floor_texture_width, floor_texture_height)
@@ -375,13 +380,12 @@ pub fn draw_ceiling_floor_raycast(
                 floor_y += floor_step_y;
 
                 let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
-                let pixel_idx = (y * ceiling_width_resolution + x) * 4;
 
                 if map_data.get(map_idx) != Some(&2) {
-                    copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[0, 0, 0, 0]);
-                    copy_to_raw_pointer(floor_img_black_pixels, pixel_idx, &[0, 0, 0, 0]);
                     continue;
                 }
+
+                let pixel_idx = (y * ceiling_width_resolution + x) * 4;
 
                 let cell_x = floor_x.fract();
                 let cell_y = floor_y.fract();
@@ -391,12 +395,13 @@ pub fn draw_ceiling_floor_raycast(
                 let tex_idx = (ty * texture_width + tx) * 4;
 
                 let texture_ptr = texture.offset(tex_idx as isize); // Assuming tex_idx is within bounds
-                let r = *texture_ptr;
-                let g = *texture_ptr.add(1);
-                let b = *texture_ptr.add(2);
 
-                copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[r, g, b, row_alpha]);
-                copy_to_raw_pointer(floor_img_black_pixels, pixel_idx, &[0, 0, 0, 255]);
+                let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
+                let r = (*texture_ptr as f32 * darkening_factor) as u8;
+                let g = (*texture_ptr.add(1) as f32 * darkening_factor) as u8;
+                let b = (*texture_ptr.add(2) as f32 * darkening_factor) as u8;
+
+                copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[r, g, b, 255]);
             }
         }
     }
