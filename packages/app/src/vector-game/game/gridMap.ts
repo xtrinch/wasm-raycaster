@@ -8,6 +8,15 @@ import treeTextureColumnar from "../../assets/trees/columnnar.png";
 import treeTexture from "../../assets/trees/pyramid.png";
 import treeTextureVase from "../../assets/trees/vase.png";
 import wallTexture from "../../assets/wall_texture.jpg";
+import lady1Texture from "../../assets/woman/woman1.png";
+import lady2Texture from "../../assets/woman/woman2.png";
+import lady3Texture from "../../assets/woman/woman3.png";
+import lady4Texture from "../../assets/woman/woman4.png";
+import lady5Texture from "../../assets/woman/woman5.png";
+import lady6Texture from "../../assets/woman/woman6.png";
+import lady7Texture from "../../assets/woman/woman7.png";
+import lady8Texture from "../../assets/woman/woman8.png";
+
 import { Bitmap } from "./bitmap";
 import { perlinNoise } from "./constants";
 import { SpriteType } from "./spriteMap";
@@ -37,6 +46,7 @@ export class GridMap {
   public treeTextureColumnar: Bitmap;
   public pillarTexture: Bitmap;
   public bush1Texture: Bitmap;
+  public ladyTextures: Bitmap[];
   public light: number;
 
   constructor(size: number) {
@@ -51,7 +61,16 @@ export class GridMap {
     this.treeTextureColumnar = new Bitmap(treeTextureColumnar, 229, 645);
     this.pillarTexture = new Bitmap(pillarTexture, 355, 438);
     this.bush1Texture = new Bitmap(bush1Texture, 102, 89);
-
+    this.ladyTextures = [
+      new Bitmap(lady1Texture, 320, 632),
+      new Bitmap(lady2Texture, 320, 632),
+      new Bitmap(lady3Texture, 320, 632),
+      new Bitmap(lady4Texture, 320, 632),
+      new Bitmap(lady5Texture, 320, 632),
+      new Bitmap(lady6Texture, 320, 632),
+      new Bitmap(lady7Texture, 320, 632),
+      new Bitmap(lady8Texture, 320, 632),
+    ];
     this.light = 0;
     // prettier-ignore
     this.wallGrid = new Uint8Array([
@@ -187,6 +206,10 @@ export class GridMap {
 
   getSpriteTextureArray(): Int32Array {
     return new Int32Array([
+      SpriteType.LADY,
+      this.getSpriteTexture(SpriteType.LADY).texture.height,
+      this.getSpriteTexture(SpriteType.LADY).texture.width,
+      this.getSpriteTexture(SpriteType.LADY).spriteTextureHeight * 100,
       SpriteType.BUSH1,
       this.getSpriteTexture(SpriteType.BUSH1).texture.height,
       this.getSpriteTexture(SpriteType.BUSH1).texture.width,
@@ -210,11 +233,29 @@ export class GridMap {
     ]);
   }
 
-  public getSpriteTexture = (spriteType: SpriteType) => {
+  // TODO: map in rust?
+  mapAngleToValue = (angle) => {
+    // Ensure the angle is within the range [0, 360)
+    angle = (angle + 180) % 360; // Ensure angle stays within 0 to 360
+
+    let index = Math.round(angle / 45); // Default to 1 if the result is 0
+    if (index === 8) {
+      index = 0;
+    }
+    // Return the index of the closest midpoint
+    return index;
+  };
+
+  public getSpriteTexture = (spriteType: SpriteType, angle: number = 0) => {
+    const angleVal = this.mapAngleToValue(angle);
     let texture: Bitmap;
     let spriteTextureHeight = 1;
 
     switch (spriteType) {
+      case SpriteType.LADY:
+        texture = this.ladyTextures[angleVal];
+        spriteTextureHeight = 0.7;
+        break;
       case SpriteType.TREE_CONE:
         texture = this.treeTexture;
         spriteTextureHeight = 1.2;

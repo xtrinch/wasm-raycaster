@@ -1,4 +1,5 @@
 use helpers::{copy_to_raw_pointer, parse_sprite_texture_array};
+use js_sys::Math::atan2;
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 mod helpers;
@@ -484,6 +485,7 @@ struct StripePart {
     pub tex_x1: i32,
     pub tex_x2: i32,
     pub alpha: i32,
+    pub angle: i32,
 }
 
 #[wasm_bindgen]
@@ -542,6 +544,13 @@ pub fn draw_sprites_wasm(
             height,
         );
 
+        let dx = position.x - sprite.x;
+        let dy = position.y - sprite.y;
+        let mut angle = atan2(dx as f64, dy as f64);
+        let direction_angle = atan2((sprite.y) as f64, (sprite.x) as f64)
+            - atan2((position.dir_x) as f64, (position.dir_y) as f64);
+        // angle -= direction_angle;
+
         let alpha = projection.distance / light_range - map_light;
         // ensure sprites are always at least a little bit visible - alpha 1 is all black
         let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
@@ -589,6 +598,7 @@ pub fn draw_sprites_wasm(
                 tex_x1,
                 tex_x2,
                 alpha: alpha_i,
+                angle: (angle).to_degrees() as i32,
             });
         }
     }

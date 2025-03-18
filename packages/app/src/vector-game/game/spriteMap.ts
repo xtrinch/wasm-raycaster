@@ -6,6 +6,7 @@ export enum SpriteType {
   BUSH1 = 3,
   TREE_VASE = 4,
   TREE_COLUMNAR = 5,
+  LADY = 6,
 }
 
 export class SpriteMap {
@@ -14,6 +15,8 @@ export class SpriteMap {
 
   constructor() {
     this.sprites = [
+      [2.6, 3.6, SpriteType.LADY],
+      [-0.3, 2, SpriteType.LADY],
       [-1, 5, SpriteType.TREE_CONE],
       [-1, 6, SpriteType.BUSH1],
       [-1, 4, SpriteType.TREE_VASE],

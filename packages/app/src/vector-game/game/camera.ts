@@ -285,9 +285,10 @@ export class Camera {
         screen_y_ceiling: screenYCeiling,
         screen_y_floor: screenYFloor,
         alpha: alpha,
+        angle,
       } = stripePart;
 
-      const { texture } = map.getSpriteTexture(spriteType);
+      const { texture } = map.getSpriteTexture(spriteType, angle);
 
       this.ctx.save();
       this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
