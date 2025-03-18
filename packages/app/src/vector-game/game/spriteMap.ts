@@ -1,11 +1,11 @@
 import { makeAutoObservable } from "mobx";
 
 export enum SpriteType {
-  TREE_CONE,
-  TREE_VASE,
-  TREE_COLUMNAR,
-  PILLAR,
-  BUSH1,
+  TREE_CONE = 1,
+  PILLAR = 2,
+  BUSH1 = 3,
+  TREE_VASE = 4,
+  TREE_COLUMNAR = 5,
 }
 
 export class SpriteMap {

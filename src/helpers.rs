@@ -81,6 +81,12 @@ impl WasmInt32Array {
     pub fn ptr(&mut self) -> *mut i32 {
         self.0.as_mut_ptr()
     }
+
+    #[wasm_bindgen]
+    pub fn set(&mut self, data: js_sys::Int32Array) {
+        let len = self.0.len().min(data.length() as usize);
+        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
+    }
 }
 
 pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
@@ -90,4 +96,23 @@ pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
             *target_ptr.add(i) = value;
         }
     }
+}
+
+use core::slice;
+use std::collections::HashMap;
+
+pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i32, i32, i32)> {
+    let mut map = HashMap::new();
+
+    // Convert raw pointer to a safe slice
+    let data: &[i32] = unsafe { slice::from_raw_parts(ptr, len) };
+
+    // Process chunks of 3 (type, height, width)
+    for chunk in data.chunks(4) {
+        if let [sprite_type, height, width, multiplier] = *chunk {
+            map.insert(sprite_type, (height, width, multiplier));
+        }
+    }
+
+    map
 }

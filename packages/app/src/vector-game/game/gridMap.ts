@@ -9,7 +9,6 @@ import treeTexture from "../../assets/trees/pyramid.png";
 import treeTextureVase from "../../assets/trees/vase.png";
 import wallTexture from "../../assets/wall_texture.jpg";
 import { Bitmap } from "./bitmap";
-import { Sprite } from "./camera";
 import { perlinNoise } from "./constants";
 import { SpriteType } from "./spriteMap";
 
@@ -186,11 +185,36 @@ export class GridMap {
     // else if (Math.random() * 5 < seconds) this.light = 2;
   };
 
-  public getSpriteTexture = (sprite: Sprite) => {
+  getSpriteTextureArray(): Int32Array {
+    return new Int32Array([
+      SpriteType.BUSH1,
+      this.getSpriteTexture(SpriteType.BUSH1).texture.height,
+      this.getSpriteTexture(SpriteType.BUSH1).texture.width,
+      this.getSpriteTexture(SpriteType.BUSH1).spriteTextureHeight * 100,
+      SpriteType.TREE_CONE,
+      this.getSpriteTexture(SpriteType.TREE_CONE).texture.height,
+      this.getSpriteTexture(SpriteType.TREE_CONE).texture.width,
+      this.getSpriteTexture(SpriteType.TREE_CONE).spriteTextureHeight * 100,
+      SpriteType.TREE_COLUMNAR,
+      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.height,
+      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.width,
+      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).spriteTextureHeight * 100,
+      SpriteType.PILLAR,
+      this.getSpriteTexture(SpriteType.PILLAR).texture.height,
+      this.getSpriteTexture(SpriteType.PILLAR).texture.width,
+      this.getSpriteTexture(SpriteType.PILLAR).spriteTextureHeight * 100,
+      SpriteType.TREE_VASE,
+      this.getSpriteTexture(SpriteType.TREE_VASE).texture.height,
+      this.getSpriteTexture(SpriteType.TREE_VASE).texture.width,
+      this.getSpriteTexture(SpriteType.TREE_VASE).spriteTextureHeight * 100,
+    ]);
+  }
+
+  public getSpriteTexture = (spriteType: SpriteType) => {
     let texture: Bitmap;
     let spriteTextureHeight = 1;
 
-    switch (sprite.type) {
+    switch (spriteType) {
       case SpriteType.TREE_CONE:
         texture = this.treeTexture;
         spriteTextureHeight = 1.2;

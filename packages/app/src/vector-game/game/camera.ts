@@ -1,39 +1,26 @@
-import { flatten, sortBy } from "lodash";
+import { flatten } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
   draw_ceiling_floor_raycast,
+  draw_sprites_wasm,
+  draw_walls_raycast,
   raycast_visible_coordinates,
-  translate_coordinate_to_camera,
+  StripePart,
   WasmFloat32Array,
   WasmInt32Array,
   WasmUint8Array,
 } from "../../../wasm";
-import { draw_walls_raycast } from "../../wasm";
 import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
 import { SpriteMap, SpriteType } from "./spriteMap";
-
-interface CoordItem {
-  x: number;
-  y: number;
-  distance: number;
-  hasWall: boolean;
-  hasCeilingFloor: boolean;
-  visibleSquares: {
-    [key: string]: number[];
-  };
-}
-interface Coords {
-  [key: string]: // key `${x}-${y}`
-  CoordItem;
-}
 
 export interface Sprite {
   x: number;
   y: number;
   type: SpriteType;
 }
+
 export class Camera {
   public ctx: CanvasRenderingContext2D;
   public width: number;
@@ -63,6 +50,7 @@ export class Camera {
   public ceilingTextureRef: WasmUint8Array;
   public spritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
+  public spritesTextureRef: WasmInt32Array;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d");
@@ -95,9 +83,12 @@ export class Camera {
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.ceilingFloorBlackPixelsRef = new WasmUint8Array(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
-    this.spritesRef = new WasmFloat32Array(spriteMap.size * 3);
-    this.spritesRef.set(new Float32Array(flatten(spriteMap.sprites)));
+    this.spritesRef = new WasmFloat32Array(spriteMap.size * 3); // this will be the max sprites there will ever be in here
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
+    this.spritesTextureRef = new WasmInt32Array(
+      Object.values(SpriteType).length * 4
+    );
+    this.spritesTextureRef.set(map.getSpriteTextureArray());
 
     makeAutoObservable(this);
   }
@@ -157,20 +148,45 @@ export class Camera {
     spriteMap: SpriteMap,
     player: Player,
     map: GridMap
-  ): { coords: Coords; sprites: Sprite[] } {
-    const data: { coords: Map<any, any>; sprites: Sprite[] } =
-      raycast_visible_coordinates(
-        player.toRustPosition(),
-        this.widthResolution,
-        this.range,
-        map.wallGrid, // 1D array instead of 2D
-        map.size, // Width of original 2D array
-        new Float32Array(flatten(spriteMap.sprites))
-      );
-    return { sprites: data.sprites, coords: Object.fromEntries(data.coords) };
+  ): { sprites: Sprite[] } {
+    const data: { sprites: Sprite[] } = raycast_visible_coordinates(
+      player.toRustPosition(),
+      this.widthResolution,
+      this.range,
+      map.wallGrid, // 1D array instead of 2D
+      map.size, // Width of original 2D array
+      new Float32Array(flatten(spriteMap.sprites))
+    );
+    return { sprites: data.sprites };
   }
 
-  async drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
+  scaleCanvasImage(
+    buf: Uint8Array,
+    width: number,
+    height: number
+  ): HTMLCanvasElement {
+    // Create a temporary canvas
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+
+    // Set the canvas size to match the image data
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+
+    // Create an ImageData object
+    const img01 = new ImageData(
+      new Uint8ClampedArray(buf),
+      this.ceilingWidthResolution,
+      this.ceilingHeightResolution
+    );
+
+    // Draw ImageData onto the temporary canvas
+    tempCtx.putImageData(img01, 0, 0);
+
+    return tempCanvas;
+  }
+
+  drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
     if (!this.ceilingTextureRef || !this.floorTextureRef) {
       return;
     }
@@ -193,27 +209,19 @@ export class Camera {
       this.height
     );
 
-    // scale image to canvas width/height
-    var img0 = new ImageData(
-      new Uint8ClampedArray(this.ceilingFloorBlackPixelsRef.buffer),
+    const tempCanvas = this.scaleCanvasImage(
+      this.ceilingFloorBlackPixelsRef.buffer,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );
+    this.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height);
 
-    const renderer0 = await createImageBitmap(img0);
-    this.ctx.drawImage(renderer0, 0, 0, this.width, this.height);
-    // this.ctx.putImageData(img0, 0, 0);
-
-    // scale image to canvas width/height
-    var img = new ImageData(
-      new Uint8ClampedArray(this.ceilingFloorPixelsRef.buffer),
+    const tempCanvas1 = this.scaleCanvasImage(
+      this.ceilingFloorPixelsRef.buffer,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution
     );
-
-    const renderer = await createImageBitmap(img);
-    this.ctx.drawImage(renderer, 0, 0, this.width, this.height);
-    // this.ctx.putImageData(img, 0, 0);
+    this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
   }
 
   drawWallsRaycastWasm(player: Player, map: GridMap): void {
@@ -262,132 +270,71 @@ export class Camera {
     }
   }
 
-  // draws columns left to right
-  drawSprites(sprites: Sprite[], player: Player, map: GridMap): void {
-    // SPRITE CASTING
-    // sort sprites from far to close
-    const sortedSprites = sortBy(
-      sprites,
-      (sprite) =>
-        (player.position.x - sprite.x) * (player.position.x - sprite.x) +
-        (player.position.y - sprite.y) * (player.position.y - sprite.y)
-    ).reverse();
+  drawSpritesWasm(sprites: Sprite[], player: Player, map: GridMap): void {
+    // set the sprites, it'll always be max all sprites
+    this.spritesRef.set(
+      new Float32Array(flatten(sprites.map((s) => [s.x, s.y, s.type])))
+    );
 
-    this.ctx.save();
+    const stripeParts: StripePart[] = draw_sprites_wasm(
+      player.toRustPosition(),
+      this.width,
+      this.height,
+      this.widthSpacing,
+      this.spritesRef.ptr,
+      sprites.length,
+      this.zBufferRef.ptr,
+      this.widthResolution,
+      this.spritesTextureRef.ptr,
+      Object.values(SpriteType).length * 4,
+      this.lightRange,
+      map.light
+    );
 
-    // after sorting the sprites, do the projection and draw them
-    for (let i = 0; i < sprites.length; i++) {
-      // // translate sprite position to relative to camera
-      let sprite = sortedSprites[i];
-      const { texture, spriteTextureHeight } = map.getSpriteTexture(sprite);
-
+    for (let stripeIdx = 0; stripeIdx < stripeParts.length; stripeIdx++) {
+      const stripePart = stripeParts[stripeIdx];
       const {
-        screen_x: screenX,
+        stripe_left_x: stripeLeftX,
+        stripe_right_x: stripeRightX,
+        tex_x1: texX1,
+        tex_x2: texX2,
+        sprite_type: spriteType,
         screen_y_ceiling: screenYCeiling,
         screen_y_floor: screenYFloor,
-        distance,
-        full_height: fullHeight,
-      } = translate_coordinate_to_camera(
-        player.toRustPosition(),
-        sprite.x,
-        sprite.y,
-        spriteTextureHeight,
-        this.width,
-        this.height
+        alpha: alpha,
+      } = stripePart;
+
+      const { texture } = map.getSpriteTexture(spriteType);
+
+      this.ctx.save();
+      this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
+      this.ctx.drawImage(
+        texture.image,
+        texX1, // sx
+        0, // sy
+        texX2 - texX1, // sw
+        texture.height, // sh
+        stripeLeftX, // dx
+        screenYCeiling, // dy
+        stripeRightX - stripeLeftX, // dw
+        screenYFloor - screenYCeiling // dh
       );
-
-      // calculate width of the sprite
-      let spriteWidth = Math.abs(
-        Math.floor(fullHeight * (texture.width / texture.height))
-      );
-      let drawStartX = Math.floor(-spriteWidth / 2 + screenX);
-      if (drawStartX < 0) drawStartX = 0;
-      let drawEndX = spriteWidth / 2 + screenX;
-      if (drawEndX >= this.width) drawEndX = this.width - 1;
-
-      const alpha = distance / this.lightRange - map.light;
-      // ensure sprites are always at least a little bit visible - alpha 1 is all black
-      this.ctx.filter = `brightness(${Math.min(
-        Math.max(0, Math.floor(100 - alpha * 100), 20)
-      )}%)`; // min 20% brightness
-
-      // push parts of stripe that are visible into array and draw in discrete steps (since brightness is very inefficient we cannot draw vertical stripe by vertical stripe)
-      let stripeParts: number[] = [];
-      for (
-        let stripe = drawStartX;
-        stripe < drawEndX;
-        stripe += this.widthSpacing
-      ) {
-        // the conditions in the if are:
-        //1) it's in front of camera plane so you don't see things behind you
-        //2) it's on the screen (left)
-        //3) it's on the screen (right)
-        //4) ZBuffer, with perpendicular distance
-        if (
-          distance > 0 &&
-          stripe >= 0 &&
-          stripe <= this.width &&
-          distance <
-            this.zBufferRef.buffer[Math.floor(stripe / this.widthSpacing)]
-        ) {
-          // no x yet
-          if (stripeParts.length % 2 === 0) {
-            let dx = Math.floor(stripe);
-            stripeParts.push(dx);
-          }
-          // handle last frame
-          if (
-            stripe + this.widthSpacing >= drawEndX &&
-            stripeParts.length % 2 === 1
-          ) {
-            stripeParts.push(stripe);
-          }
-        } else if (stripeParts.length % 2 === 1) {
-          // no y yet
-          stripeParts.push(stripe);
-        }
-      }
-
-      for (let stripeIdx = 0; stripeIdx < stripeParts.length; stripeIdx += 2) {
-        const stripeLeftX = stripeParts[stripeIdx];
-        const stripeRightX = stripeParts[stripeIdx + 1];
-        let texX1 = Math.floor(
-          ((stripeLeftX - (-spriteWidth / 2 + screenX)) * texture.width) /
-            spriteWidth
-        );
-        let texX2 = Math.ceil(
-          ((stripeRightX - (-spriteWidth / 2 + screenX)) * texture.width) /
-            spriteWidth
-        );
-
-        this.ctx.drawImage(
-          texture.image,
-          texX1, // sx
-          0, // sy
-          texX2 - texX1, // sw
-          texture.height, // sh
-          stripeLeftX, // dx
-          screenYCeiling, // dy
-          stripeRightX - stripeLeftX, // dw
-          screenYFloor - screenYCeiling // dh
-        );
-      }
+      this.ctx.restore();
     }
-    this.ctx.restore();
   }
 
   // draws columns left to right
-  async drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
+  drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
     this.ctx.save();
 
-    const { coords, sprites } = this.raycastVisibleCoordinatesWasm(
+    const { sprites } = this.raycastVisibleCoordinatesWasm(
       spriteMap,
       player,
       map
     );
-    await this.drawCeilingFloorRaycastWasm(player, map);
+    this.drawCeilingFloorRaycastWasm(player, map);
     this.drawWallsRaycastWasm(player, map);
-    this.drawSprites(sprites, player, map);
+    this.drawSpritesWasm(sprites, player, map);
 
     this.ctx.restore();
   }

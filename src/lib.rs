@@ -1,11 +1,11 @@
-use helpers::copy_to_raw_pointer;
+use helpers::{copy_to_raw_pointer, parse_sprite_texture_array};
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 mod helpers;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 #[wasm_bindgen]
 pub struct Position {
     pub x: f32,
@@ -180,7 +180,6 @@ pub struct Sprite {
 
 #[derive(Serialize, Deserialize)]
 pub struct RaycastResult {
-    pub coords: HashMap<String, Coords>,
     pub sprites: Vec<Sprite>,
 }
 
@@ -301,7 +300,7 @@ pub fn raycast_visible_coordinates(
         }
     }
 
-    let result = RaycastResult { coords, sprites };
+    let result = RaycastResult { sprites };
     to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
 }
 
@@ -421,8 +420,8 @@ pub fn translate_coordinate_to_camera(
     point_x: f32,
     point_y: f32,
     height_multiplier: f32,
-    width: f32,
-    height: f32,
+    width: i32,
+    height: i32,
 ) -> TranslationResult {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
@@ -435,17 +434,18 @@ pub fn translate_coordinate_to_camera(
     let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y);
     let transform_y = inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y);
 
-    let screen_x = (width / 2.0) * (1.0 + (transform_x / transform_y));
+    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
 
     // to control the pitch/jump
     let v_move_screen = position.pitch + position.z;
 
     // divide by focal length (length of the plane vector)
-    let y_height_before_adjustment = (width / 2.0 / position.plane_y_initial / transform_y).abs();
+    let y_height_before_adjustment =
+        (width as f32 / 2.0 / position.plane_y_initial / transform_y).abs();
     let y_height = y_height_before_adjustment * height_multiplier;
     let height_distance = y_height_before_adjustment - y_height;
-    let screen_ceiling_y = height / 2.0 - y_height / 2.0;
-    let screen_floor_y = height / 2.0 + y_height / 2.0;
+    let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
+    let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
     let sprite_floor_screen_y = screen_floor_y + v_move_screen + height_distance / 2.0;
     let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2.0;
     let full_height = sprite_ceiling_screen_y - sprite_floor_screen_y;
@@ -459,4 +459,171 @@ pub fn translate_coordinate_to_camera(
         transform_x,
         transform_y,
     }
+}
+
+pub fn translate_coordinate_to_camera_internal(
+    position: Position,
+    point_x: f32,
+    point_y: f32,
+    height_multiplier: f32,
+    width: i32,
+    height: i32,
+) -> TranslationResult {
+    // translate x, y position to relative to camera
+    let sprite_x = point_x - position.x;
+    let sprite_y = point_y - position.y;
+
+    // inverse camera matrix calculation
+    let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
+    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y);
+    let transform_y = inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y);
+
+    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
+
+    // to control the pitch/jump
+    let v_move_screen = position.pitch + position.z;
+
+    // divide by focal length (length of the plane vector)
+    let y_height_before_adjustment =
+        (width as f32 / 2.0 / position.plane_y_initial / transform_y).abs();
+    let y_height = y_height_before_adjustment * height_multiplier;
+    let height_distance = y_height_before_adjustment - y_height;
+    let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
+    let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
+    let sprite_floor_screen_y = screen_floor_y + v_move_screen + height_distance / 2.0;
+    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2.0;
+    let full_height = sprite_ceiling_screen_y - sprite_floor_screen_y;
+
+    TranslationResult {
+        screen_x,
+        screen_y_floor: sprite_floor_screen_y,
+        screen_y_ceiling: sprite_ceiling_screen_y,
+        distance: transform_y,
+        full_height,
+        transform_x,
+        transform_y,
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Serialize)]
+struct StripePart {
+    pub sprite_type: i32,
+    pub stripe_left_x: i32,
+    pub stripe_right_x: i32,
+    pub screen_y_ceiling: i32,
+    pub screen_y_floor: i32,
+    pub tex_x1: i32,
+    pub tex_x2: i32,
+    pub alpha: i32,
+}
+
+#[wasm_bindgen]
+pub fn draw_sprites_wasm(
+    position_js: JsValue,
+    width: i32,
+    height: i32,
+    width_spacing: i32,
+    sprites_array: *mut f32,
+    sprites_count: usize,
+    zbuffer_array: *mut f32,
+    zbuffer_length: usize,
+    sprites_texture_array: *mut i32,
+    sprites_texture_array_length: usize,
+    light_range: f32,
+    map_light: f32,
+) -> JsValue {
+    let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
+    let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, zbuffer_length) };
+    let sprite_data = unsafe { std::slice::from_raw_parts(sprites_array, sprites_count * 3) };
+    let texture_array =
+        parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
+
+    let mut sprites = Vec::new();
+    for i in (0..sprites_count * 3).step_by(3) {
+        sprites.push(Sprite {
+            x: sprite_data[i],
+            y: sprite_data[i + 1],
+            r#type: sprite_data[i + 2] as i32,
+        });
+    }
+
+    let mut stripe_parts = Vec::new();
+
+    sprites.sort_by(|a, b| {
+        let da = (position.x - a.x).powi(2) + (position.y - a.y).powi(2);
+        let db = (position.x - b.x).powi(2) + (position.y - b.y).powi(2);
+        db.partial_cmp(&da).unwrap()
+    });
+
+    for sprite in sprites.iter() {
+        // TODO: this is causing the first one to disappear??
+        let (texture_height, texture_width, texture_multiplier) = texture_array
+            .get(&sprite.r#type)
+            .copied()
+            .unwrap_or((100, 100, 100));
+
+        let aspect_ratio = texture_width as f32 / texture_height as f32;
+
+        let projection = translate_coordinate_to_camera_internal(
+            position,
+            sprite.x,
+            sprite.y,
+            texture_multiplier as f32 / 100.0, // Placeholder texture height - the multiplier not actual height
+            width,
+            height,
+        );
+
+        let alpha = projection.distance / light_range - map_light;
+        // ensure sprites are always at least a little bit visible - alpha 1 is all black
+        let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
+
+        let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
+
+        let draw_start_x = (-sprite_width as f32 / 2.0 + projection.screen_x).max(0.0) as i32;
+        let draw_end_x =
+            (sprite_width as f32 / 2.0 + projection.screen_x).min(width as f32 - 1.0) as i32;
+
+        let mut stripe_parts_temp = Vec::new();
+        for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
+            if projection.distance > 0.0 && stripe >= 0 && stripe < width {
+                let z_index = (stripe / width_spacing) as usize;
+                if projection.distance < zbuffer[z_index] {
+                    if stripe_parts_temp.len() % 2 == 0 {
+                        stripe_parts_temp.push(stripe);
+                    }
+                    if stripe + width_spacing >= draw_end_x && stripe_parts_temp.len() % 2 == 1 {
+                        stripe_parts_temp.push(stripe);
+                    }
+                } else if stripe_parts_temp.len() % 2 == 1 {
+                    stripe_parts_temp.push(stripe);
+                }
+            }
+        }
+
+        for pair in stripe_parts_temp.chunks_exact(2) {
+            let sprite_width_f64 = sprite_width as f64;
+            let screen_x_f64 = projection.screen_x as f64;
+
+            let tex_x1 = (((pair[0] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                * texture_width as f64)
+                / sprite_width_f64) as i32;
+            let tex_x2 = (((pair[1] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                * texture_width as f64)
+                / sprite_width_f64) as i32;
+
+            stripe_parts.push(StripePart {
+                sprite_type: sprite.r#type,
+                stripe_left_x: pair[0],
+                stripe_right_x: pair[1],
+                screen_y_ceiling: projection.screen_y_ceiling as i32,
+                screen_y_floor: projection.screen_y_floor as i32,
+                tex_x1,
+                tex_x2,
+                alpha: alpha_i,
+            });
+        }
+    }
+
+    serde_wasm_bindgen::to_value(&stripe_parts).unwrap()
 }
