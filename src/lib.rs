@@ -159,13 +159,17 @@ pub fn raycast_visible_coordinates(
     position: JsValue,
     width_resolution: usize,
     range: i32,
-    map_data: Vec<u8>, // 2D array representing the grid map // TODO: to shared memory?
-    map_width: i32,    // Needed to index into 1D map
-    sprite_array: *mut f32, // Flattened array [x1, y1, angle1, type1, x2, y2, angle2, type2, ...]
+    map_array: *mut u8,
+    map_width: i32,              // Needed to index into 1D map
+    all_sprites_array: *mut f32, // Flattened array [x1, y1, angle1, type1, x2, y2, angle2, type2, ...]
     sprites_count: usize,
+    found_sprites_array: *mut f32,
 ) -> JsValue {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let sprite_data = unsafe { std::slice::from_raw_parts(sprite_array, sprites_count * 4) };
+    let all_sprites_data =
+        unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 4) };
+    let map_data =
+        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     // to make sure we dedupe the sprites
     let mut coords: HashMap<String, Coords> = HashMap::new();
@@ -175,10 +179,10 @@ pub fn raycast_visible_coordinates(
 
     // transform sprites into a hash map with floored coords for easy access
     for i in (0..sprites_count * 4).step_by(4) {
-        let sx = sprite_data[i];
-        let sy = sprite_data[i + 1];
-        let sprite_angle = sprite_data[i + 2] as i32;
-        let sprite_type = sprite_data[i + 3] as i32;
+        let sx = all_sprites_data[i];
+        let sy = all_sprites_data[i + 1];
+        let sprite_angle = all_sprites_data[i + 2] as i32;
+        let sprite_type = all_sprites_data[i + 3] as i32;
 
         let key = (sx.floor() as i32, sy.floor() as i32);
 
@@ -278,6 +282,7 @@ pub fn raycast_visible_coordinates(
     }
 
     let result = RaycastResult { sprites };
+
     to_value(&result).unwrap() // Convert Rust struct to JsValue and return it // TODO: just set directly and don't pass around?
 }
 

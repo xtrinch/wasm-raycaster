@@ -52,6 +52,7 @@ export class Camera {
   public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
+  public mapRef: WasmUint8Array;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d");
@@ -95,6 +96,8 @@ export class Camera {
       Object.values(SpriteType).length * 4
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
+    this.mapRef = new WasmUint8Array(map.size);
+    this.mapRef.set(map.wallGrid);
 
     makeAutoObservable(this);
   }
@@ -159,10 +162,11 @@ export class Camera {
       player.toRustPosition(),
       this.widthResolution,
       this.range,
-      map.wallGrid, // 1D array instead of 2D
+      this.mapRef.ptr,
       map.size, // Width of original 2D array
       this.allSpritesRef.ptr,
-      spriteMap.size
+      spriteMap.size,
+      this.visibleSpritesRef.ptr
     );
     return { sprites: data.sprites };
   }
