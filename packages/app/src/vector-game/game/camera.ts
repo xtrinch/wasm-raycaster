@@ -4,7 +4,6 @@ import {
   draw_ceiling_floor_raycast,
   draw_sprites_wasm,
   draw_walls_raycast,
-  raycast_visible_coordinates,
   StripePart,
   WasmFloat32Array,
   WasmInt32Array,
@@ -90,13 +89,14 @@ export class Camera {
         flatten(spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3]]))
       )
     );
+    // TODO: don't think this is necessary now that we don't pass it around
     this.visibleSpritesRef = new WasmFloat32Array(spriteMap.size * 4); // this will be the max sprites there will ever be in here
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
     this.spritesTextureRef = new WasmInt32Array(
       Object.values(SpriteType).length * 4
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
-    this.mapRef = new WasmUint8Array(map.size);
+    this.mapRef = new WasmUint8Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
 
     makeAutoObservable(this);
@@ -151,26 +151,6 @@ export class Camera {
       this.ctx.fillRect(0, this.height * 0.5, this.width, this.height * 0.5);
     }
     this.ctx.restore();
-  }
-
-  raycastVisibleCoordinatesWasm(
-    spriteMap: SpriteMap,
-    player: Player,
-    map: GridMap
-  ): number {
-    const foundSpritesLength = raycast_visible_coordinates(
-      player.toRustPosition(),
-      this.widthResolution,
-      this.range,
-      this.mapRef.ptr,
-      map.size, // Width of original 2D array
-      this.allSpritesRef.ptr,
-      spriteMap.size,
-      this.visibleSpritesRef.ptr
-    );
-
-    console.log(foundSpritesLength);
-    return foundSpritesLength;
   }
 
   scaleCanvasImage(
@@ -268,24 +248,26 @@ export class Camera {
     }
   }
 
-  drawSpritesWasm(
-    foundSpritesLength: number,
-    player: Player,
-    map: GridMap
-  ): void {
+  drawSpritesWasm(player: Player, map: GridMap, spriteMap: SpriteMap): void {
     const stripeParts: StripePart[] = draw_sprites_wasm(
       player.toRustPosition(),
       this.width,
       this.height,
       this.widthSpacing,
       this.visibleSpritesRef.ptr,
-      foundSpritesLength,
       this.zBufferRef.ptr,
       this.widthResolution,
       this.spritesTextureRef.ptr,
       Object.values(SpriteType).length * 4,
       this.lightRange,
-      map.light
+      map.light,
+      this.widthResolution,
+      this.range,
+      this.mapRef.ptr,
+      map.size, // Width of original 2D array
+      this.allSpritesRef.ptr,
+      spriteMap.size,
+      this.visibleSpritesRef.ptr
     );
 
     for (let stripeIdx = 0; stripeIdx < stripeParts.length; stripeIdx++) {
@@ -325,14 +307,9 @@ export class Camera {
   drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
     this.ctx.save();
 
-    const foundSpritesLength = this.raycastVisibleCoordinatesWasm(
-      spriteMap,
-      player,
-      map
-    );
     this.drawCeilingFloorRaycastWasm(player, map);
     this.drawWallsRaycastWasm(player, map);
-    this.drawSpritesWasm(foundSpritesLength, player, map);
+    this.drawSpritesWasm(player, map, spriteMap);
 
     this.ctx.restore();
   }

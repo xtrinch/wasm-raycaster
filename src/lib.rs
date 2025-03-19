@@ -1,9 +1,8 @@
 use helpers::{
-    copy_to_raw_pointer, parse_sprite_texture_array, Coords, Position, RaycastResult, Sprite,
-    StripePart, TranslationResult,
+    copy_to_raw_pointer, parse_sprite_texture_array, Coords, Position, Sprite, StripePart,
+    TranslationResult,
 };
 use js_sys::Math::atan2;
-use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 mod helpers;
 use std::collections::HashMap;
@@ -154,7 +153,6 @@ pub fn draw_walls_raycast(
     }
 }
 
-#[wasm_bindgen]
 pub fn raycast_visible_coordinates(
     position: JsValue,
     width_resolution: usize,
@@ -413,22 +411,40 @@ pub fn draw_sprites_wasm(
     height: i32,
     width_spacing: i32,
     sprites_array: *mut f32,
-    sprites_count: usize,
     zbuffer_array: *mut f32,
     zbuffer_length: usize,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
     light_range: f32,
     map_light: f32,
+    width_resolution: usize,
+    range: i32,
+    map_array: *mut u8,
+    map_width: i32,
+    all_sprites_array: *mut f32,
+    all_sprites_count: usize,
+    found_sprites_array: *mut f32,
 ) -> JsValue {
+    let found_sprites_length = raycast_visible_coordinates(
+        position_js.clone(),
+        width_resolution,
+        range,
+        map_array,
+        map_width,
+        all_sprites_array,
+        all_sprites_count,
+        found_sprites_array,
+    );
+
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, zbuffer_length) };
-    let sprite_data = unsafe { std::slice::from_raw_parts(sprites_array, sprites_count * 4) };
+    let sprite_data =
+        unsafe { std::slice::from_raw_parts(sprites_array, found_sprites_length * 4) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..sprites_count * 4).step_by(4) {
+    for i in (0..found_sprites_length * 4).step_by(4) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],

@@ -148,11 +148,6 @@ pub struct Sprite {
     pub r#type: i32,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct RaycastResult {
-    pub sprites: Vec<Sprite>,
-}
-
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct TranslationResult {

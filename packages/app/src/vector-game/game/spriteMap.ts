@@ -17,7 +17,7 @@ export class SpriteMap {
     // x, y, angle (0-360), type
     this.sprites = [
       [2.3, 3.3, 90, SpriteType.LADY],
-      [-0.3, 2, 180, SpriteType.LADY],
+      [0.8, 3.2, 270, SpriteType.LADY],
       [-1, 5, 0, SpriteType.TREE_CONE],
       [-1, 6, 0, SpriteType.BUSH1],
       [-2, 4, 0, SpriteType.TREE_VASE],
