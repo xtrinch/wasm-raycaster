@@ -160,41 +160,34 @@ pub fn raycast_visible_coordinates(
     width_resolution: usize,
     range: i32,
     map_array: *mut u8,
-    map_width: i32,              // Needed to index into 1D map
-    all_sprites_array: *mut f32, // Flattened array [x1, y1, angle1, type1, x2, y2, angle2, type2, ...]
+    map_width: i32,
+    all_sprites_array: *mut f32,
     sprites_count: usize,
     found_sprites_array: *mut f32,
-) -> JsValue {
+) -> usize {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let all_sprites_data =
         unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 4) };
     let map_data =
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let found_sprites =
+        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 4) };
 
-    // to make sure we dedupe the sprites
     let mut coords: HashMap<String, Coords> = HashMap::new();
-    let mut sprites: Vec<Sprite> = Vec::new();
+    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 4]>> = HashMap::new();
+    let mut found_sprites_count = 0;
 
-    let mut sprites_map: HashMap<(i32, i32), Vec<Sprite>> = HashMap::new();
-
-    // transform sprites into a hash map with floored coords for easy access
     for i in (0..sprites_count * 4).step_by(4) {
         let sx = all_sprites_data[i];
         let sy = all_sprites_data[i + 1];
-        let sprite_angle = all_sprites_data[i + 2] as i32;
-        let sprite_type = all_sprites_data[i + 3] as i32;
+        let sprite_angle = all_sprites_data[i + 2];
+        let sprite_type = all_sprites_data[i + 3];
 
         let key = (sx.floor() as i32, sy.floor() as i32);
-
         sprites_map
             .entry(key)
             .or_insert_with(Vec::new)
-            .push(Sprite {
-                x: sx,
-                y: sy,
-                angle: sprite_angle,
-                r#type: sprite_type,
-            });
+            .push([sx, sy, sprite_angle, sprite_type]);
     }
 
     for column in 0..width_resolution {
@@ -204,43 +197,30 @@ pub fn raycast_visible_coordinates(
 
         let mut map_x = position.x.floor() as i32;
         let mut map_y = position.y.floor() as i32;
-
         let delta_dist_x = (1.0 / ray_dir_x).abs();
         let delta_dist_y = (1.0 / ray_dir_y).abs();
 
-        let mut side_dist_x;
-        let mut side_dist_y;
-        let step_x;
-        let step_y;
-
-        if ray_dir_x < 0.0 {
-            step_x = -1;
-            side_dist_x = (position.x - map_x as f32) * delta_dist_x;
+        let (mut side_dist_x, mut step_x) = if ray_dir_x < 0.0 {
+            ((position.x - map_x as f32) * delta_dist_x, -1)
         } else {
-            step_x = 1;
-            side_dist_x = ((map_x + 1) as f32 - position.x) * delta_dist_x;
-        }
-
-        if ray_dir_y < 0.0 {
-            step_y = -1;
-            side_dist_y = (position.y - map_y as f32) * delta_dist_y;
+            (((map_x + 1) as f32 - position.x) * delta_dist_x, 1)
+        };
+        let (mut side_dist_y, mut step_y) = if ray_dir_y < 0.0 {
+            ((position.y - map_y as f32) * delta_dist_y, -1)
         } else {
-            step_y = 1;
-            side_dist_y = ((map_y + 1) as f32 - position.y) * delta_dist_y;
-        }
+            (((map_y + 1) as f32 - position.y) * delta_dist_y, 1)
+        };
 
         let mut hit = false;
         let mut current_range = range;
 
         while !hit && current_range >= 0 {
-            let index = (map_y * map_width + map_x);
-
-            let map_value: u8;
-            if map_y < 0 || map_x < 0 {
-                map_value = 0
+            let index = (map_y * map_width + map_x) as usize;
+            let map_value = if map_y < 0 || map_x < 0 {
+                0
             } else {
-                map_value = map_data.get(index as usize).copied().unwrap_or(0);
-            }
+                map_data.get(index).copied().unwrap_or(0)
+            };
 
             if map_value == 1 {
                 hit = true;
@@ -248,24 +228,13 @@ pub fn raycast_visible_coordinates(
 
             let coord_key = format!("{}-{}", map_x, map_y);
             if !coords.contains_key(&coord_key) {
-                let has_ceiling_floor = map_value == 2;
-                coords.insert(
-                    coord_key.clone(),
-                    Coords {
-                        x: map_x,
-                        y: map_y,
-                        has_ceiling_floor,
-                    },
-                );
+                coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
 
                 if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-                    for sprite in sprite_list {
-                        sprites.push(Sprite {
-                            x: sprite.x,
-                            y: sprite.y,
-                            angle: sprite.angle,
-                            r#type: sprite.r#type,
-                        });
+                    for &sprite in sprite_list {
+                        found_sprites[found_sprites_count * 4..found_sprites_count * 4 + 4]
+                            .copy_from_slice(&sprite);
+                        found_sprites_count += 1;
                     }
                 }
             }
@@ -281,9 +250,7 @@ pub fn raycast_visible_coordinates(
         }
     }
 
-    let result = RaycastResult { sprites };
-
-    to_value(&result).unwrap() // Convert Rust struct to JsValue and return it // TODO: just set directly and don't pass around?
+    found_sprites_count
 }
 
 #[wasm_bindgen]

@@ -20,7 +20,7 @@ export class SpriteMap {
       [-0.3, 2, 180, SpriteType.LADY],
       [-1, 5, 0, SpriteType.TREE_CONE],
       [-1, 6, 0, SpriteType.BUSH1],
-      [-1, 4, 0, SpriteType.TREE_VASE],
+      [-2, 4, 0, SpriteType.TREE_VASE],
       [4, 7, 0, SpriteType.PILLAR],
       [0.5, 1.5, 0, SpriteType.TREE_CONE],
       [0.5, 3.5, 0, SpriteType.TREE_COLUMNAR],

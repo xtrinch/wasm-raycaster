@@ -138,7 +138,6 @@ pub struct Position {
 pub struct Coords {
     pub x: i32,
     pub y: i32,
-    pub has_ceiling_floor: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

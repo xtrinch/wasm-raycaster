@@ -60,7 +60,7 @@ export class Camera {
     this.height = canvas.height = window.innerHeight;
     this.widthResolution = this.width; //620;
     this.heightResolution = 420;
-    const factor = 3 / 5;
+    const factor = 2 / 5;
     this.ceilingHeightResolution =
       this.width * factor - ((this.width * factor) % 2); //650;
     this.ceilingWidthResolution =
@@ -157,8 +157,8 @@ export class Camera {
     spriteMap: SpriteMap,
     player: Player,
     map: GridMap
-  ): { sprites: Sprite[] } {
-    const data: { sprites: Sprite[] } = raycast_visible_coordinates(
+  ): number {
+    const foundSpritesLength = raycast_visible_coordinates(
       player.toRustPosition(),
       this.widthResolution,
       this.range,
@@ -168,7 +168,9 @@ export class Camera {
       spriteMap.size,
       this.visibleSpritesRef.ptr
     );
-    return { sprites: data.sprites };
+
+    console.log(foundSpritesLength);
+    return foundSpritesLength;
   }
 
   scaleCanvasImage(
@@ -266,19 +268,18 @@ export class Camera {
     }
   }
 
-  drawSpritesWasm(sprites: Sprite[], player: Player, map: GridMap): void {
-    // set the sprites, it'll always be max all sprites
-    this.visibleSpritesRef.set(
-      new Float32Array(flatten(sprites.map((s) => [s.x, s.y, s.angle, s.type])))
-    );
-
+  drawSpritesWasm(
+    foundSpritesLength: number,
+    player: Player,
+    map: GridMap
+  ): void {
     const stripeParts: StripePart[] = draw_sprites_wasm(
       player.toRustPosition(),
       this.width,
       this.height,
       this.widthSpacing,
       this.visibleSpritesRef.ptr,
-      sprites.length,
+      foundSpritesLength,
       this.zBufferRef.ptr,
       this.widthResolution,
       this.spritesTextureRef.ptr,
@@ -324,14 +325,14 @@ export class Camera {
   drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
     this.ctx.save();
 
-    const { sprites } = this.raycastVisibleCoordinatesWasm(
+    const foundSpritesLength = this.raycastVisibleCoordinatesWasm(
       spriteMap,
       player,
       map
     );
     this.drawCeilingFloorRaycastWasm(player, map);
     this.drawWallsRaycastWasm(player, map);
-    this.drawSpritesWasm(sprites, player, map);
+    this.drawSpritesWasm(foundSpritesLength, player, map);
 
     this.ctx.restore();
   }
