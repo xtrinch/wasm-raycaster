@@ -1,4 +1,5 @@
 use js_sys::Float32Array;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -115,4 +116,66 @@ pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i3
     }
 
     map
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[wasm_bindgen]
+pub struct Position {
+    pub x: f32,
+    pub y: f32,
+    pub dir_x: f32,
+    pub dir_y: f32,
+    pub plane_x: f32,
+    pub plane_y: f32,
+    pub pitch: f32,
+    pub z: f32,
+    pub plane_y_initial: f32,
+}
+
+// Data structures
+#[derive(Serialize, Deserialize)]
+#[wasm_bindgen]
+pub struct Coords {
+    pub x: i32,
+    pub y: i32,
+    pub has_ceiling_floor: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Sprite {
+    pub x: f32,
+    pub y: f32,
+    pub angle: i32,
+    pub r#type: i32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RaycastResult {
+    pub sprites: Vec<Sprite>,
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct TranslationResult {
+    pub screen_x: f32,
+    pub screen_y_floor: f32,
+    pub screen_y_ceiling: f32,
+    pub distance: f32,
+    pub full_height: f32,
+    pub transform_x: f32,
+    pub transform_y: f32,
+}
+
+#[wasm_bindgen]
+#[derive(Serialize)]
+pub struct StripePart {
+    pub sprite_type: i32,
+    pub stripe_left_x: i32,
+    pub stripe_right_x: i32,
+    pub screen_y_ceiling: i32,
+    pub screen_y_floor: i32,
+    pub tex_x1: i32,
+    pub tex_x2: i32,
+    pub alpha: i32,
+    pub angle: i32,
 }

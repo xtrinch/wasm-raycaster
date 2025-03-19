@@ -235,9 +235,6 @@ export class GridMap {
 
   // TODO: map in rust?
   mapAngleToValue = (angle) => {
-    // Ensure the angle is within the range [0, 360)
-    angle = (angle + 180) % 360; // Ensure angle stays within 0 to 360
-
     let index = Math.round(angle / 45); // Default to 1 if the result is 0
     if (index === 8) {
       index = 0;

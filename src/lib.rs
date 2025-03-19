@@ -1,24 +1,12 @@
-use helpers::{copy_to_raw_pointer, parse_sprite_texture_array};
+use helpers::{
+    copy_to_raw_pointer, parse_sprite_texture_array, Coords, Position, RaycastResult, Sprite,
+    StripePart, TranslationResult,
+};
 use js_sys::Math::atan2;
 use serde_wasm_bindgen::to_value;
 use wasm_bindgen::prelude::*;
 mod helpers;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[wasm_bindgen]
-pub struct Position {
-    pub x: f32,
-    pub y: f32,
-    pub dir_x: f32,
-    pub dir_y: f32,
-    pub plane_x: f32,
-    pub plane_y: f32,
-    pub pitch: f32,
-    pub z: f32,
-    pub plane_y_initial: f32,
-}
 
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
@@ -166,37 +154,18 @@ pub fn draw_walls_raycast(
     }
 }
 
-// Data structures
-#[derive(Serialize, Deserialize)]
-#[wasm_bindgen]
-pub struct Coords {
-    pub x: i32,
-    pub y: i32,
-    pub has_ceiling_floor: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Sprite {
-    pub x: f32,
-    pub y: f32,
-    pub r#type: i32,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct RaycastResult {
-    pub sprites: Vec<Sprite>,
-}
-
 #[wasm_bindgen]
 pub fn raycast_visible_coordinates(
     position: JsValue,
     width_resolution: usize,
     range: i32,
-    map_data: Vec<u8>,   // 2D array representing the grid map
-    map_width: i32,      // Needed to index into 1D map
-    sprite_data: &[f32], // Flattened array [x1, y1, type1, x2, y2, type2, ...]
+    map_data: Vec<u8>, // 2D array representing the grid map // TODO: to shared memory?
+    map_width: i32,    // Needed to index into 1D map
+    sprite_array: *mut f32, // Flattened array [x1, y1, angle1, type1, x2, y2, angle2, type2, ...]
+    sprites_count: usize,
 ) -> JsValue {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+    let sprite_data = unsafe { std::slice::from_raw_parts(sprite_array, sprites_count * 4) };
 
     // to make sure we dedupe the sprites
     let mut coords: HashMap<String, Coords> = HashMap::new();
@@ -205,10 +174,11 @@ pub fn raycast_visible_coordinates(
     let mut sprites_map: HashMap<(i32, i32), Vec<Sprite>> = HashMap::new();
 
     // transform sprites into a hash map with floored coords for easy access
-    for i in (0..sprite_data.len()).step_by(3) {
+    for i in (0..sprites_count * 4).step_by(4) {
         let sx = sprite_data[i];
         let sy = sprite_data[i + 1];
-        let sprite_type = sprite_data[i + 2] as i32;
+        let sprite_angle = sprite_data[i + 2] as i32;
+        let sprite_type = sprite_data[i + 3] as i32;
 
         let key = (sx.floor() as i32, sy.floor() as i32);
 
@@ -218,6 +188,7 @@ pub fn raycast_visible_coordinates(
             .push(Sprite {
                 x: sx,
                 y: sy,
+                angle: sprite_angle,
                 r#type: sprite_type,
             });
     }
@@ -288,6 +259,7 @@ pub fn raycast_visible_coordinates(
                         sprites.push(Sprite {
                             x: sprite.x,
                             y: sprite.y,
+                            angle: sprite.angle,
                             r#type: sprite.r#type,
                         });
                     }
@@ -306,7 +278,7 @@ pub fn raycast_visible_coordinates(
     }
 
     let result = RaycastResult { sprites };
-    to_value(&result).unwrap() // Convert Rust struct to JsValue and return it
+    to_value(&result).unwrap() // Convert Rust struct to JsValue and return it // TODO: just set directly and don't pass around?
 }
 
 #[wasm_bindgen]
@@ -417,18 +389,6 @@ pub fn draw_ceiling_floor_raycast(
     }
 }
 
-#[wasm_bindgen]
-#[derive(Debug)]
-pub struct TranslationResult {
-    pub screen_x: f32,
-    pub screen_y_floor: f32,
-    pub screen_y_ceiling: f32,
-    pub distance: f32,
-    pub full_height: f32,
-    pub transform_x: f32,
-    pub transform_y: f32,
-}
-
 pub fn translate_coordinate_to_camera(
     position: Position,
     point_x: f32,
@@ -475,20 +435,6 @@ pub fn translate_coordinate_to_camera(
 }
 
 #[wasm_bindgen]
-#[derive(Serialize)]
-struct StripePart {
-    pub sprite_type: i32,
-    pub stripe_left_x: i32,
-    pub stripe_right_x: i32,
-    pub screen_y_ceiling: i32,
-    pub screen_y_floor: i32,
-    pub tex_x1: i32,
-    pub tex_x2: i32,
-    pub alpha: i32,
-    pub angle: i32,
-}
-
-#[wasm_bindgen]
 pub fn draw_sprites_wasm(
     position_js: JsValue,
     width: i32,
@@ -505,16 +451,17 @@ pub fn draw_sprites_wasm(
 ) -> JsValue {
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, zbuffer_length) };
-    let sprite_data = unsafe { std::slice::from_raw_parts(sprites_array, sprites_count * 3) };
+    let sprite_data = unsafe { std::slice::from_raw_parts(sprites_array, sprites_count * 4) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..sprites_count * 3).step_by(3) {
+    for i in (0..sprites_count * 4).step_by(4) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],
-            r#type: sprite_data[i + 2] as i32,
+            angle: sprite_data[i + 2] as i32,
+            r#type: sprite_data[i + 3] as i32,
         });
     }
 
@@ -546,10 +493,9 @@ pub fn draw_sprites_wasm(
 
         let dx = position.x - sprite.x;
         let dy = position.y - sprite.y;
-        let mut angle = atan2(dx as f64, dy as f64);
-        let direction_angle = atan2((sprite.y) as f64, (sprite.x) as f64)
-            - atan2((position.dir_x) as f64, (position.dir_y) as f64);
-        // angle -= direction_angle;
+        let angle = atan2(dx as f64, dy as f64);
+        // will return from -180 to 180
+        let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
         let alpha = projection.distance / light_range - map_light;
         // ensure sprites are always at least a little bit visible - alpha 1 is all black
@@ -598,7 +544,7 @@ pub fn draw_sprites_wasm(
                 tex_x1,
                 tex_x2,
                 alpha: alpha_i,
-                angle: (angle).to_degrees() as i32,
+                angle: angle_i,
             });
         }
     }

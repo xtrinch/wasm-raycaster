@@ -18,6 +18,7 @@ import { SpriteMap, SpriteType } from "./spriteMap";
 export interface Sprite {
   x: number;
   y: number;
+  angle: number;
   type: SpriteType;
 }
 
@@ -47,7 +48,8 @@ export class Camera {
   public columnsRef: WasmInt32Array;
   public floorTextureRef: WasmUint8Array;
   public ceilingTextureRef: WasmUint8Array;
-  public spritesRef: WasmFloat32Array;
+  public visibleSpritesRef: WasmFloat32Array;
+  public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
 
@@ -57,7 +59,7 @@ export class Camera {
     this.height = canvas.height = window.innerHeight;
     this.widthResolution = this.width; //620;
     this.heightResolution = 420;
-    const factor = 2 / 5;
+    const factor = 3 / 5;
     this.ceilingHeightResolution =
       this.width * factor - ((this.width * factor) % 2); //650;
     this.ceilingWidthResolution =
@@ -81,7 +83,13 @@ export class Camera {
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
-    this.spritesRef = new WasmFloat32Array(spriteMap.size * 3); // this will be the max sprites there will ever be in here
+    this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 4); // this will be the max sprites there will ever be in here
+    this.allSpritesRef.set(
+      new Float32Array(
+        flatten(spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3]]))
+      )
+    );
+    this.visibleSpritesRef = new WasmFloat32Array(spriteMap.size * 4); // this will be the max sprites there will ever be in here
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
     this.spritesTextureRef = new WasmInt32Array(
       Object.values(SpriteType).length * 4
@@ -153,7 +161,8 @@ export class Camera {
       this.range,
       map.wallGrid, // 1D array instead of 2D
       map.size, // Width of original 2D array
-      new Float32Array(flatten(spriteMap.sprites))
+      this.allSpritesRef.ptr,
+      spriteMap.size
     );
     return { sprites: data.sprites };
   }
@@ -255,8 +264,8 @@ export class Camera {
 
   drawSpritesWasm(sprites: Sprite[], player: Player, map: GridMap): void {
     // set the sprites, it'll always be max all sprites
-    this.spritesRef.set(
-      new Float32Array(flatten(sprites.map((s) => [s.x, s.y, s.type])))
+    this.visibleSpritesRef.set(
+      new Float32Array(flatten(sprites.map((s) => [s.x, s.y, s.angle, s.type])))
     );
 
     const stripeParts: StripePart[] = draw_sprites_wasm(
@@ -264,7 +273,7 @@ export class Camera {
       this.width,
       this.height,
       this.widthSpacing,
-      this.spritesRef.ptr,
+      this.visibleSpritesRef.ptr,
       sprites.length,
       this.zBufferRef.ptr,
       this.widthResolution,
