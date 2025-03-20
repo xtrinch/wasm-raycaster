@@ -175,22 +175,16 @@ pub fn raycast_visible_coordinates(
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
     let mut found_sprites_count = 0;
 
+    // map them by x & y coordinate for easy access
     for i in (0..sprites_count * 5).step_by(5) {
-        // TODO: just spread in below why destructure?
-        let sx = all_sprites_data[i];
-        let sy = all_sprites_data[i + 1];
-        let sprite_angle = all_sprites_data[i + 2];
-        let sprite_height = all_sprites_data[i + 3];
-        let sprite_type = all_sprites_data[i + 4];
+        let sprite_data: [_; 5] = all_sprites_data[i..i + 5].try_into().unwrap();
 
-        let key = (sx.floor() as i32, sy.floor() as i32);
-        sprites_map.entry(key).or_insert_with(Vec::new).push([
-            sx,
-            sy,
-            sprite_angle,
-            sprite_height,
-            sprite_type,
-        ]);
+        let key = (sprite_data[0].floor() as i32, sprite_data[1].floor() as i32);
+
+        sprites_map
+            .entry(key)
+            .or_insert_with(Vec::new)
+            .push(sprite_data);
     }
 
     for column in 0..width_resolution {
