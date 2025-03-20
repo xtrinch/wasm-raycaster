@@ -76,16 +76,16 @@ export class GridMap {
     this.wallGrid = new Uint8Array([
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0,
-      0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+      0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
       0, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0,
       0, 1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
       0, 1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
-      0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
+      0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
       0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
-      0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0,
+      0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0,
       0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
@@ -209,27 +209,21 @@ export class GridMap {
       SpriteType.LADY,
       this.getSpriteTexture(SpriteType.LADY).texture.height,
       this.getSpriteTexture(SpriteType.LADY).texture.width,
-      this.getSpriteTexture(SpriteType.LADY).spriteTextureHeight * 100,
       SpriteType.BUSH1,
       this.getSpriteTexture(SpriteType.BUSH1).texture.height,
       this.getSpriteTexture(SpriteType.BUSH1).texture.width,
-      this.getSpriteTexture(SpriteType.BUSH1).spriteTextureHeight * 100,
       SpriteType.TREE_CONE,
       this.getSpriteTexture(SpriteType.TREE_CONE).texture.height,
       this.getSpriteTexture(SpriteType.TREE_CONE).texture.width,
-      this.getSpriteTexture(SpriteType.TREE_CONE).spriteTextureHeight * 100,
       SpriteType.TREE_COLUMNAR,
       this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.height,
       this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.width,
-      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).spriteTextureHeight * 100,
       SpriteType.PILLAR,
       this.getSpriteTexture(SpriteType.PILLAR).texture.height,
       this.getSpriteTexture(SpriteType.PILLAR).texture.width,
-      this.getSpriteTexture(SpriteType.PILLAR).spriteTextureHeight * 100,
       SpriteType.TREE_VASE,
       this.getSpriteTexture(SpriteType.TREE_VASE).texture.height,
       this.getSpriteTexture(SpriteType.TREE_VASE).texture.width,
-      this.getSpriteTexture(SpriteType.TREE_VASE).spriteTextureHeight * 100,
     ]);
   }
 
@@ -246,35 +240,28 @@ export class GridMap {
   public getSpriteTexture = (spriteType: SpriteType, angle: number = 0) => {
     const angleVal = this.mapAngleToValue(angle);
     let texture: Bitmap;
-    let spriteTextureHeight = 1;
 
     switch (spriteType) {
       case SpriteType.LADY:
         texture = this.ladyTextures[angleVal];
-        spriteTextureHeight = 0.7;
         break;
       case SpriteType.TREE_CONE:
         texture = this.treeTexture;
-        spriteTextureHeight = 1.2;
         break;
       case SpriteType.TREE_VASE:
         texture = this.treeTextureVase;
-        spriteTextureHeight = 0.3;
         break;
       case SpriteType.TREE_COLUMNAR:
         texture = this.treeTextureColumnar;
-        spriteTextureHeight = 1.3;
         break;
       case SpriteType.PILLAR:
         texture = this.pillarTexture;
-        spriteTextureHeight = 0.8;
         break;
       case SpriteType.BUSH1:
         texture = this.bush1Texture;
-        spriteTextureHeight = 1;
         break;
     }
 
-    return { texture, spriteTextureHeight };
+    return { texture };
   };
 }

@@ -165,27 +165,32 @@ pub fn raycast_visible_coordinates(
 ) -> usize {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let all_sprites_data =
-        unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 4) };
+        unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 5) };
     let map_data =
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
     let found_sprites =
-        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 4) };
+        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 5) };
 
     let mut coords: HashMap<String, Coords> = HashMap::new();
-    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 4]>> = HashMap::new();
+    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
     let mut found_sprites_count = 0;
 
-    for i in (0..sprites_count * 4).step_by(4) {
+    for i in (0..sprites_count * 5).step_by(5) {
+        // TODO: just spread in below why destructure?
         let sx = all_sprites_data[i];
         let sy = all_sprites_data[i + 1];
         let sprite_angle = all_sprites_data[i + 2];
-        let sprite_type = all_sprites_data[i + 3];
+        let sprite_height = all_sprites_data[i + 3];
+        let sprite_type = all_sprites_data[i + 4];
 
         let key = (sx.floor() as i32, sy.floor() as i32);
-        sprites_map
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push([sx, sy, sprite_angle, sprite_type]);
+        sprites_map.entry(key).or_insert_with(Vec::new).push([
+            sx,
+            sy,
+            sprite_angle,
+            sprite_height,
+            sprite_type,
+        ]);
     }
 
     for column in 0..width_resolution {
@@ -230,7 +235,7 @@ pub fn raycast_visible_coordinates(
 
                 if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                     for &sprite in sprite_list {
-                        found_sprites[found_sprites_count * 4..found_sprites_count * 4 + 4]
+                        found_sprites[found_sprites_count * 5..found_sprites_count * 5 + 5]
                             .copy_from_slice(&sprite);
                         found_sprites_count += 1;
                     }
@@ -259,6 +264,9 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_texture: *mut u8,
     ceiling_width_resolution: usize,
     ceiling_height_resolution: usize,
+    ceiling_width_spacing: u8,
+    ceiling_height_spacing: u8,
+    height: usize,
     light_range: f32,
     map_light: f32,
     floor_texture_width: usize,
@@ -267,7 +275,6 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_texture_height: usize,
     map_data: &[u8],
     map_width: usize,
-    base_height: f32,
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
@@ -286,10 +293,15 @@ pub fn draw_ceiling_floor_raycast(
         let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
         let half_height = ceiling_height_resolution as f32 / 2.0;
-        let scale = ceiling_height_resolution as f32 / base_height;
+        let scale = ceiling_height_resolution as f32 / height as f32;
         let scaled_pitch = position.pitch * scale;
         let scaled_z = position.z * scale;
 
+        let height_resolution_ratio =
+            ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
+        let height_spacing_ratio = ceiling_height_spacing as f32 / ceiling_width_spacing as f32;
+        let distance_divider =
+            (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
         for y in 0..ceiling_height_resolution {
             let is_floor = (y as f32) > half_height + scaled_pitch;
 
@@ -304,11 +316,7 @@ pub fn draw_ceiling_floor_raycast(
                 half_height - scaled_z
             };
 
-            let row_distance = cam_z
-                / p
-                / (ceiling_width_resolution as f32 / ceiling_height_resolution as f32)
-                / 2.0
-                / position.plane_y_initial;
+            let row_distance = cam_z / (p * distance_divider);
             let mut alpha = (row_distance + 0.0) / light_range - map_light;
             alpha = alpha.min(0.8);
 
@@ -412,7 +420,6 @@ pub fn draw_sprites_wasm(
     width_spacing: i32,
     sprites_array: *mut f32,
     zbuffer_array: *mut f32,
-    zbuffer_length: usize,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
     light_range: f32,
@@ -436,24 +443,25 @@ pub fn draw_sprites_wasm(
         found_sprites_array,
     );
 
+    let mut stripe_parts: Vec<StripePart> = Vec::new();
+
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
-    let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, zbuffer_length) };
+    let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, width_resolution) };
     let sprite_data =
-        unsafe { std::slice::from_raw_parts(sprites_array, found_sprites_length * 4) };
+        unsafe { std::slice::from_raw_parts(sprites_array, found_sprites_length * 5) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..found_sprites_length * 4).step_by(4) {
+    for i in (0..found_sprites_length * 5).step_by(5) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],
             angle: sprite_data[i + 2] as i32,
-            r#type: sprite_data[i + 3] as i32,
+            height: sprite_data[i + 3] as i32,
+            r#type: sprite_data[i + 4] as i32,
         });
     }
-
-    let mut stripe_parts = Vec::new();
 
     sprites.sort_by(|a, b| {
         let da = (position.x - a.x).powi(2) + (position.y - a.y).powi(2);
@@ -463,10 +471,10 @@ pub fn draw_sprites_wasm(
 
     for sprite in sprites.iter() {
         // TODO: this is causing the first one to disappear??
-        let (texture_height, texture_width, texture_multiplier) = texture_array
+        let (texture_height, texture_width) = texture_array
             .get(&sprite.r#type)
             .copied()
-            .unwrap_or((100, 100, 100));
+            .unwrap_or((100, 100));
 
         let aspect_ratio = texture_width as f32 / texture_height as f32;
 
@@ -474,7 +482,7 @@ pub fn draw_sprites_wasm(
             position,
             sprite.x,
             sprite.y,
-            texture_multiplier as f32 / 100.0, // Placeholder texture height - the multiplier not actual height
+            sprite.height as f32 / 100.0,
             width,
             height,
         );
@@ -498,7 +506,8 @@ pub fn draw_sprites_wasm(
         let mut stripe_parts_temp = Vec::new();
         for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
             if projection.distance > 0.0 && stripe >= 0 && stripe < width {
-                let z_index = (stripe / width_spacing) as usize;
+                let z_index = ((stripe / width_spacing) as usize).clamp(0, width_resolution - 1);
+
                 if projection.distance < zbuffer[z_index] {
                     if stripe_parts_temp.len() % 2 == 0 {
                         stripe_parts_temp.push(stripe);

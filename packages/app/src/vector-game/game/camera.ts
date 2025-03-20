@@ -56,18 +56,25 @@ export class Camera {
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
+    this.width = this.width;
     this.height = canvas.height = window.innerHeight;
-    this.widthResolution = this.width; //620;
-    this.heightResolution = 420;
-    const factor = 2 / 5;
-    this.ceilingHeightResolution =
-      this.width * factor - ((this.width * factor) % 2); //650;
-    this.ceilingWidthResolution =
-      this.height * factor - ((this.height * factor) % 2); //550;
-    this.widthSpacing = this.width / this.widthResolution;
-    this.heightSpacing = this.height / this.heightResolution;
-    this.ceilingWidthSpacing = this.width / this.ceilingWidthResolution;
-    this.ceilingHeightSpacing = this.height / this.ceilingHeightResolution;
+    this.height = this.height;
+
+    // note that this should be whole numbers
+    this.widthSpacing = 3;
+    this.heightSpacing = 2;
+    this.ceilingWidthSpacing = 3;
+    this.ceilingHeightSpacing = 2;
+
+    this.widthResolution = Math.ceil(this.width / this.widthSpacing);
+    this.heightResolution = Math.ceil(this.height / this.heightSpacing);
+    this.ceilingWidthResolution = Math.ceil(
+      this.width / this.ceilingWidthSpacing
+    );
+    this.ceilingHeightResolution = Math.ceil(
+      this.height / this.ceilingHeightSpacing
+    );
+
     this.range = 40;
     this.lightRange = 15;
     this.scale = (this.width + this.height) / 1200;
@@ -83,17 +90,19 @@ export class Camera {
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
-    this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 4); // this will be the max sprites there will ever be in here
+    this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
     this.allSpritesRef.set(
       new Float32Array(
-        flatten(spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3]]))
+        flatten(
+          spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
+        )
       )
     );
     // TODO: don't think this is necessary now that we don't pass it around
-    this.visibleSpritesRef = new WasmFloat32Array(spriteMap.size * 4); // this will be the max sprites there will ever be in here
+    this.visibleSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
     this.spritesTextureRef = new WasmInt32Array(
-      Object.values(SpriteType).length * 4
+      Object.values(SpriteType).length * 3
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUint8Array(map.size * map.size);
@@ -190,6 +199,9 @@ export class Camera {
       this.ceilingTextureRef.ptr,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution,
+      this.ceilingWidthSpacing,
+      this.ceilingHeightSpacing,
+      this.height,
       this.lightRange,
       map.light,
       map.floorTexture.width,
@@ -197,8 +209,7 @@ export class Camera {
       map.ceilingTexture.width,
       map.ceilingTexture.height,
       map.wallGrid, // 1D array instead of 2D
-      map.size, // Width of original 2D array
-      this.height
+      map.size // Width of original 2D array
     );
 
     const tempCanvas1 = this.scaleCanvasImage(
@@ -256,9 +267,8 @@ export class Camera {
       this.widthSpacing,
       this.visibleSpritesRef.ptr,
       this.zBufferRef.ptr,
-      this.widthResolution,
       this.spritesTextureRef.ptr,
-      Object.values(SpriteType).length * 4,
+      Object.values(SpriteType).length * 3,
       this.lightRange,
       map.light,
       this.widthResolution,

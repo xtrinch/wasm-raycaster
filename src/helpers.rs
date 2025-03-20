@@ -102,16 +102,16 @@ pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
 use core::slice;
 use std::collections::HashMap;
 
-pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i32, i32, i32)> {
+pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i32, i32)> {
     let mut map = HashMap::new();
 
     // Convert raw pointer to a safe slice
     let data: &[i32] = unsafe { slice::from_raw_parts(ptr, len) };
 
     // Process chunks of 3 (type, height, width)
-    for chunk in data.chunks(4) {
-        if let [sprite_type, height, width, multiplier] = *chunk {
-            map.insert(sprite_type, (height, width, multiplier));
+    for chunk in data.chunks(3) {
+        if let [sprite_type, height, width] = *chunk {
+            map.insert(sprite_type, (height, width));
         }
     }
 
@@ -145,6 +145,7 @@ pub struct Sprite {
     pub x: f32,
     pub y: f32,
     pub angle: i32,
+    pub height: i32,
     pub r#type: i32,
 }
 
