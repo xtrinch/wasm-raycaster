@@ -428,7 +428,7 @@ pub fn draw_sprites_wasm(
 ) -> JsValue {
     let found_sprites_length = raycast_visible_coordinates(
         position_js.clone(),
-        width_resolution,
+        50, // this really needs only enough to hit each square once
         range,
         map_array,
         map_width,
