@@ -47,6 +47,7 @@ export class Camera {
   public columnsRef: WasmInt32Array;
   public floorTextureRef: WasmUint8Array;
   public ceilingTextureRef: WasmUint8Array;
+  public roadTextureRef: WasmUint8Array;
   public visibleSpritesRef: WasmFloat32Array;
   public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
@@ -61,8 +62,8 @@ export class Camera {
     this.height = this.height;
 
     // note that this should be whole numbers
-    this.widthSpacing = 3;
-    this.heightSpacing = 2;
+    this.widthSpacing = 1;
+    this.heightSpacing = 1;
     this.ceilingWidthSpacing = 3;
     this.ceilingHeightSpacing = 2;
 
@@ -82,8 +83,9 @@ export class Camera {
     this.skipCounter = this.initialSkipCounter;
     this.map = map;
     this.originalCanvas = canvas;
-    this.intializeTexture(this.map.floorTexture, "floorTextureRef");
-    this.intializeTexture(this.map.ceilingTexture, "ceilingTextureRef");
+    this.initializeTexture(this.map.floorTexture, "floorTextureRef");
+    this.initializeTexture(this.map.ceilingTexture, "ceilingTextureRef");
+    this.initializeTexture(this.map.roadTexture, "roadTextureRef");
 
     let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
 
@@ -111,7 +113,7 @@ export class Camera {
     makeAutoObservable(this);
   }
 
-  intializeTexture(texture: Bitmap, refKey: string) {
+  async initializeTexture(texture: Bitmap, refKey: string) {
     const img = texture.image;
     const canvas = document.createElement("canvas") as HTMLCanvasElement;
     this.context = canvas.getContext("2d");
@@ -189,7 +191,11 @@ export class Camera {
   }
 
   drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
-    if (!this.ceilingTextureRef || !this.floorTextureRef) {
+    if (
+      !this.ceilingTextureRef ||
+      !this.floorTextureRef ||
+      !this.roadTextureRef
+    ) {
       return;
     }
     draw_ceiling_floor_raycast(
@@ -197,6 +203,7 @@ export class Camera {
       this.ceilingFloorPixelsRef.ptr,
       this.floorTextureRef.ptr,
       this.ceilingTextureRef.ptr,
+      this.roadTextureRef.ptr,
       this.ceilingWidthResolution,
       this.ceilingHeightResolution,
       this.ceilingWidthSpacing,
@@ -208,6 +215,8 @@ export class Camera {
       map.floorTexture.height,
       map.ceilingTexture.width,
       map.ceilingTexture.height,
+      map.roadTexture.width,
+      map.roadTexture.height,
       map.wallGrid, // 1D array instead of 2D
       map.size // Width of original 2D array
     );

@@ -37,12 +37,12 @@ pub fn draw_walls_raycast(
         let delta_dist_y = ray_dir_y.abs().recip();
 
         let mut perp_wall_dist = 0.0;
-        let mut step_x: i8 = 0;
-        let mut step_y: i8 = 0;
+        let step_x: i8;
+        let step_y: i8;
         let mut side = 0;
 
-        let mut side_dist_x = 0.0;
-        let mut side_dist_y = 0.0;
+        let mut side_dist_x: f32;
+        let mut side_dist_y: f32;
 
         if ray_dir_x < 0.0 {
             step_x = -1;
@@ -88,8 +88,10 @@ pub fn draw_walls_raycast(
 
         if side == 0 {
             perp_wall_dist = side_dist_x - delta_dist_x;
+            // perp_wall_dist = perp_wall_dist + (delta_dist_x / 2.0);
         } else {
             perp_wall_dist = side_dist_y - delta_dist_y;
+            // perp_wall_dist = perp_wall_dist + (delta_dist_y / 2.0);
         }
 
         let mut wall_x: f32;
@@ -256,6 +258,7 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_floor_img: *mut u8,
     floor_texture: *mut u8,
     ceiling_texture: *mut u8,
+    road_texture: *mut u8,
     ceiling_width_resolution: usize,
     ceiling_height_resolution: usize,
     ceiling_width_spacing: u8,
@@ -267,6 +270,8 @@ pub fn draw_ceiling_floor_raycast(
     floor_texture_height: usize,
     ceiling_texture_width: usize,
     ceiling_texture_height: usize,
+    road_texture_width: usize,
+    road_texture_height: usize,
     map_data: &[u8],
     map_width: usize,
 ) -> () {
@@ -319,25 +324,37 @@ pub fn draw_ceiling_floor_raycast(
             let mut floor_x = position.x + row_distance * ray_dir_x0;
             let mut floor_y = position.y + row_distance * ray_dir_y0;
 
-            let (texture, texture_width, texture_height) = if is_floor {
-                (floor_texture, floor_texture_width, floor_texture_height)
-            } else {
-                (
-                    ceiling_texture,
-                    ceiling_texture_width,
-                    ceiling_texture_height,
-                )
-            };
-
             for x in 0..ceiling_width_resolution {
                 floor_x += floor_step_x;
                 floor_y += floor_step_y;
 
-                let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
-
-                if map_data.get(map_idx) != Some(&2) {
+                // don't draw anything at values < 0
+                if floor_x < 0.0 || floor_y < 0.0 {
                     continue;
                 }
+                let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
+
+                // no ceiling for roads
+                if !is_floor && map_data.get(map_idx) == Some(&3) {
+                    continue;
+                }
+
+                if map_data.get(map_idx) != Some(&2) && (map_data.get(map_idx) != Some(&3)) {
+                    continue;
+                }
+
+                let (texture, texture_width, texture_height) =
+                    if is_floor && map_data.get(map_idx) == Some(&2) {
+                        (floor_texture, floor_texture_width, floor_texture_height)
+                    } else if is_floor && map_data.get(map_idx) == Some(&3) {
+                        (road_texture, road_texture_width, road_texture_height)
+                    } else {
+                        (
+                            ceiling_texture,
+                            ceiling_texture_width,
+                            ceiling_texture_height,
+                        )
+                    };
 
                 let pixel_idx = (y * ceiling_width_resolution + x) * 4;
 
@@ -428,7 +445,7 @@ pub fn draw_sprites_wasm(
 ) -> JsValue {
     let found_sprites_length = raycast_visible_coordinates(
         position_js.clone(),
-        50, // this really needs only enough to hit each square once
+        100, // this really needs only enough to hit each square once
         range,
         map_array,
         map_width,
@@ -541,4 +558,14 @@ pub fn draw_sprites_wasm(
     }
 
     serde_wasm_bindgen::to_value(&stripe_parts).unwrap()
+}
+
+#[wasm_bindgen]
+pub fn draw_sprites_wasm1(array: *mut f32, array_length: usize) -> () {
+    // no need to return antyhing
+    // allow us to use the array
+    let array_data = unsafe { std::slice::from_raw_parts_mut(array, array_length) };
+    for value in array_data.iter_mut() {
+        *value += 5.0;
+    }
 }
