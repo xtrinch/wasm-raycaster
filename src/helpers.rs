@@ -174,3 +174,28 @@ pub struct StripePart {
     pub alpha: i32,
     pub angle: i32,
 }
+
+pub fn is_in_grid(map_x: i32, map_y: i32, map_width: i32, map_data: &Vec<u8>) -> (bool, u8) {
+    let map_index = (map_y) * (map_width) + (map_x);
+
+    if map_y >= 0 && map_x >= 0 && map_index < (map_width * map_width) as i32 && map_index >= 0 {
+        return (true, map_data[map_index as usize]);
+    }
+    (false, 0)
+}
+
+pub fn is_of_value_in_grid(
+    map_x: i32,
+    map_y: i32,
+    map_width: i32,
+    map_data: &Vec<u8>,
+    values: &[u8],
+) -> (bool, u8) {
+    let map_index = map_y * map_width + map_x;
+
+    if map_y >= 0 && map_x >= 0 && map_index >= 0 && map_index < (map_width * map_width) as i32 {
+        let value = map_data[map_index as usize];
+        return (values.contains(&value), value);
+    }
+    (false, 0)
+}

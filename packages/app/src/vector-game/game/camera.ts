@@ -48,6 +48,7 @@ export class Camera {
   public floorTextureRef: WasmUint8Array;
   public ceilingTextureRef: WasmUint8Array;
   public roadTextureRef: WasmUint8Array;
+  public doorTextureRef: WasmUint8Array;
   public visibleSpritesRef: WasmFloat32Array;
   public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
@@ -86,6 +87,7 @@ export class Camera {
     this.initializeTexture(this.map.floorTexture, "floorTextureRef");
     this.initializeTexture(this.map.ceilingTexture, "ceilingTextureRef");
     this.initializeTexture(this.map.roadTexture, "roadTextureRef");
+    this.initializeTexture(this.map.doorTexture, "doorTextureRef");
 
     let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
 

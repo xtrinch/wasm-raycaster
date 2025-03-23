@@ -3,6 +3,7 @@ import pillarTexture from "../../assets/barrel1.png";
 import bush1Texture from "../../assets/bushes/Bushes1/Bush1_1.png";
 import ceilingTexture from "../../assets/ceiling-scaled2.jpeg";
 import panorama from "../../assets/deathvalley_panorama.jpg";
+import doorTexture from "../../assets/door.png";
 import floorTexture3 from "../../assets/floor5-scaled.jpeg";
 import roadTexture from "../../assets/gravel.jpeg";
 import treeTextureColumnar from "../../assets/trees/columnnar.png";
@@ -48,6 +49,7 @@ export class GridMap {
   public treeTextureColumnar: Bitmap;
   public pillarTexture: Bitmap;
   public bush1Texture: Bitmap;
+  public doorTexture: Bitmap;
   public ladyTextures: Bitmap[];
   public light: number;
 
@@ -64,6 +66,7 @@ export class GridMap {
     this.treeTextureColumnar = new Bitmap(treeTextureColumnar, 229, 645);
     this.pillarTexture = new Bitmap(pillarTexture, 355, 438);
     this.bush1Texture = new Bitmap(bush1Texture, 102, 89);
+    this.doorTexture = new Bitmap(doorTexture, 600, 600);
     this.ladyTextures = [
       new Bitmap(lady1Texture, 320, 632),
       new Bitmap(lady2Texture, 320, 632),
@@ -80,19 +83,22 @@ export class GridMap {
      - 1: thick wall
      - 2: indoor floor / ceiling
      - 3: gravel road
+     - 4: west wall
+     - 6: north wall
+     - 7: south wall
     */
     // prettier-ignore
     this.wallGrid = new Uint8Array([
       /*       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31 */
       /* 0  */ 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0,
-      /* 1  */ 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 3, 1, 1, 1, 1, 1, 2, 1, 1, 3, 0, 0, 1, 1, 1, 1, 1, 1,
+      /* 1  */ 3, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 3, 0, 0, 3, 1, 1, 1, 1, 1, 2, 1, 1, 3, 0, 0, 1, 1, 1, 1, 1, 1,
       /* 2  */ 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 3, 1, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 1, 0, 0, 0, 0, 1,
       /* 3  */ 3, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 3, 0, 0, 3, 1, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 1, 0, 0, 1, 0, 1,
-      /* 4  */ 3, 1, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 1, 1, 1, 2, 2, 2, 2, 1, 3, 0, 0, 1, 1, 1, 1, 0, 1,
-      /* 5  */ 3, 1, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 3, 3, 1, 2, 2, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0,
+      /* 4  */ 3, 5, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 0, 0, 3, 1, 1, 1, 2, 2, 2, 2, 1, 3, 0, 0, 1, 1, 1, 1, 0, 1,
+      /* 5  */ 3, 4, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 3, 3, 1, 2, 2, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0,
       /* 6  */ 3, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 2, 2, 1, 3, 3, 3, 0, 0, 1, 1, 1, 1, 0, 1,
       /* 7  */ 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
-      /* 8  */ 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 1, 1, 1, 3, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
+      /* 8  */ 3, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 1, 1, 1, 3, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
       /* 9  */ 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       /* 10 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
       /* 11 */ 0, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0,

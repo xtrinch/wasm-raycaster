@@ -1,6 +1,6 @@
 use helpers::{
-    copy_to_raw_pointer, parse_sprite_texture_array, Coords, Position, Sprite, StripePart,
-    TranslationResult,
+    copy_to_raw_pointer, is_in_grid, is_of_value_in_grid, parse_sprite_texture_array, Coords,
+    Position, Sprite, StripePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -25,77 +25,161 @@ pub fn draw_walls_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
     for column in 0..width_resolution {
+        // x-coordinate in camera space
         let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
 
         let ray_dir_x = position.dir_x + position.plane_x * camera_x;
         let ray_dir_y = position.dir_y + position.plane_y * camera_x;
 
+        // which box of the map we're in
         let mut map_x = position.x.floor() as i32;
         let mut map_y = position.y.floor() as i32;
 
+        // which box of the map we're in
+        let mut prev_map_x = position.x.floor() as i32;
+        let mut prev_map_y = position.y.floor() as i32;
+
+        // length of ray from one x or y-side to next x or y-side
         let delta_dist_x = ray_dir_x.abs().recip();
         let delta_dist_y = ray_dir_y.abs().recip();
 
         let mut perp_wall_dist = 0.0;
+
+        // what direction to step in x or y-direction (either +1 or -1)
         let step_x: i8;
         let step_y: i8;
         let mut side = 0;
 
-        let mut side_dist_x: f32;
-        let mut side_dist_y: f32;
+        let mut side_dist_x: f32 = 0.0;
+        let mut side_dist_y: f32 = 0.0;
 
+        // initial side dists;
+        // starting from the player, we find the nearest horizontal (stepX) and vertical (stepY) gridlines
         if ray_dir_x < 0.0 {
             step_x = -1;
-            side_dist_x = (position.x - map_x as f32) * delta_dist_x;
+            side_dist_x += (position.x - map_x as f32) * delta_dist_x;
         } else {
             step_x = 1;
-            side_dist_x = (map_x as f32 + 1.0 - position.x) * delta_dist_x;
+            side_dist_x += (map_x as f32 + 1.0 - position.x) * delta_dist_x;
         }
 
         if ray_dir_y < 0.0 {
             step_y = -1;
-            side_dist_y = (position.y - map_y as f32) * delta_dist_y;
+            side_dist_y += (position.y - map_y as f32) * delta_dist_y;
         } else {
             step_y = 1;
-            side_dist_y = (map_y as f32 + 1.0 - position.y) * delta_dist_y;
+            side_dist_y += (map_y as f32 + 1.0 - position.y) * delta_dist_y;
         }
 
         let mut hit: u8 = 0;
         let mut remaining_range = range;
+
         while hit == 0 && remaining_range >= 0 {
+            // jump to next map square, either in x-direction, or in y-direction
+            let mut jump_x: bool = false;
+            let mut jump_y: bool = false;
             if side_dist_x < side_dist_y {
                 side_dist_x += delta_dist_x;
                 map_x += step_x as i32;
                 side = 0;
+                jump_x = true;
             } else {
                 side_dist_y += delta_dist_y;
                 map_y += step_y as i32;
                 side = 1;
+                jump_y = true
             }
 
-            let map_index = (map_y * map_width + map_x);
-            if map_y >= 0
-                && map_x >= 0
-                && map_index < map_data.len() as i32
-                && map_index >= 0
-                && map_data[map_index as usize] == 1
+            if jump_x {
+                let new_map_x = map_x - step_x as i32;
+                if let (true, value) =
+                    is_of_value_in_grid(new_map_x, map_y, map_width, &map_data, &[4, 5])
+                {
+                    if ray_dir_x < 0.0 {
+                        // west wall hit
+                        if value == 4 {
+                            hit = 1;
+                        }
+                    } else if ray_dir_x > 0.0 {
+                        // east wall hit
+                        if value == 5 {
+                            hit = 1;
+                        }
+                    }
+                }
+            }
+
+            if (jump_y) {
+                let new_map_y = map_y - step_y as i32;
+                if let (true, value) =
+                    is_of_value_in_grid(map_x, new_map_y, map_width, &map_data, &[6, 7])
+                {
+                    if ray_dir_y < 0.0 {
+                        // north wall hit
+                        if value == 6 {
+                            hit = 1;
+                        }
+                    } else if ray_dir_y > 0.0 {
+                        // south wall hit
+                        if value == 7 {
+                            hit = 1;
+                        }
+                    }
+                }
+            }
+
+            if let (true, value) =
+                is_of_value_in_grid(map_x, map_y, map_width, &map_data, &[1, 4, 5, 6, 7])
             {
-                hit = 1;
+                match value {
+                    1 => {
+                        hit = 1;
+                    }
+                    4 => {
+                        if jump_x && ray_dir_x > 0.0 {
+                            // west wall hit
+                            hit = 1;
+                        }
+                    }
+                    5 => {
+                        if jump_x && ray_dir_x < 0.0 {
+                            // east wall hit
+                            hit = 1;
+                        }
+                    }
+                    6 => {
+                        if jump_y && ray_dir_y > 0.0 {
+                            // north wall hit
+                            hit = 1;
+                        }
+                    }
+                    7 => {
+                        if jump_y && ray_dir_y < 0.0 {
+                            // south wall hit
+                            hit = 1;
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             remaining_range -= 1;
         }
 
+        // Calculate distance of perpendicular ray (Euclidean distance would give fisheye effect!)
         if side == 0 {
             perp_wall_dist = side_dist_x - delta_dist_x;
-            // perp_wall_dist = perp_wall_dist + (delta_dist_x / 2.0);
+            // perp_wall_dist = perp_wall_dist + delta_dist_x / 2.0;
+            // continue;
+            // hit = 0;
         } else {
             perp_wall_dist = side_dist_y - delta_dist_y;
             // perp_wall_dist = perp_wall_dist + (delta_dist_y / 2.0);
         }
 
-        let mut wall_x: f32;
+        let mut wall_x: f32; // where exactly the wall was hit; note that even if it's called wallX, it's actually an y-coordinate of the wall if side==1, but it's always the x-coordinate of the texture.
         if side == 0 {
+            // hit = 0;
             wall_x = position.y + perp_wall_dist * ray_dir_y;
         } else {
             wall_x = position.x + perp_wall_dist * ray_dir_x;
