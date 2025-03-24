@@ -93,7 +93,7 @@ export class Camera {
 
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
-    this.columnsRef = new WasmInt32Array(this.widthResolution * 7 * 8);
+    this.columnsRef = new WasmInt32Array(this.widthResolution * 8 * 8);
     this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
     this.allSpritesRef.set(
       new Float32Array(
@@ -247,17 +247,25 @@ export class Camera {
       map.wallTexture.width
     );
     let width = Math.ceil(this.widthSpacing);
-    for (let idx = 0; idx < this.columnsRef.buffer.length / 7; idx += 7) {
-      let [tex_x, left, draw_start_y, wall_height, global_alpha, hit] =
-        this.columnsRef.buffer.slice(idx, idx + 6);
+    for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
+      let [
+        tex_x,
+        left,
+        draw_start_y,
+        wall_height,
+        global_alpha,
+        hit,
+        hit_type,
+      ] = this.columnsRef.buffer.slice(idx, idx + 7);
 
       if (hit) {
+        const texture = hit_type === 1 ? map.wallTexture : map.doorTexture;
         this.ctx.drawImage(
-          map.wallTexture.image,
+          texture.image,
           tex_x, // sx
           0, // sy
           1, // sw
-          map.wallTexture.height, // sh
+          texture.height, // sh
           left, // dx
           draw_start_y, // dy - yes we go into minus here, it'll be ignored anyway
           width, // dw

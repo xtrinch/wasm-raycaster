@@ -72,6 +72,7 @@ pub fn draw_walls_raycast(
         }
 
         let mut hit: u8 = 0;
+        let mut hit_type: i8 = 1;
         let mut remaining_range = range;
 
         while hit == 0 && remaining_range >= 0 {
@@ -92,18 +93,24 @@ pub fn draw_walls_raycast(
 
             if jump_x {
                 let new_map_x = map_x - step_x as i32;
-                if let (true, value) =
-                    is_of_value_in_grid(new_map_x, map_y, map_width, &map_data, &[4, 5])
-                {
+                if let (true, value) = is_of_value_in_grid(
+                    new_map_x,
+                    map_y,
+                    map_width,
+                    &map_data,
+                    &[4, 5, 8, 9, 12, 13],
+                ) {
                     if ray_dir_x < 0.0 {
                         // west wall hit
-                        if value == 4 {
+                        if value == 4 || value == 8 || value == 12 {
                             hit = 1;
+                            hit_type = 4;
                         }
                     } else if ray_dir_x > 0.0 {
                         // east wall hit
-                        if value == 5 {
+                        if value == 5 || value == 9 || value == 13 {
                             hit = 1;
+                            hit_type = 5;
                         }
                     }
                 }
@@ -111,49 +118,59 @@ pub fn draw_walls_raycast(
 
             if (jump_y) {
                 let new_map_y = map_y - step_y as i32;
-                if let (true, value) =
-                    is_of_value_in_grid(map_x, new_map_y, map_width, &map_data, &[6, 7])
-                {
+                if let (true, value) = is_of_value_in_grid(
+                    map_x,
+                    new_map_y,
+                    map_width,
+                    &map_data,
+                    &[6, 7, 10, 11, 14, 15],
+                ) {
                     if ray_dir_y < 0.0 {
                         // north wall hit
-                        if value == 6 {
+                        if value == 6 || value == 10 || value == 14 {
                             hit = 1;
+                            hit_type = 6;
                         }
                     } else if ray_dir_y > 0.0 {
                         // south wall hit
-                        if value == 7 {
+                        if value == 7 || value == 11 || value == 15 {
                             hit = 1;
+                            hit_type = 7;
                         }
                     }
                 }
             }
 
-            if let (true, value) =
-                is_of_value_in_grid(map_x, map_y, map_width, &map_data, &[1, 4, 5, 6, 7])
-            {
+            if let (true, value) = is_of_value_in_grid(
+                map_x,
+                map_y,
+                map_width,
+                &map_data,
+                &[1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            ) {
                 match value {
                     1 => {
                         hit = 1;
                     }
-                    4 => {
+                    4 | 8 | 12 => {
                         if jump_x && ray_dir_x > 0.0 {
                             // west wall hit
                             hit = 1;
                         }
                     }
-                    5 => {
+                    5 | 9 | 13 => {
                         if jump_x && ray_dir_x < 0.0 {
                             // east wall hit
                             hit = 1;
                         }
                     }
-                    6 => {
+                    6 | 10 | 14 => {
                         if jump_y && ray_dir_y > 0.0 {
                             // north wall hit
                             hit = 1;
                         }
                     }
-                    7 => {
+                    7 | 11 | 15 => {
                         if jump_y && ray_dir_y < 0.0 {
                             // south wall hit
                             hit = 1;
@@ -161,6 +178,7 @@ pub fn draw_walls_raycast(
                     }
                     _ => {}
                 }
+                hit_type = value as i8;
             }
 
             remaining_range -= 1;
@@ -222,7 +240,7 @@ pub fn draw_walls_raycast(
 
         let left = ((column as f32 * width_spacing).ceil() as i32) as i32;
         let wall_height = (draw_end_y - draw_start_y) as i32;
-        let array_idx = 7 * column as usize;
+        let array_idx = 8 * column as usize;
         copy_to_raw_pointer(
             columns_array,
             array_idx,
@@ -233,6 +251,7 @@ pub fn draw_walls_raycast(
                 wall_height,
                 (global_alpha * 100.0) as i32,
                 hit as i32,
+                hit_type as i32,
             ],
         );
         copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
@@ -356,7 +375,7 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_texture_height: usize,
     road_texture_width: usize,
     road_texture_height: usize,
-    map_data: &[u8],
+    map_data: Vec<u8>,
     map_width: usize,
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
@@ -418,19 +437,27 @@ pub fn draw_ceiling_floor_raycast(
                 }
                 let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
 
-                // no ceiling for roads
-                if !is_floor && map_data.get(map_idx) == Some(&3) {
+                let (is_of_value, value) = is_of_value_in_grid(
+                    floor_x as i32,
+                    floor_y as i32,
+                    map_width as i32,
+                    &map_data,
+                    &[2, 3, 8, 9, 10, 11, 12, 13, 14, 15],
+                );
+
+                if !is_of_value {
                     continue;
                 }
 
-                if map_data.get(map_idx) != Some(&2) && (map_data.get(map_idx) != Some(&3)) {
+                // no ceiling for roads
+                if !is_floor && [3, 12, 13, 14, 15].contains(&value) {
                     continue;
                 }
 
                 let (texture, texture_width, texture_height) =
-                    if is_floor && map_data.get(map_idx) == Some(&2) {
+                    if is_floor && [2, 8, 9, 10, 11].contains(&value) {
                         (floor_texture, floor_texture_width, floor_texture_height)
-                    } else if is_floor && map_data.get(map_idx) == Some(&3) {
+                    } else if is_floor && [3, 12, 13, 14, 15].contains(&value) {
                         (road_texture, road_texture_width, road_texture_height)
                     } else {
                         (

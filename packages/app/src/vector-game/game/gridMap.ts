@@ -3,7 +3,7 @@ import pillarTexture from "../../assets/barrel1.png";
 import bush1Texture from "../../assets/bushes/Bushes1/Bush1_1.png";
 import ceilingTexture from "../../assets/ceiling-scaled2.jpeg";
 import panorama from "../../assets/deathvalley_panorama.jpg";
-import doorTexture from "../../assets/door.png";
+import doorTexture from "../../assets/door3.png";
 import floorTexture3 from "../../assets/floor5-scaled.jpeg";
 import roadTexture from "../../assets/gravel.jpeg";
 import treeTextureColumnar from "../../assets/trees/columnnar.png";
@@ -58,6 +58,7 @@ export class GridMap {
     this.wallGrid = new Uint8Array(size * size);
     this.skybox = new Bitmap(panorama, 2000, 750);
     this.wallTexture = new Bitmap(wallTexture, 1024, 1024);
+    this.doorTexture = new Bitmap(doorTexture, 1024, 1024); // these two should be equal width / height for simplicity sake
     this.roadTexture = new Bitmap(roadTexture, 874, 874);
     this.treeTexture = new Bitmap(treeTexture, 452, 679);
     this.treeTextureVase = new Bitmap(treeTextureVase, 500, 522);
@@ -66,7 +67,6 @@ export class GridMap {
     this.treeTextureColumnar = new Bitmap(treeTextureColumnar, 229, 645);
     this.pillarTexture = new Bitmap(pillarTexture, 355, 438);
     this.bush1Texture = new Bitmap(bush1Texture, 102, 89);
-    this.doorTexture = new Bitmap(doorTexture, 600, 600);
     this.ladyTextures = [
       new Bitmap(lady1Texture, 320, 632),
       new Bitmap(lady2Texture, 320, 632),
@@ -83,22 +83,32 @@ export class GridMap {
      - 1: thick wall
      - 2: indoor floor / ceiling
      - 3: gravel road
-     - 4: west wall
-     - 6: north wall
-     - 7: south wall
+     - 4: west door
+     - 5: east door
+     - 6: north door
+     - 7: south door
+     - 8: west door with floor
+     - 9: east door with floor
+     - 10: north door with floor
+     - 11: south door with floor
+     - 12: west door with gravel
+     - 13: east door with gravel
+     - 14: north door with gravel
+     - 15: south door with gravel
+
     */
     // prettier-ignore
     this.wallGrid = new Uint8Array([
       /*       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31 */
       /* 0  */ 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0,
-      /* 1  */ 3, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 3, 0, 0, 3, 1, 1, 1, 1, 1, 2, 1, 1, 3, 0, 0, 1, 1, 1, 1, 1, 1,
-      /* 2  */ 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 3, 1, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 1, 0, 0, 0, 0, 1,
+      /* 1  */ 3, 1, 1, 1, 1, 10,1,15, 1, 1, 1, 3, 0, 0, 3, 1, 1, 1, 1, 1, 2, 1, 1, 3, 0, 0, 1, 1, 1, 1, 1, 1,
+      /* 2  */ 3, 8, 2, 2, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 3, 1, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 1, 0, 0, 0, 0, 1,
       /* 3  */ 3, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 3, 0, 0, 3, 1, 2, 2, 2, 2, 2, 2, 1, 3, 0, 0, 1, 0, 0, 1, 0, 1,
-      /* 4  */ 3, 5, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 0, 0, 3, 1, 1, 1, 2, 2, 2, 2, 1, 3, 0, 0, 1, 1, 1, 1, 0, 1,
-      /* 5  */ 3, 4, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 3, 3, 1, 2, 2, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0,
+      /* 4  */ 3, 1, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 1, 1, 1, 2, 2, 2, 2, 1, 3, 0, 0, 1, 1, 1, 1, 0, 1,
+      /* 5  */ 3, 1, 2, 2, 2, 2, 2, 1, 3, 3, 3, 3, 0, 0, 3, 3, 3, 1, 2, 2, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0,
       /* 6  */ 3, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 2, 2, 1, 3, 3, 3, 0, 0, 1, 1, 1, 1, 0, 1,
-      /* 7  */ 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
-      /* 8  */ 3, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 1, 1, 1, 3, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
+      /* 7  */ 3, 13,2, 2, 2, 2, 2, 2, 2, 2, 9, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
+      /* 8  */ 3, 1, 1, 14,1, 11,1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 3, 1, 1, 1, 1, 3, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
       /* 9  */ 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       /* 10 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0,
       /* 11 */ 0, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0,
