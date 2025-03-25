@@ -150,19 +150,19 @@ pub fn draw_walls_raycast(
                     16 => {
                         // from east or west side
                         if jump_x {
-                            let offset = 0.2;
+                            let offset = 0.5;
                             let mut distance_offset = 0.0;
                             let mut map_x_adder = 0.0;
 
                             if ray_dir_x < 0.0 {
                                 // from east side
 
-                                distance_offset = 0.2;
+                                distance_offset = offset;
                                 map_x_adder = 1.0; // + 1 because it's an east door
                             } else if ray_dir_x > 0.0 {
                                 // from west side
 
-                                distance_offset = 0.8;
+                                distance_offset = 1.0 - offset;
                                 map_x_adder = 0.0;
                             }
 
