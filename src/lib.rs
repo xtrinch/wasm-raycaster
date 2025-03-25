@@ -35,10 +35,6 @@ pub fn draw_walls_raycast(
         let mut map_x = position.x.floor() as i32;
         let mut map_y = position.y.floor() as i32;
 
-        // which box of the map we're in
-        let mut prev_map_x = position.x.floor() as i32;
-        let mut prev_map_y = position.y.floor() as i32;
-
         // length of ray from one x or y-side to next x or y-side
         let delta_dist_x = ray_dir_x.abs().recip();
         let delta_dist_y = ray_dir_y.abs().recip();
@@ -100,17 +96,16 @@ pub fn draw_walls_raycast(
                     &map_data,
                     &[4, 5, 8, 9, 12, 13],
                 ) {
+                    hit_type = value as i8;
                     if ray_dir_x < 0.0 {
                         // west wall hit
                         if value == 4 || value == 8 || value == 12 {
                             hit = 1;
-                            hit_type = 4;
                         }
                     } else if ray_dir_x > 0.0 {
                         // east wall hit
                         if value == 5 || value == 9 || value == 13 {
                             hit = 1;
-                            hit_type = 5;
                         }
                     }
                 }
@@ -125,17 +120,16 @@ pub fn draw_walls_raycast(
                     &map_data,
                     &[6, 7, 10, 11, 14, 15],
                 ) {
+                    hit_type = value as i8;
                     if ray_dir_y < 0.0 {
                         // north wall hit
                         if value == 6 || value == 10 || value == 14 {
                             hit = 1;
-                            hit_type = 6;
                         }
                     } else if ray_dir_y > 0.0 {
                         // south wall hit
                         if value == 7 || value == 11 || value == 15 {
                             hit = 1;
-                            hit_type = 7;
                         }
                     }
                 }
@@ -187,17 +181,12 @@ pub fn draw_walls_raycast(
         // Calculate distance of perpendicular ray (Euclidean distance would give fisheye effect!)
         if side == 0 {
             perp_wall_dist = side_dist_x - delta_dist_x;
-            // perp_wall_dist = perp_wall_dist + delta_dist_x / 2.0;
-            // continue;
-            // hit = 0;
         } else {
             perp_wall_dist = side_dist_y - delta_dist_y;
-            // perp_wall_dist = perp_wall_dist + (delta_dist_y / 2.0);
         }
 
         let mut wall_x: f32; // where exactly the wall was hit; note that even if it's called wallX, it's actually an y-coordinate of the wall if side==1, but it's always the x-coordinate of the texture.
         if side == 0 {
-            // hit = 0;
             wall_x = position.y + perp_wall_dist * ray_dir_y;
         } else {
             wall_x = position.x + perp_wall_dist * ray_dir_x;
@@ -435,7 +424,6 @@ pub fn draw_ceiling_floor_raycast(
                 if floor_x < 0.0 || floor_y < 0.0 {
                     continue;
                 }
-                let map_idx = (floor_x as usize) + (floor_y as usize) * map_width;
 
                 let (is_of_value, value) = is_of_value_in_grid(
                     floor_x as i32,
