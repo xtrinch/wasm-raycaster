@@ -5,7 +5,11 @@ use helpers::{
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
 mod helpers;
+mod line_intersection;
+use geo::Line;
+use line_intersection::LineInterval;
 use std::collections::HashMap;
+use web_sys::console;
 
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
@@ -140,7 +144,7 @@ pub fn draw_walls_raycast(
                 map_y,
                 map_width,
                 &map_data,
-                &[1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                &[1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             ) {
                 match value {
                     1 => {
@@ -152,10 +156,40 @@ pub fn draw_walls_raycast(
                             hit = 1;
                         }
                     }
-                    5 | 9 | 13 => {
+                    5 | 9 | 13 | 16 => {
                         if jump_x && ray_dir_x < 0.0 {
-                            // east wall hit
-                            hit = 1;
+                            if value == 16 {
+                                let perp_wall_disty = side_dist_x - delta_dist_x;
+                                let mut wall_y = position.y + perp_wall_disty * ray_dir_y;
+
+                                // find the intersection of a line segment and an infinite line
+                                let new_map_x = map_x as f32 + 0.5;
+                                let segment = LineInterval::line_segment(Line {
+                                    start: (new_map_x as f32, map_y as f32).into(),
+                                    end: (new_map_x as f32, map_y as f32 + 1.0 as f32).into(),
+                                });
+
+                                let line = LineInterval::ray(Line {
+                                    start: (position.x, position.y).into(),
+                                    end: (
+                                        map_x as f32 + 1.0, // + 1 because it's an east door
+                                        // map_x as f32 + wall_x as f32 * step_x as f32,
+                                        wall_y as f32,
+                                    )
+                                        .into(),
+                                });
+
+                                let js: JsValue = vec![map_x as f32, wall_y as f32].into();
+                                // console::log_2(&"Znj?".into(), &js);
+
+                                let intersection = segment.relate(&line).unique_intersection();
+                                if let Some(_) = intersection {
+                                    hit = 1;
+                                    perp_wall_dist += delta_dist_x / 2.0;
+                                }
+                            } else {
+                                hit = 1;
+                            }
                         }
                     }
                     6 | 10 | 14 => {
@@ -180,12 +214,12 @@ pub fn draw_walls_raycast(
 
         // Calculate distance of perpendicular ray (Euclidean distance would give fisheye effect!)
         if side == 0 {
-            perp_wall_dist = side_dist_x - delta_dist_x;
+            perp_wall_dist += side_dist_x - delta_dist_x;
         } else {
-            perp_wall_dist = side_dist_y - delta_dist_y;
+            perp_wall_dist += side_dist_y - delta_dist_y;
         }
 
-        let mut wall_x: f32; // where exactly the wall was hit; note that even if it's called wallX, it's actually an y-coordinate of the wall if side==1, but it's always the x-coordinate of the texture.
+        let mut wall_x: f32; // where exactly the wall was hit; note that even if it's called wallX, it's actually an y-coordinate of the wall if side==0, but it's always the x-coordinate of the texture.
         if side == 0 {
             wall_x = position.y + perp_wall_dist * ray_dir_y;
         } else {
