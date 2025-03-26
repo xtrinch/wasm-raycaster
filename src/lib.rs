@@ -212,7 +212,7 @@ pub fn draw_walls_raycast(
                             } else if ray_dir_x > 0.0 {
                                 // from west side
 
-                                distance_offset = 0.8;
+                                distance_offset = 1.0 - offset;
                                 map_x_adder = 0.0;
                             }
 
