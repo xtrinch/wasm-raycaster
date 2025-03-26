@@ -75,13 +75,13 @@ pub fn draw_walls_raycast(
         let mut adder_y = 0;
 
         if side_dist_x < side_dist_y {
-            map_x -= step_x as i32;
-            side_dist_x -= delta_dist_x;
-            adder_x -= step_x;
+            // map_x -= step_x as i32;
+            // side_dist_x -= delta_dist_x;
+            // adder_x -= step_x;
         } else {
-            map_y -= step_y as i32;
-            side_dist_y -= delta_dist_y;
-            adder_y -= step_y;
+            // map_y -= step_y as i32;
+            // side_dist_y -= delta_dist_y;
+            // adder_y -= step_y;
         }
 
         let mut hit: u8 = 0;
@@ -97,13 +97,17 @@ pub fn draw_walls_raycast(
             let mut jump_x: bool = false;
             let mut jump_y: bool = false;
             if side_dist_x < side_dist_y {
-                side_dist_x += delta_dist_x;
-                map_x += step_x as i32;
+                if range != remaining_range {
+                    side_dist_x += delta_dist_x;
+                    map_x += step_x as i32;
+                }
                 side = 0;
                 jump_x = true;
             } else {
-                side_dist_y += delta_dist_y;
-                map_y += step_y as i32;
+                if range != remaining_range {
+                    side_dist_y += delta_dist_y;
+                    map_y += step_y as i32;
+                }
                 side = 1;
                 jump_y = true
             }
@@ -249,7 +253,8 @@ pub fn draw_walls_raycast(
                             let line = LineInterval::ray(Line {
                                 start: (position.x + adder_x as f32, position.y + adder_y as f32)
                                     .into(),
-                                end: (map_x as f32 + map_x_adder, wall_y as f32).into(),
+                                end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32)
+                                    .into(),
                             });
 
                             // let js: JsValue = vec![new_map_x as f32, map_y as f32].into();
