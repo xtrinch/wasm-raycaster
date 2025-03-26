@@ -98,18 +98,68 @@ pub fn draw_walls_raycast(
                     map_y,
                     map_width,
                     &map_data,
-                    &[4, 5, 8, 9, 12, 13],
+                    &[4, 5, 8, 9, 12, 13, 16],
                 ) {
-                    hit_type = value as i8;
-                    if ray_dir_x < 0.0 {
-                        // west wall hit
-                        if value == 4 || value == 8 || value == 12 {
-                            hit = 1;
+                    if value == 16 {
+                        // from east or west side
+                        if jump_x {
+                            let offset = 0.2;
+                            let mut distance_offset = 0.0;
+                            let mut map_x_adder = 0.0;
+
+                            if ray_dir_x < 0.0 {
+                                // from east side
+
+                                distance_offset = 0.2;
+                                map_x_adder = 0.0; // + 1 because it's an east door
+                            } else if ray_dir_x > 0.0 {
+                                // from west side
+
+                                distance_offset = 0.8;
+                                map_x_adder = 1.0;
+                            }
+
+                            let perp_wall_disty = side_dist_x - delta_dist_x;
+                            let wall_y = position.y + perp_wall_disty * ray_dir_y;
+
+                            // find the intersection of a line segment and an infinite line
+                            let new_offset_map_x = new_map_x as f32 + offset;
+
+                            // the segment of line at the offset of the wall
+                            let segment = LineInterval::line_segment(Line {
+                                start: (new_offset_map_x as f32, map_y as f32).into(),
+                                end: (new_offset_map_x as f32, map_y as f32 + 1.0 as f32).into(),
+                            });
+
+                            // ray between player position and point on the EDGE of the wall
+                            let line = LineInterval::ray(Line {
+                                start: (position.x, position.y).into(),
+                                end: (new_map_x as f32 + map_x_adder, wall_y as f32).into(),
+                            });
+
+                            let js: JsValue =
+                                vec![new_offset_map_x as f32, new_map_x as f32].into();
+                            // console::log_2(&"Znj?".into(), &js);
+
+                            let intersection = segment.relate(&line).unique_intersection();
+                            if let Some(_) = intersection {
+                                hit = 1;
+                                // move it back for the amount it should move back
+                                perp_wall_dist -= delta_dist_x * (distance_offset);
+                            }
                         }
-                    } else if ray_dir_x > 0.0 {
-                        // east wall hit
-                        if value == 5 || value == 9 || value == 13 {
-                            hit = 1;
+                    } else {
+                        hit_type = value as i8;
+                        if ray_dir_x < 0.0 {
+                            // west wall hit
+                            if value == 4 || value == 8 || value == 12 {
+                                hit = 1;
+                            }
+                        } else if ray_dir_x > 0.0 {
+                            // east wall hit
+                            if value == 5 || value == 9 || value == 13 {
+                                hit = 1;
+                            }
                         }
                     }
                 }
@@ -150,19 +200,19 @@ pub fn draw_walls_raycast(
                     16 => {
                         // from east or west side
                         if jump_x {
-                            let offset = 0.5;
+                            let offset = 0.2;
                             let mut distance_offset = 0.0;
                             let mut map_x_adder = 0.0;
 
                             if ray_dir_x < 0.0 {
                                 // from east side
 
-                                distance_offset = offset;
+                                distance_offset = 0.2;
                                 map_x_adder = 1.0; // + 1 because it's an east door
                             } else if ray_dir_x > 0.0 {
                                 // from west side
 
-                                distance_offset = 1.0 - offset;
+                                distance_offset = 0.8;
                                 map_x_adder = 0.0;
                             }
 
