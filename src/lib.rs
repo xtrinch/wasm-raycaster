@@ -8,7 +8,7 @@ mod helpers;
 mod line_intersection;
 use geo::Line;
 use line_intersection::LineInterval;
-use std::collections::HashMap;
+use std::{collections::HashMap, ptr::null};
 use web_sys::console;
 
 // let js: JsValue = vec![position.x as f32, position.y as f32].into();
@@ -89,19 +89,24 @@ pub fn draw_walls_raycast(
                 &map_data,
                 &[1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
             ) {
+                hit_type = value as i8;
+
                 match value {
                     16 => {
                         // from east or west side
                         // offset is defined from the east
-                        let offset = 0.2;
+                        let mut offset = 0.2;
                         let mut distance_offset = 0.0;
+                        let offset1 = 0.8;
+                        let offset2 = 0.9;
 
                         if ray_dir_x <= 0.0 {
+                            offset = offset2;
                             // from east side
                             distance_offset = offset;
                         } else if ray_dir_x > 0.0 {
+                            offset = offset1;
                             distance_offset = 1.0 - offset;
-                            // distance_offset = offset;
                         }
 
                         // find the intersection of a line segment and an infinite line
@@ -111,6 +116,19 @@ pub fn draw_walls_raycast(
                         let segment = LineInterval::line_segment(Line {
                             start: (new_map_x as f32, map_y as f32).into(),
                             end: (new_map_x as f32, map_y as f32 + 1.0 as f32).into(),
+                        });
+
+                        let map_y_adder;
+                        // the segment of line between the offsets of the wall
+                        if ray_dir_y > 0.0 {
+                            map_y_adder = 0.0;
+                        } else {
+                            map_y_adder = 1.0;
+                        }
+
+                        let segment_between = LineInterval::line_segment(Line {
+                            start: (map_x as f32 + offset1, map_y as f32 + map_y_adder).into(),
+                            end: (map_x as f32 + offset2, map_y as f32 + map_y_adder).into(),
                         });
 
                         // ray between player position and point on the EDGE of the wall
@@ -126,6 +144,14 @@ pub fn draw_walls_raycast(
                             // move it back for the amount it should move back
                             side_dist_x += delta_dist_x * (1.0 - (distance_offset));
                             side = 0;
+                        }
+
+                        let intersection_between =
+                            segment_between.relate(&line).unique_intersection();
+                        if let Some(_) = intersection_between {
+                            hit = 1;
+                            side = 1;
+                            hit_type = 1; // show wall
                         }
                     }
                     17 => {
@@ -197,7 +223,6 @@ pub fn draw_walls_raycast(
                     }
                     _ => {}
                 }
-                hit_type = value as i8;
             }
 
             // don't do any more coordinate increments if hit
