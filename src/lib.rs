@@ -11,6 +11,9 @@ use line_intersection::LineInterval;
 use std::collections::HashMap;
 use web_sys::console;
 
+// let js: JsValue = vec![position.x as f32, position.y as f32].into();
+// console::log_2(&"Znj?".into(), &js);
+
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
     columns_array: *mut i32,
@@ -40,8 +43,8 @@ pub fn draw_walls_raycast(
         let mut map_y = position.y.floor() as i32;
 
         // length of ray from one x or y-side to next x or y-side
-        let mut delta_dist_x = ray_dir_x.abs().recip();
-        let mut delta_dist_y = ray_dir_y.abs().recip();
+        let delta_dist_x = ray_dir_x.abs().recip();
+        let delta_dist_y = ray_dir_y.abs().recip();
 
         let mut perp_wall_dist = 0.0;
 
@@ -71,19 +74,6 @@ pub fn draw_walls_raycast(
             side_dist_y += (map_y as f32 + 1.0 - position.y) * delta_dist_y;
         }
 
-        let mut adder_x = 0;
-        let mut adder_y = 0;
-
-        if side_dist_x < side_dist_y {
-            // map_x -= step_x as i32;
-            // side_dist_x -= delta_dist_x;
-            // adder_x -= step_x;
-        } else {
-            // map_y -= step_y as i32;
-            // side_dist_y -= delta_dist_y;
-            // adder_y -= step_y;
-        }
-
         let mut hit: u8 = 0;
         let mut hit_type: i8 = 1;
         let mut remaining_range = range;
@@ -92,126 +82,6 @@ pub fn draw_walls_raycast(
         let mut jump_y: bool = false;
 
         while hit == 0 && remaining_range >= 0 {
-            if range != remaining_range {
-                adder_x = 0;
-                adder_y = 0;
-            }
-            // jump to next map square, either in x-direction, or in y-direction
-
-            if range != remaining_range {
-                if side_dist_x < side_dist_y {
-                    side_dist_x += delta_dist_x;
-                    map_x += step_x as i32;
-                    side = 0;
-                    jump_x = true;
-                } else {
-                    // if range != remaining_range {
-                    side_dist_y += delta_dist_y;
-                    map_y += step_y as i32;
-                    side = 1;
-                    jump_y = true
-                }
-                // }
-            }
-
-            // if jump_x {
-            //     let new_map_x = map_x - step_x as i32;
-            //     if let (true, value) = is_of_value_in_grid(
-            //         new_map_x,
-            //         map_y,
-            //         map_width,
-            //         &map_data,
-            //         &[4, 5, 8, 9, 12, 13, 16],
-            //     ) {
-            //         if value == 16 {
-            //             // from east or west side
-            //             if jump_x {
-            //                 let offset = 0.2;
-            //                 let mut distance_offset = 0.0;
-            //                 let mut map_x_adder = 0.0;
-
-            //                 if ray_dir_x < 0.0 {
-            //                     // from east side
-
-            //                     distance_offset = 0.2;
-            //                     map_x_adder = 0.0; // + 1 because it's an east door
-            //                 } else if ray_dir_x > 0.0 {
-            //                     // from west side
-
-            //                     distance_offset = 0.8;
-            //                     map_x_adder = 1.0;
-            //                 }
-
-            //                 let perp_wall_disty = side_dist_x - delta_dist_x;
-            //                 let wall_y = position.y + perp_wall_disty * ray_dir_y;
-
-            //                 // find the intersection of a line segment and an infinite line
-            //                 let new_offset_map_x = new_map_x as f32 + offset;
-
-            //                 // the segment of line at the offset of the wall
-            //                 let segment = LineInterval::line_segment(Line {
-            //                     start: (new_offset_map_x as f32, map_y as f32).into(),
-            //                     end: (new_offset_map_x as f32, map_y as f32 + 1.0 as f32).into(),
-            //                 });
-
-            //                 // ray between player position and point on the EDGE of the wall
-            //                 let line = LineInterval::ray(Line {
-            //                     start: (position.x, position.y).into(),
-            //                     end: (new_map_x as f32 + map_x_adder, wall_y as f32).into(),
-            //                 });
-
-            //                 let js: JsValue =
-            //                     vec![new_offset_map_x as f32, new_map_x as f32].into();
-            //                 // console::log_2(&"Znj?".into(), &js);
-
-            //                 let intersection = segment.relate(&line).unique_intersection();
-            //                 if let Some(_) = intersection {
-            //                     hit = 1;
-            //                     // move it back for the amount it should move back
-            //                     perp_wall_dist -= delta_dist_x * (distance_offset);
-            //                 }
-            //             }
-            //         } else {
-            //             hit_type = value as i8;
-            //             if ray_dir_x < 0.0 {
-            //                 // west wall hit
-            //                 if value == 4 || value == 8 || value == 12 {
-            //                     hit = 1;
-            //                 }
-            //             } else if ray_dir_x > 0.0 {
-            //                 // east wall hit
-            //                 if value == 5 || value == 9 || value == 13 {
-            //                     hit = 1;
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
-
-            // if (jump_y) {
-            //     let new_map_y = map_y - step_y as i32;
-            //     if let (true, value) = is_of_value_in_grid(
-            //         map_x,
-            //         new_map_y,
-            //         map_width,
-            //         &map_data,
-            //         &[6, 7, 10, 11, 14, 15],
-            //     ) {
-            //         hit_type = value as i8;
-            //         if ray_dir_y < 0.0 {
-            //             // north wall hit
-            //             if value == 6 || value == 10 || value == 14 {
-            //                 hit = 1;
-            //             }
-            //         } else if ray_dir_y > 0.0 {
-            //             // south wall hit
-            //             if value == 7 || value == 11 || value == 15 {
-            //                 hit = 1;
-            //             }
-            //         }
-            //     }
-            // }
-
             if let (true, value) = is_of_value_in_grid(
                 map_x,
                 map_y,
@@ -222,25 +92,16 @@ pub fn draw_walls_raycast(
                 match value {
                     16 => {
                         // from east or west side
-                        // if jump_x {
-                        let offset = 0.5;
+                        // offset is defined from the east
+                        let offset = 0.2;
                         let mut distance_offset = 0.0;
-                        let mut map_x_adder = 0.0;
 
                         if ray_dir_x < 0.0 {
                             // from east side
-
                             distance_offset = offset;
-                            map_x_adder = 1.0; // + 1 because it's an east door
                         } else if ray_dir_x > 0.0 {
-                            // from west side
-
                             distance_offset = 1.0 - offset;
-                            map_x_adder = 0.0;
                         }
-
-                        let perp_wall_disty = side_dist_x - delta_dist_x;
-                        let wall_y = (position.y as f32) + perp_wall_disty * ray_dir_y;
 
                         // find the intersection of a line segment and an infinite line
                         let new_map_x = map_x as f32 + offset;
@@ -253,34 +114,17 @@ pub fn draw_walls_raycast(
 
                         // ray between player position and point on the EDGE of the wall
                         let line = LineInterval::ray(Line {
-                            start: (position.x + adder_x as f32, position.y + adder_y as f32)
-                                .into(),
+                            start: (position.x as f32, position.y as f32).into(),
                             end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32)
                                 .into(),
                         });
 
-                        // let js: JsValue = vec![new_map_x as f32, map_y as f32].into();
-                        let js: JsValue =
-                            vec![position.x + adder_x as f32, position.y + adder_y as f32].into();
-
-                        // console::log_2(&"Znj?".into(), &js);
-                        if ray_dir_x > 0.0 {}
-
                         let intersection = segment.relate(&line).unique_intersection();
-                        if let Some(coord) = intersection {
+                        if let Some(_) = intersection {
                             hit = 1;
-                            let mut delta = delta_dist_x;
-                            // if jump_y {
-                            //     delta = delta_dist_y;
-                            // }
-
                             // move it back for the amount it should move back
-                            perp_wall_dist += delta * (1.0 - (distance_offset));
-
-                            let js1: JsValue = vec![coord.x, coord.y].into();
-                            // console::log_2(&"Znj?".into(), &js1);
+                            side_dist_x += delta_dist_x * (1.0 - (distance_offset));
                         }
-                        // }
                     }
                     _ => {}
                 }
@@ -317,13 +161,27 @@ pub fn draw_walls_raycast(
                 hit_type = value as i8;
             }
 
+            // don't do any more coordinate increments if hit
+            if hit == 1 {
+                break;
+            }
+
+            // jump to next map square, either in x-direction, or in y-direction;
+            // post-increment so we don't miss out on content in the immediate coordinate we're standing in
+            if side_dist_x < side_dist_y {
+                side_dist_x += delta_dist_x;
+                map_x += step_x as i32;
+                side = 0;
+                jump_x = true;
+            } else {
+                side_dist_y += delta_dist_y;
+                map_y += step_y as i32;
+                side = 1;
+                jump_y = true
+            }
+
             remaining_range -= 1;
         }
-
-        // if range == remaining_range + 1 {
-        //     delta_dist_x = 0.0;
-        //     delta_dist_y = 0.0;
-        // }
 
         // Calculate distance of perpendicular ray (Euclidean distance would give fisheye effect!)
         if side == 0 {
@@ -438,12 +296,12 @@ pub fn raycast_visible_coordinates(
         let delta_dist_x = (1.0 / ray_dir_x).abs();
         let delta_dist_y = (1.0 / ray_dir_y).abs();
 
-        let (mut side_dist_x, mut step_x) = if ray_dir_x < 0.0 {
+        let (mut side_dist_x, step_x) = if ray_dir_x < 0.0 {
             ((position.x - map_x as f32) * delta_dist_x, -1)
         } else {
             (((map_x + 1) as f32 - position.x) * delta_dist_x, 1)
         };
-        let (mut side_dist_y, mut step_y) = if ray_dir_y < 0.0 {
+        let (mut side_dist_y, step_y) = if ray_dir_y < 0.0 {
             ((position.y - map_y as f32) * delta_dist_y, -1)
         } else {
             (((map_y + 1) as f32 - position.y) * delta_dist_y, 1)
