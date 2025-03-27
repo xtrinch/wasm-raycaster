@@ -92,46 +92,95 @@ pub fn draw_walls_raycast(
                 hit_type = value as i8;
 
                 match value {
-                    16 => {
+                    16 | 17 => {
                         // from east or west side
                         // offset is defined from the east
-                        let mut offset = 0.2;
+                        let mut offset = 0.0;
                         let mut distance_offset = 0.0;
                         let offset1 = 0.8;
-                        let offset2 = 0.9;
+                        let thickness = 0.1;
+                        let ray_dirs: [f32; 2];
+                        let sides: [i32; 2];
 
-                        if ray_dir_x <= 0.0 {
-                            offset = offset2;
+                        if value == 16 {
+                            ray_dirs = [ray_dir_x, ray_dir_y];
+                            sides = [0, 1];
+                        } else {
+                            ray_dirs = [ray_dir_y, ray_dir_x];
+                            sides = [1, 0];
+                        }
+
+                        if ray_dirs[0] <= 0.0 {
+                            offset = offset1 + thickness;
                             // from east side
                             distance_offset = offset;
-                        } else if ray_dir_x > 0.0 {
+                        } else {
                             offset = offset1;
                             distance_offset = 1.0 - offset;
                         }
 
+                        let new_map_start_x;
+                        let new_map_end_x;
+                        let new_map_start_y;
+                        let new_map_end_y;
+
                         // find the intersection of a line segment and an infinite line
-                        let new_map_x = map_x as f32 + offset;
+                        if value == 16 {
+                            new_map_start_x = map_x as f32 + offset;
+                            new_map_end_x = map_x as f32 + offset;
+                            new_map_start_y = map_y as f32;
+                            new_map_end_y = map_y as f32 + 1.0 as f32;
+                        } else {
+                            new_map_start_y = map_y as f32 + offset;
+                            new_map_end_y = map_y as f32 + offset;
+                            new_map_start_x = map_x as f32;
+                            new_map_end_x = map_x as f32 + 1.0 as f32;
+                        }
 
                         // the segment of line at the offset of the wall
                         let segment = LineInterval::line_segment(Line {
-                            start: (new_map_x as f32, map_y as f32).into(),
-                            end: (new_map_x as f32, map_y as f32 + 1.0 as f32).into(),
+                            start: (new_map_start_x as f32, new_map_start_y as f32).into(),
+                            end: (new_map_end_x as f32, new_map_end_y as f32).into(),
                         });
 
-                        let map_y_adder;
+                        let segment_map_adder;
                         // the segment of line between the offsets of the wall
-                        if ray_dir_y > 0.0 {
-                            map_y_adder = 0.0;
+                        if ray_dirs[1] > 0.0 {
+                            // depending on which side we're looking at the space between the offsets from
+                            segment_map_adder = 0.0;
                         } else {
-                            map_y_adder = 1.0;
+                            segment_map_adder = 1.0;
                         }
 
+                        let new_map_between_start_x;
+                        let new_map_between_end_x;
+                        let new_map_between_start_y;
+                        let new_map_between_end_y;
+
+                        if value == 16 {
+                            new_map_between_start_x = map_x as f32 + offset1;
+                            new_map_between_end_x = map_x as f32 + offset1 + thickness;
+                            new_map_between_start_y = map_y as f32 + segment_map_adder;
+                            new_map_between_end_y = map_y as f32 + segment_map_adder;
+                        } else {
+                            new_map_between_start_y = map_y as f32 + offset1;
+                            new_map_between_end_y = map_y as f32 + offset1 + thickness;
+                            new_map_between_start_x = map_x as f32 + segment_map_adder;
+                            new_map_between_end_x = map_x as f32 + segment_map_adder;
+                        }
+
+                        // the segment of line between the offsets of the wall
                         let segment_between = LineInterval::line_segment(Line {
-                            start: (map_x as f32 + offset1, map_y as f32 + map_y_adder).into(),
-                            end: (map_x as f32 + offset2, map_y as f32 + map_y_adder).into(),
+                            start: (
+                                new_map_between_start_x as f32,
+                                new_map_between_start_y as f32,
+                            )
+                                .into(),
+                            end: (new_map_between_end_x as f32, new_map_between_end_y as f32)
+                                .into(),
                         });
 
-                        // ray between player position and point on the EDGE of the wall
+                        // ray between player position and point on the ray direction
                         let line = LineInterval::ray(Line {
                             start: (position.x as f32, position.y as f32).into(),
                             end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32)
@@ -141,56 +190,22 @@ pub fn draw_walls_raycast(
                         let intersection = segment.relate(&line).unique_intersection();
                         if let Some(_) = intersection {
                             hit = 1;
-                            // move it back for the amount it should move back
+                            // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
                             side_dist_x += delta_dist_x * (1.0 - (distance_offset));
-                            side = 0;
+                            side_dist_y += delta_dist_y * (1.0 - (distance_offset));
+
+                            side = sides[0];
                         }
 
                         let intersection_between =
                             segment_between.relate(&line).unique_intersection();
                         if let Some(_) = intersection_between {
                             hit = 1;
-                            side = 1;
+                            side = sides[1];
                             hit_type = 1; // show wall
                         }
                     }
-                    17 => {
-                        // from north or south side
-                        // offset is defined from the north
-                        let offset = 0.2;
-                        let mut distance_offset = 0.0;
 
-                        if ray_dir_y <= 0.0 {
-                            // from east side
-                            distance_offset = offset;
-                        } else if ray_dir_y > 0.0 {
-                            distance_offset = 1.0 - offset;
-                        }
-
-                        // find the intersection of a line segment and an infinite line
-                        let new_map_y = map_y as f32 + offset;
-
-                        // the segment of line at the offset of the wall
-                        let segment = LineInterval::line_segment(Line {
-                            start: (map_x as f32, new_map_y as f32).into(),
-                            end: (map_x as f32 + 1.0 as f32, new_map_y as f32).into(),
-                        });
-
-                        // ray between player position and point on the EDGE of the wall
-                        let line = LineInterval::ray(Line {
-                            start: (position.x as f32, position.y as f32).into(),
-                            end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32)
-                                .into(),
-                        });
-
-                        let intersection = segment.relate(&line).unique_intersection();
-                        if let Some(_) = intersection {
-                            hit = 1;
-                            // move it back for the amount it should move back
-                            side_dist_y += delta_dist_y * (1.0 - (distance_offset));
-                            side = 1;
-                        }
-                    }
                     _ => {}
                 }
 
