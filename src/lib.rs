@@ -31,6 +31,31 @@ pub fn draw_walls_raycast(
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
+    let east_wall_array: Vec<u8> = (10..20).collect();
+    let east_door_array: Vec<u8> = (20..50).collect();
+    let north_wall_array: Vec<u8> = (50..60).collect();
+    let north_door_array: Vec<u8> = (60..90).collect();
+    let full_wall_array: Vec<u8> = vec![1];
+
+    let door_array: Vec<u8> = east_door_array
+        .iter()
+        .chain(north_door_array.iter())
+        .copied()
+        .collect();
+
+    let wall_array: Vec<u8> = east_wall_array
+        .iter()
+        .chain(north_wall_array.iter())
+        .copied()
+        .collect();
+
+    let hit_array: Vec<u8> = door_array
+        .iter()
+        .chain(wall_array.iter())
+        .chain(full_wall_array.iter())
+        .copied()
+        .collect();
+
     for column in 0..width_resolution {
         // x-coordinate in camera space
         let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
@@ -82,161 +107,132 @@ pub fn draw_walls_raycast(
         let mut jump_y: bool = false;
 
         while hit == 0 && remaining_range >= 0 {
-            if let (true, value) = is_of_value_in_grid(
-                map_x,
-                map_y,
-                map_width,
-                &map_data,
-                &[1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
-            ) {
+            if let (true, value) =
+                is_of_value_in_grid(map_x, map_y, map_width, &map_data, &(hit_array))
+            {
                 hit_type = value as i8;
-
-                match value {
-                    16 | 17 => {
-                        // from east or west side
-                        // offset is defined from the east
-                        let mut offset = 0.0;
-                        let mut distance_offset = 0.0;
-                        let offset1 = 0.8;
-                        let thickness = 0.1;
-                        let ray_dirs: [f32; 2];
-                        let sides: [i32; 2];
-
-                        if value == 16 {
-                            ray_dirs = [ray_dir_x, ray_dir_y];
-                            sides = [0, 1];
-                        } else {
-                            ray_dirs = [ray_dir_y, ray_dir_x];
-                            sides = [1, 0];
-                        }
-
-                        if ray_dirs[0] <= 0.0 {
-                            offset = offset1 + thickness;
-                            // from east side
-                            distance_offset = offset;
-                        } else {
-                            offset = offset1;
-                            distance_offset = 1.0 - offset;
-                        }
-
-                        let new_map_start_x;
-                        let new_map_end_x;
-                        let new_map_start_y;
-                        let new_map_end_y;
-
-                        // find the intersection of a line segment and an infinite line
-                        if value == 16 {
-                            new_map_start_x = map_x as f32 + offset;
-                            new_map_end_x = map_x as f32 + offset;
-                            new_map_start_y = map_y as f32;
-                            new_map_end_y = map_y as f32 + 1.0 as f32;
-                        } else {
-                            new_map_start_y = map_y as f32 + offset;
-                            new_map_end_y = map_y as f32 + offset;
-                            new_map_start_x = map_x as f32;
-                            new_map_end_x = map_x as f32 + 1.0 as f32;
-                        }
-
-                        // the segment of line at the offset of the wall
-                        let segment = LineInterval::line_segment(Line {
-                            start: (new_map_start_x as f32, new_map_start_y as f32).into(),
-                            end: (new_map_end_x as f32, new_map_end_y as f32).into(),
-                        });
-
-                        let segment_map_adder;
-                        // the segment of line between the offsets of the wall
-                        if ray_dirs[1] > 0.0 {
-                            // depending on which side we're looking at the space between the offsets from
-                            segment_map_adder = 0.0;
-                        } else {
-                            segment_map_adder = 1.0;
-                        }
-
-                        let new_map_between_start_x;
-                        let new_map_between_end_x;
-                        let new_map_between_start_y;
-                        let new_map_between_end_y;
-
-                        if value == 16 {
-                            new_map_between_start_x = map_x as f32 + offset1;
-                            new_map_between_end_x = map_x as f32 + offset1 + thickness;
-                            new_map_between_start_y = map_y as f32 + segment_map_adder;
-                            new_map_between_end_y = map_y as f32 + segment_map_adder;
-                        } else {
-                            new_map_between_start_y = map_y as f32 + offset1;
-                            new_map_between_end_y = map_y as f32 + offset1 + thickness;
-                            new_map_between_start_x = map_x as f32 + segment_map_adder;
-                            new_map_between_end_x = map_x as f32 + segment_map_adder;
-                        }
-
-                        // the segment of line between the offsets of the wall
-                        let segment_between = LineInterval::line_segment(Line {
-                            start: (
-                                new_map_between_start_x as f32,
-                                new_map_between_start_y as f32,
-                            )
-                                .into(),
-                            end: (new_map_between_end_x as f32, new_map_between_end_y as f32)
-                                .into(),
-                        });
-
-                        // ray between player position and point on the ray direction
-                        let line = LineInterval::ray(Line {
-                            start: (position.x as f32, position.y as f32).into(),
-                            end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32)
-                                .into(),
-                        });
-
-                        let intersection = segment.relate(&line).unique_intersection();
-                        if let Some(_) = intersection {
-                            hit = 1;
-                            // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
-                            side_dist_x += delta_dist_x * (1.0 - (distance_offset));
-                            side_dist_y += delta_dist_y * (1.0 - (distance_offset));
-
-                            side = sides[0];
-                        }
-
-                        let intersection_between =
-                            segment_between.relate(&line).unique_intersection();
-                        if let Some(_) = intersection_between {
-                            hit = 1;
-                            side = sides[1];
-                            hit_type = 1; // show wall
-                        }
-                    }
-
-                    _ => {}
+                if door_array.contains(&value) {
+                    hit_type = value as i8;
+                } else if wall_array.contains(&value) {
+                    hit_type = 1;
                 }
 
-                match value {
-                    1 => {
+                if door_array.contains(&value) || wall_array.contains(&value) {
+                    let is_east = east_door_array.contains(&value);
+
+                    // from east or west side
+                    // offset is defined from the east
+                    let mut offset = 0.0;
+                    let mut distance_offset = 0.0;
+                    let offset1: f32 = (value % 10) as f32 / 10.0;
+                    //0.8;
+                    let thickness = 0.1;
+                    let ray_dirs: [f32; 2];
+                    let sides: [i32; 2];
+
+                    if is_east {
+                        ray_dirs = [ray_dir_x, ray_dir_y];
+                        sides = [0, 1];
+                    } else {
+                        ray_dirs = [ray_dir_y, ray_dir_x];
+                        sides = [1, 0];
+                    }
+
+                    if ray_dirs[0] <= 0.0 {
+                        offset = offset1 + thickness;
+                        // from east side
+                        distance_offset = offset;
+                    } else {
+                        offset = offset1;
+                        distance_offset = 1.0 - offset;
+                    }
+
+                    let new_map_start_x;
+                    let new_map_end_x;
+                    let new_map_start_y;
+                    let new_map_end_y;
+
+                    // find the intersection of a line segment and an infinite line
+                    if is_east {
+                        new_map_start_x = map_x as f32 + offset;
+                        new_map_end_x = map_x as f32 + offset;
+                        new_map_start_y = map_y as f32;
+                        new_map_end_y = map_y as f32 + 1.0 as f32;
+                    } else {
+                        new_map_start_y = map_y as f32 + offset;
+                        new_map_end_y = map_y as f32 + offset;
+                        new_map_start_x = map_x as f32;
+                        new_map_end_x = map_x as f32 + 1.0 as f32;
+                    }
+
+                    // the segment of line at the offset of the wall
+                    let segment = LineInterval::line_segment(Line {
+                        start: (new_map_start_x as f32, new_map_start_y as f32).into(),
+                        end: (new_map_end_x as f32, new_map_end_y as f32).into(),
+                    });
+
+                    let segment_map_adder;
+                    // the segment of line between the offsets of the wall
+                    if ray_dirs[1] > 0.0 {
+                        // depending on which side we're looking at the space between the offsets from
+                        segment_map_adder = 0.0;
+                    } else {
+                        segment_map_adder = 1.0;
+                    }
+
+                    let new_map_between_start_x;
+                    let new_map_between_end_x;
+                    let new_map_between_start_y;
+                    let new_map_between_end_y;
+
+                    if is_east {
+                        new_map_between_start_x = map_x as f32 + offset1;
+                        new_map_between_end_x = map_x as f32 + offset1 + thickness;
+                        new_map_between_start_y = map_y as f32 + segment_map_adder;
+                        new_map_between_end_y = map_y as f32 + segment_map_adder;
+                    } else {
+                        new_map_between_start_y = map_y as f32 + offset1;
+                        new_map_between_end_y = map_y as f32 + offset1 + thickness;
+                        new_map_between_start_x = map_x as f32 + segment_map_adder;
+                        new_map_between_end_x = map_x as f32 + segment_map_adder;
+                    }
+
+                    // the segment of line between the offsets of the wall
+                    let segment_between = LineInterval::line_segment(Line {
+                        start: (
+                            new_map_between_start_x as f32,
+                            new_map_between_start_y as f32,
+                        )
+                            .into(),
+                        end: (new_map_between_end_x as f32, new_map_between_end_y as f32).into(),
+                    });
+
+                    // ray between player position and point on the ray direction
+                    let line = LineInterval::ray(Line {
+                        start: (position.x as f32, position.y as f32).into(),
+                        end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32).into(),
+                    });
+
+                    let intersection = segment.relate(&line).unique_intersection();
+                    if let Some(_) = intersection {
                         hit = 1;
+                        // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
+                        side_dist_x += delta_dist_x * (1.0 - (distance_offset));
+                        side_dist_y += delta_dist_y * (1.0 - (distance_offset));
+
+                        side = sides[0];
                     }
-                    4 | 8 | 12 => {
-                        if jump_x && ray_dir_x > 0.0 {
-                            // west wall hit
-                            hit = 1;
-                        }
+
+                    let intersection_between = segment_between.relate(&line).unique_intersection();
+                    if let Some(_) = intersection_between {
+                        hit = 1;
+                        side = sides[1];
+                        hit_type = 1; // show wall
                     }
-                    5 | 9 | 13 => {
-                        if jump_x && ray_dir_x < 0.0 {
-                            hit = 1;
-                        }
-                    }
-                    6 | 10 | 14 => {
-                        if jump_y && ray_dir_y > 0.0 {
-                            // north wall hit
-                            hit = 1;
-                        }
-                    }
-                    7 | 11 | 15 => {
-                        if jump_y && ray_dir_y < 0.0 {
-                            // south wall hit
-                            hit = 1;
-                        }
-                    }
-                    _ => {}
+                }
+
+                if (value == 1) {
+                    hit = 1;
                 }
             }
 
@@ -453,6 +449,17 @@ pub fn draw_ceiling_floor_raycast(
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
 
+    let floor_array: Vec<u8> = vec![2, 3];
+    let east_array: Vec<u8> = (30..40).collect();
+    let north_array: Vec<u8> = (70..80).collect();
+
+    let ceiling_floor_array: Vec<u8> = east_array
+        .iter()
+        .chain(north_array.iter())
+        .chain(floor_array.iter())
+        .copied()
+        .collect();
+
     unsafe {
         // blank out the whole image buffer
         std::ptr::write_bytes(
@@ -514,7 +521,7 @@ pub fn draw_ceiling_floor_raycast(
                     floor_y as i32,
                     map_width as i32,
                     &map_data,
-                    &[2, 3, 8, 9, 10, 11, 12, 13, 14, 15],
+                    &ceiling_floor_array,
                 );
 
                 if !is_of_value {
@@ -526,18 +533,17 @@ pub fn draw_ceiling_floor_raycast(
                     continue;
                 }
 
-                let (texture, texture_width, texture_height) =
-                    if is_floor && [2, 8, 9, 10, 11].contains(&value) {
-                        (floor_texture, floor_texture_width, floor_texture_height)
-                    } else if is_floor && [3, 12, 13, 14, 15].contains(&value) {
-                        (road_texture, road_texture_width, road_texture_height)
-                    } else {
-                        (
-                            ceiling_texture,
-                            ceiling_texture_width,
-                            ceiling_texture_height,
-                        )
-                    };
+                let (texture, texture_width, texture_height) = if is_floor && [3].contains(&value) {
+                    (road_texture, road_texture_width, road_texture_height)
+                } else if is_floor && ceiling_floor_array.contains(&value) {
+                    (floor_texture, floor_texture_width, floor_texture_height)
+                } else {
+                    (
+                        ceiling_texture,
+                        ceiling_texture_width,
+                        ceiling_texture_height,
+                    )
+                };
 
                 let pixel_idx = (y * ceiling_width_resolution + x) * 4;
 

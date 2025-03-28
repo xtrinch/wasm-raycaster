@@ -189,7 +189,7 @@ pub fn is_of_value_in_grid(
     map_y: i32,
     map_width: i32,
     map_data: &Vec<u8>,
-    values: &[u8],
+    values: &Vec<u8>,
 ) -> (bool, u8) {
     let map_index = map_y * map_width + map_x;
 
