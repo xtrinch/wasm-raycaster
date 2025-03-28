@@ -110,7 +110,7 @@ pub fn draw_walls_raycast(
 
         while hit == 0 && remaining_range >= 0 {
             if let (true, value) =
-                is_of_value_in_grid(map_x, map_y, map_width as i32, &map_data, &(hit_array))
+                is_of_value_in_grid(map_x, map_y, map_width as i32, &map_data, &hit_array)
             {
                 hit_type = value as i8;
                 if door_array.contains(&value) {

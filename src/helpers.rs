@@ -221,7 +221,13 @@ pub fn is_of_value_in_grid(
 ) -> (bool, u32) {
     let map_index = map_y * map_width + map_x;
 
-    if map_y >= 0 && map_x >= 0 && map_index >= 0 && map_index < (map_width * map_width) as i32 {
+    if map_y >= 0
+        && map_y < map_width
+        && map_x >= 0
+        && map_x < map_width
+        && map_index >= 0
+        && map_index < (map_width * map_width) as i32
+    {
         let value: u32 = map_data[map_index as usize];
         return (values.contains(&value), value);
     }
