@@ -90,6 +90,34 @@ impl WasmInt32Array {
     }
 }
 
+#[wasm_bindgen]
+pub struct WasmUInt32Array(Vec<u32>);
+
+#[wasm_bindgen]
+impl WasmUInt32Array {
+    #[wasm_bindgen(constructor)]
+    pub fn new(size: usize) -> Self {
+        let buffer = vec![0; size];
+        Self { 0: buffer }
+    }
+
+    #[wasm_bindgen(getter, js_name = buffer)]
+    pub fn buffer(&mut self) -> js_sys::Uint32Array {
+        unsafe { js_sys::Uint32Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
+    }
+
+    #[wasm_bindgen(getter, js_name = ptr)]
+    pub fn ptr(&mut self) -> *mut u32 {
+        self.0.as_mut_ptr()
+    }
+
+    #[wasm_bindgen]
+    pub fn set(&mut self, data: js_sys::Uint32Array) {
+        let len = self.0.len().min(data.length() as usize);
+        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
+    }
+}
+
 pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
     unsafe {
         let target_ptr = ptr.add(index);
@@ -188,13 +216,13 @@ pub fn is_of_value_in_grid(
     map_x: i32,
     map_y: i32,
     map_width: i32,
-    map_data: &Vec<u8>,
-    values: &Vec<u8>,
-) -> (bool, u8) {
+    map_data: &[u32],
+    values: &Vec<u32>,
+) -> (bool, u32) {
     let map_index = map_y * map_width + map_x;
 
     if map_y >= 0 && map_x >= 0 && map_index >= 0 && map_index < (map_width * map_width) as i32 {
-        let value = map_data[map_index as usize];
+        let value: u32 = map_data[map_index as usize];
         return (values.contains(&value), value);
     }
     (false, 0)

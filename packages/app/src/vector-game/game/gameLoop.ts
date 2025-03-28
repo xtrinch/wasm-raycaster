@@ -17,7 +17,8 @@ export class GameLoop {
   public frameTime: number;
 
   constructor() {
-    this.map = new GridMap(32);
+    // this.map = new GridMap(32);
+    this.map = new GridMap(12);
     this.spriteMap = new SpriteMap();
     this.display = document.getElementById("display") as HTMLCanvasElement;
     this.controls = new Controls();

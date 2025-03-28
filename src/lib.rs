@@ -19,8 +19,8 @@ pub fn draw_walls_raycast(
     columns_array: *mut i32,
     zbuffer_array: *mut f32,
     position: JsValue,
-    map_data: Vec<u8>, // 2D array representing the grid map
-    map_width: i32,    // Needed to index into 1D map
+    map_array: *mut u32, // 2D array representing the grid map
+    map_width: usize,    // Needed to index into 1D map
     width_resolution: i32,
     height: i32,
     width: i32,
@@ -30,26 +30,28 @@ pub fn draw_walls_raycast(
     wall_texture_width: i32,
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+    let map_data =
+        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
-    let east_wall_array: Vec<u8> = (10..20).collect();
-    let east_door_array: Vec<u8> = (20..50).collect();
-    let north_wall_array: Vec<u8> = (50..60).collect();
-    let north_door_array: Vec<u8> = (60..90).collect();
-    let full_wall_array: Vec<u8> = vec![1];
+    let east_wall_array: Vec<u32> = (10..20).collect();
+    let east_door_array: Vec<u32> = (20..50).collect();
+    let north_wall_array: Vec<u32> = (50..60).collect();
+    let north_door_array: Vec<u32> = (60..90).collect();
+    let full_wall_array: Vec<u32> = vec![1];
 
-    let door_array: Vec<u8> = east_door_array
+    let door_array: Vec<u32> = east_door_array
         .iter()
         .chain(north_door_array.iter())
         .copied()
         .collect();
 
-    let wall_array: Vec<u8> = east_wall_array
+    let wall_array: Vec<u32> = east_wall_array
         .iter()
         .chain(north_wall_array.iter())
         .copied()
         .collect();
 
-    let hit_array: Vec<u8> = door_array
+    let hit_array: Vec<u32> = door_array
         .iter()
         .chain(wall_array.iter())
         .chain(full_wall_array.iter())
@@ -108,7 +110,7 @@ pub fn draw_walls_raycast(
 
         while hit == 0 && remaining_range >= 0 {
             if let (true, value) =
-                is_of_value_in_grid(map_x, map_y, map_width, &map_data, &(hit_array))
+                is_of_value_in_grid(map_x, map_y, map_width as i32, &map_data, &(hit_array))
             {
                 hit_type = value as i8;
                 if door_array.contains(&value) {
@@ -331,7 +333,7 @@ pub fn raycast_visible_coordinates(
     position: JsValue,
     width_resolution: usize,
     range: i32,
-    map_array: *mut u8,
+    map_array: *mut u32,
     map_width: i32,
     all_sprites_array: *mut f32,
     sprites_count: usize,
@@ -444,16 +446,18 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_texture_height: usize,
     road_texture_width: usize,
     road_texture_height: usize,
-    map_data: Vec<u8>,
+    map_array: *mut u32,
     map_width: usize,
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+    let map_data =
+        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
-    let floor_array: Vec<u8> = vec![2, 3];
-    let east_array: Vec<u8> = (30..40).collect();
-    let north_array: Vec<u8> = (70..80).collect();
+    let floor_array: Vec<u32> = vec![2, 3];
+    let east_array: Vec<u32> = (30..40).collect();
+    let north_array: Vec<u32> = (70..80).collect();
 
-    let ceiling_floor_array: Vec<u8> = east_array
+    let ceiling_floor_array: Vec<u32> = east_array
         .iter()
         .chain(north_array.iter())
         .chain(floor_array.iter())
@@ -520,7 +524,7 @@ pub fn draw_ceiling_floor_raycast(
                     floor_x as i32,
                     floor_y as i32,
                     map_width as i32,
-                    &map_data,
+                    map_data,
                     &ceiling_floor_array,
                 );
 
@@ -626,7 +630,7 @@ pub fn draw_sprites_wasm(
     map_light: f32,
     width_resolution: usize,
     range: i32,
-    map_array: *mut u8,
+    map_array: *mut u32,
     map_width: i32,
     all_sprites_array: *mut f32,
     all_sprites_count: usize,
