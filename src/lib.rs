@@ -10,7 +10,7 @@ use geo::Line;
 use line_intersection::LineInterval;
 use std::collections::HashMap;
 
-// use web_sys::console;
+use web_sys::console;
 // let js: JsValue = vec![position.x as f32, position.y as f32].into();
 // console::log_2(&"Znj?".into(), &js);
 
@@ -405,20 +405,20 @@ pub fn raycast_visible_coordinates(
         let mut current_range = range;
 
         while !hit && current_range >= 0 {
-            let index = (map_y * map_width + map_x) as usize;
-            let map_value = if map_y < 0 || map_x < 0 {
-                0
-            } else {
-                map_data.get(index).copied().unwrap_or(0)
-            };
-
-            if map_value == 1 {
+            // TODO: there isn't only thick walls anymore, thin walls should affect this too?
+            if let (true, _) =
+                has_set_bits_in_grid(map_x, map_y, map_width as i32, map_data, &[0], true)
+            {
                 hit = true;
             }
 
             let coord_key = format!("{}-{}", map_x, map_y);
             if !coords.contains_key(&coord_key) {
                 coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+                // use web_sys::console;
+                // let js: JsValue = vec![coord_key.clone()].into();
+                // console::log_2(&"Znj?".into(), &js);
 
                 if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                     for &sprite in sprite_list {
@@ -680,6 +680,10 @@ pub fn draw_sprites_wasm(
         found_sprites_array,
     );
 
+    // use web_sys::console;
+    // let js: JsValue = vec![found_sprites_length as f32].into();
+    // console::log_2(&"Znj?".into(), &js);
+
     let mut stripe_parts: Vec<StripePart> = Vec::new();
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
@@ -835,12 +839,16 @@ pub fn walk(
         x += position.dir_x * distance;
         y += position.dir_y * distance;
 
+        console::log_1(&"moving xy".into());
+
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
     // if we're near the wall, check if we can move x
     let mut raycast_position_x = raycast_position.clone();
-    raycast_position_x.x = x + position.dir_x * distance;
+    // raycast_position_x.x = x + position.dir_x * distance;
+    raycast_position_x.dir_y = 0.0;
+
     // raycast middle column to get the distance
     let (perp_wall_dist_x, _, _) = raycast_column(
         (width_resolution / 2) as i32,
@@ -855,15 +863,20 @@ pub fn walk(
         range,
         wall_texture_width,
     );
-    if perp_wall_dist <= perp_wall_dist_x {
+    // if perp_wall_dist <= perp_wall_dist_x {
+    if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
+
+        console::log_1(&"moving x".into());
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
     // if we weren't able to move x, check if we can move y
     let mut raycast_position_y = raycast_position.clone();
-    raycast_position_y.y = y + position.dir_y * distance;
+    // raycast_position_y.y = y + position.dir_y * distance;
+    raycast_position_y.dir_x = 0.0;
+
     // raycast middle column to get the distance
     let (perp_wall_dist_y, _, _) = raycast_column(
         (width_resolution / 2) as i32,
@@ -878,8 +891,11 @@ pub fn walk(
         range,
         wall_texture_width,
     );
-    if perp_wall_dist <= perp_wall_dist_y {
+    if perp_wall_dist_y > 0.2 {
+        // if perp_wall_dist <= perp_wall_dist_y {
         y += position.dir_y * distance;
+
+        console::log_1(&"moving y".into());
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
