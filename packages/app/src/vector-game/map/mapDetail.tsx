@@ -1,7 +1,7 @@
 import { Position } from "../game/player";
 
 interface MapDetailProps {
-  map: Uint8Array;
+  map: Uint32Array;
   size: number;
   playerPosition: Position;
 }
