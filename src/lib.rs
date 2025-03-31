@@ -806,7 +806,7 @@ pub fn walk(
     range: i32,
     wall_texture_width: i32,
 ) -> JsValue {
-    let mut position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
+    let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let map_data =
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
@@ -835,53 +835,58 @@ pub fn walk(
     let mut x = position.x;
     let mut y = position.y;
 
-    if (perp_wall_dist > 0.1) {
+    if perp_wall_dist > 0.2 {
         x += position.dir_x * distance;
         y += position.dir_y * distance;
+
+        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
-    // let dx = position.dir_x * distance;
-    // let dy = position.dir_y * distance;
-    // let safety = 0.1;
-    // let safety_x = if dx > 0.0 { safety } else { -safety };
-    // let safety_y = if dy > 0.0 { safety } else { -safety };
+    // if we're near the wall, check if we can move x
+    let mut raycast_position_x = raycast_position.clone();
+    raycast_position_x.x = x + position.dir_x * distance;
+    // raycast middle column to get the distance
+    let (perp_wall_dist_x, _, _) = raycast_column(
+        (width_resolution / 2) as i32,
+        raycast_position_x,
+        map_data,
+        map_width as usize,
+        width_resolution as i32,
+        height,
+        width,
+        width_spacing,
+        light_range,
+        range,
+        wall_texture_width,
+    );
+    if (perp_wall_dist <= perp_wall_dist_x) {
+        x += position.dir_x * distance;
 
-    // let half = width_resolution / 2;
-    // let dist = zbuffer[half];
+        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
+    }
 
-    // // check if x can be moved
-    // let coordinate_x = translate_coordinate_to_camera(
-    //     position,
-    //     x + (position.dir_x * distance),
-    //     y,
-    //     1.0,
-    //     width,
-    //     height,
-    // );
-    // if (coordinate_x.screen_x as i32) < width as i32
-    //     && coordinate_x.screen_x as i32 >= 0
-    //     // && coordinate_x.distance > 0.0
-    //     && zbuffer[coordinate_x.screen_x as usize] > coordinate_x.distance
-    // {
-    //     x += position.dir_x * distance;
-    // }
+    // if we weren't able to move x, check if we can move y
+    let mut raycast_position_y = raycast_position.clone();
+    raycast_position_y.y = y + position.dir_y * distance;
+    // raycast middle column to get the distance
+    let (perp_wall_dist_y, _, _) = raycast_column(
+        (width_resolution / 2) as i32,
+        raycast_position_y,
+        map_data,
+        map_width as usize,
+        width_resolution as i32,
+        height,
+        width,
+        width_spacing,
+        light_range,
+        range,
+        wall_texture_width,
+    );
+    if (perp_wall_dist <= perp_wall_dist_y) {
+        y += position.dir_y * distance;
 
-    // // check if y can be moved
-    // let coordinate_y = translate_coordinate_to_camera(
-    //     position,
-    //     position.x,
-    //     y + (position.dir_y * distance),
-    //     1.0,
-    //     width,
-    //     height,
-    // );
-    // if (coordinate_y.screen_x as i32) < width as i32
-    //     && coordinate_y.screen_x as i32 >= 0
-    //     // && coordinate_y.distance > 0.0
-    //     && zbuffer[coordinate_y.screen_x as usize] > coordinate_y.distance
-    // {
-    //     y += position.dir_y * distance;
-    // }
+        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
+    }
 
     serde_wasm_bindgen::to_value(&vec![x, y]).unwrap()
 }
