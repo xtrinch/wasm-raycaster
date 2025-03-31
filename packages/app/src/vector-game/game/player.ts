@@ -76,6 +76,7 @@ export class Player {
     let safetyX = dx > 0 ? safety : -safety;
     let safetyY = dy > 0 ? safety : -safety;
 
+    // TODO: check actual zbuffer!
     if (map.get(this.position.x + dx + safetyX, this.position.y) != 1) {
       this.position.x += dx;
     }

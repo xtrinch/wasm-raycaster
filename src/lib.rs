@@ -1,6 +1,6 @@
 use helpers::{
-    copy_to_raw_pointer, is_in_grid, is_of_value_in_grid, parse_sprite_texture_array, Coords,
-    Position, Sprite, StripePart, TranslationResult,
+    copy_to_raw_pointer, get_bits_in_grid, has_set_bits_in_grid, is_in_grid, is_of_value_in_grid,
+    parse_sprite_texture_array, Coords, Position, Sprite, StripePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -110,25 +110,56 @@ pub fn draw_walls_raycast(
 
         while hit == 0 && remaining_range >= 0 {
             if let (true, value) =
-                is_of_value_in_grid(map_x, map_y, map_width as i32, &map_data, &hit_array)
+                has_set_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[0], true)
             {
-                hit_type = value as i8;
-                if door_array.contains(&value) {
+                hit_type = 1 as i8;
+                // has door bit set
+                if let (true, value) = has_set_bits_in_grid(
+                    map_x,
+                    map_y,
+                    map_width as i32,
+                    &map_data,
+                    &[0, 4, 5],
+                    true,
+                ) {
                     hit_type = value as i8;
-                } else if wall_array.contains(&value) {
-                    hit_type = 1;
                 }
 
-                if door_array.contains(&value) || wall_array.contains(&value) {
-                    let is_east = east_door_array.contains(&value);
+                // thin wall
+                if let (true, value) =
+                    has_set_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[0, 4], true)
+                {
+                    let (has_set_north_bit, _) = has_set_bits_in_grid(
+                        map_x as i32,
+                        map_y as i32,
+                        map_width as i32,
+                        &map_data,
+                        &[6],
+                        false,
+                    );
+                    let is_east = !has_set_north_bit;
 
                     // from east or west side
                     // offset is defined from the east
                     let mut offset = 0.0;
                     let mut distance_offset = 0.0;
-                    let offset1: f32 = (value % 10) as f32 / 10.0;
-                    //0.8;
-                    let thickness = 0.1;
+                    let bit_offset = get_bits_in_grid(
+                        map_x,
+                        map_y,
+                        map_width as i32,
+                        &map_data,
+                        &[8, 9, 10, 11],
+                    );
+                    let bit_thickness = get_bits_in_grid(
+                        map_x,
+                        map_y,
+                        map_width as i32,
+                        &map_data,
+                        &[12, 13, 14, 15],
+                    );
+                    let offset1: f32 = bit_offset as f32 / 10.0;
+                    // let thickness = 0.1;
+                    let thickness = bit_thickness as f32 / 10.0;
                     let ray_dirs: [f32; 2];
                     let sides: [i32; 2];
 
@@ -233,7 +264,7 @@ pub fn draw_walls_raycast(
                     }
                 }
 
-                if (value == 1) {
+                if value == 1 {
                     hit = 1;
                 }
             }
@@ -453,17 +484,6 @@ pub fn draw_ceiling_floor_raycast(
     let map_data =
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
-    let floor_array: Vec<u32> = vec![2, 3];
-    let east_array: Vec<u32> = (30..40).collect();
-    let north_array: Vec<u32> = (70..80).collect();
-
-    let ceiling_floor_array: Vec<u32> = east_array
-        .iter()
-        .chain(north_array.iter())
-        .chain(floor_array.iter())
-        .copied()
-        .collect();
-
     unsafe {
         // blank out the whole image buffer
         std::ptr::write_bytes(
@@ -520,26 +540,53 @@ pub fn draw_ceiling_floor_raycast(
                     continue;
                 }
 
-                let (is_of_value, value) = is_of_value_in_grid(
+                let (has_set_bits, _) = has_set_bits_in_grid(
                     floor_x as i32,
                     floor_y as i32,
                     map_width as i32,
-                    map_data,
-                    &ceiling_floor_array,
+                    &map_data,
+                    &[1, 2, 3], // ceiling, floor or road
+                    false,
                 );
 
-                if !is_of_value {
+                if !has_set_bits {
                     continue;
                 }
+
+                // TODO: optimize
+                let (has_set_ceiling_bit, _) = has_set_bits_in_grid(
+                    floor_x as i32,
+                    floor_y as i32,
+                    map_width as i32,
+                    &map_data,
+                    &[2],
+                    false,
+                );
+                let (has_set_floor_bit, _) = has_set_bits_in_grid(
+                    floor_x as i32,
+                    floor_y as i32,
+                    map_width as i32,
+                    &map_data,
+                    &[1], // ceiling, floor or road
+                    false,
+                );
+                let (has_set_road_bit, _) = has_set_bits_in_grid(
+                    floor_x as i32,
+                    floor_y as i32,
+                    map_width as i32,
+                    &map_data,
+                    &[3], // ceiling, floor or road
+                    false,
+                );
 
                 // no ceiling for roads
-                if !is_floor && [3, 12, 13, 14, 15].contains(&value) {
+                if !is_floor && !has_set_ceiling_bit {
                     continue;
                 }
 
-                let (texture, texture_width, texture_height) = if is_floor && [3].contains(&value) {
+                let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
                     (road_texture, road_texture_width, road_texture_height)
-                } else if is_floor && ceiling_floor_array.contains(&value) {
+                } else if is_floor && has_set_floor_bit {
                     (floor_texture, floor_texture_width, floor_texture_height)
                 } else {
                     (
@@ -751,14 +798,4 @@ pub fn draw_sprites_wasm(
     }
 
     serde_wasm_bindgen::to_value(&stripe_parts).unwrap()
-}
-
-#[wasm_bindgen]
-pub fn draw_sprites_wasm1(array: *mut f32, array_length: usize) -> () {
-    // no need to return antyhing
-    // allow us to use the array
-    let array_data = unsafe { std::slice::from_raw_parts_mut(array, array_length) };
-    for value in array_data.iter_mut() {
-        *value += 5.0;
-    }
 }

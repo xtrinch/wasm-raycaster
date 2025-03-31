@@ -233,3 +233,54 @@ pub fn is_of_value_in_grid(
     }
     (false, 0)
 }
+
+pub fn has_set_bits_in_grid(
+    map_x: i32,
+    map_y: i32,
+    map_width: i32,
+    map_data: &[u32],
+    values: &[u8],
+    all: bool,
+) -> (bool, u32) {
+    if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
+        return (false, 0);
+    }
+
+    let map_index = (map_y * map_width + map_x) as usize;
+    if map_index >= map_data.len() {
+        return (false, 0);
+    }
+
+    let value = map_data[map_index];
+    let has_bits: bool;
+    if all {
+        has_bits = values.iter().all(|&bit| value & (1 << bit) != 0);
+    } else {
+        has_bits = values.iter().any(|&bit| value & (1 << bit) != 0);
+    }
+
+    (has_bits, value)
+}
+
+pub fn get_bits_in_grid(
+    map_x: i32,
+    map_y: i32,
+    map_width: i32,
+    map_data: &[u32],
+    values: &[u8],
+) -> u32 {
+    if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
+        return 0;
+    }
+
+    let map_index = (map_y * map_width + map_x) as usize;
+    if map_index >= map_data.len() {
+        return 0;
+    }
+
+    let value = map_data[map_index];
+    values
+        .iter()
+        .enumerate()
+        .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
+}
