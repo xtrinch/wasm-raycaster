@@ -55,7 +55,7 @@ export class GameLoop {
       for (let x = 4; x < this.map.size; x++) {
         if (this.map.get(x, y) !== 1) {
           // return new Player(x + 0.5, y + 0.5, -1, 0, 0, 0.66); // original
-          return new Player(x, y, 0, -1, 0, 0, 1.1);
+          return new Player(x, y, 0, -1, 0, 0, 1.1, this.camera);
         }
       }
     }

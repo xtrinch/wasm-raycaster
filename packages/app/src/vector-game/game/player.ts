@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { Position as RustPosition } from "../../../wasm";
+import { Position as RustPosition, walk } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
@@ -30,7 +30,8 @@ export class Player {
     dirX: number,
     dirY: number,
     planeX: number,
-    planeY: number
+    planeY: number,
+    camera: Camera
   ) {
     this.position = {
       x,
@@ -45,6 +46,7 @@ export class Player {
     };
     this.weapon = new Bitmap(knifeHand, 319, 320);
     this.paces = 0;
+    this.camera = camera;
 
     makeAutoObservable(this);
   }
@@ -70,19 +72,32 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
-    let dx = this.position.dirX * distance;
-    let dy = this.position.dirY * distance;
-    let safety = 0.2;
-    let safetyX = dx > 0 ? safety : -safety;
-    let safetyY = dy > 0 ? safety : -safety;
+    const [x, y] = walk(
+      this.toRustPosition(),
+      distance,
+      this.camera.mapRef.ptr,
+      map.size,
+      this.camera.widthResolution,
+      this.camera.width,
+      this.camera.height,
+      this.camera.widthSpacing,
+      this.camera.lightRange,
+      this.camera.range,
+      map.wallTexture.width
+    );
+    this.position.x = x;
+    this.position.y = y;
 
-    // TODO: check actual zbuffer!
-    if (map.get(this.position.x + dx + safetyX, this.position.y) != 1) {
-      this.position.x += dx;
-    }
-    if (map.get(this.position.x, this.position.y + dy + safetyY) != 1) {
-      this.position.y += dy;
-    }
+    // let safety = 0.2;
+    // let safetyX = dx > 0 ? safety : -safety;
+    // let safetyY = dy > 0 ? safety : -safety;
+
+    // if (map.get(this.position.x + dx + safetyX, this.position.y) != 1) {
+    //   this.position.x += dx;
+    // }
+    // if (map.get(this.position.x, this.position.y + dy + safetyY) != 1) {
+    //   this.position.y += dy;
+    // }
   };
 
   public jumpUp = (frameTime: number) => {
