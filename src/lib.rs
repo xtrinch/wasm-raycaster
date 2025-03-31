@@ -813,7 +813,7 @@ pub fn walk(
     }
 
     // raycast middle column to get the distance
-    let (perp_wall_dist, _, _) = raycast_column(
+    let (perp_wall_dist, _, col_data) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position,
         map_data,
@@ -830,7 +830,8 @@ pub fn walk(
     let mut x = position.x;
     let mut y = position.y;
 
-    if perp_wall_dist > 0.2 {
+    // if far enough or not a wall
+    if perp_wall_dist > 0.2 || col_data[6] != 1 {
         x += position.dir_x * distance;
         y += position.dir_y * distance;
 
