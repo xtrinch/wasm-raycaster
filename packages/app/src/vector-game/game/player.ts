@@ -87,17 +87,6 @@ export class Player {
     );
     this.position.x = x;
     this.position.y = y;
-
-    // let safety = 0.2;
-    // let safetyX = dx > 0 ? safety : -safety;
-    // let safetyY = dy > 0 ? safety : -safety;
-
-    // if (map.get(this.position.x + dx + safetyX, this.position.y) != 1) {
-    //   this.position.x += dx;
-    // }
-    // if (map.get(this.position.x, this.position.y + dy + safetyY) != 1) {
-    //   this.position.y += dy;
-    // }
   };
 
   public jumpUp = (frameTime: number) => {

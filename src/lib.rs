@@ -1,6 +1,6 @@
 use helpers::{
-    copy_to_raw_pointer, get_bits_in_grid, has_set_bits_in_grid, is_in_grid, is_of_value_in_grid,
-    parse_sprite_texture_array, Coords, Position, Sprite, StripePart, TranslationResult,
+    copy_to_raw_pointer, get_bits_in_grid, has_set_bits_in_grid, parse_sprite_texture_array,
+    Coords, Position, Sprite, StripePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -9,8 +9,8 @@ mod line_intersection;
 use geo::Line;
 use line_intersection::LineInterval;
 use std::collections::HashMap;
-use web_sys::console;
 
+// use web_sys::console;
 // let js: JsValue = vec![position.x as f32, position.y as f32].into();
 // console::log_2(&"Znj?".into(), &js);
 
@@ -44,8 +44,8 @@ pub fn raycast_column(
     let mut perp_wall_dist = 0.0;
 
     // what direction to step in x or y-direction (either +1 or -1)
-    let mut step_x: i8 = 0;
-    let mut step_y: i8 = 0;
+    let step_x: i8;
+    let step_y: i8;
     let mut side = 0;
 
     let mut side_dist_x: f32 = 0.0;
@@ -73,9 +73,6 @@ pub fn raycast_column(
     let mut hit_type: i8 = 1;
     let mut remaining_range = range;
 
-    let mut jump_x: bool = false;
-    let mut jump_y: bool = false;
-
     while hit == 0 && remaining_range >= 0 {
         if let (true, value) =
             has_set_bits_in_grid(map_x, map_y, map_width as i32, map_data, &[0], true)
@@ -89,7 +86,7 @@ pub fn raycast_column(
             }
 
             // thin wall
-            if let (true, value) =
+            if let (true, _) =
                 has_set_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[0, 4], true)
             {
                 let (has_set_north_bit, _) = has_set_bits_in_grid(
@@ -104,8 +101,8 @@ pub fn raycast_column(
 
                 // from east or west side
                 // offset is defined from the east
-                let mut offset = 0.0;
-                let mut distance_offset = 0.0;
+                let offset: f32;
+                let distance_offset: f32;
                 let bit_offset =
                     get_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[8, 9, 10, 11]);
                 let bit_thickness =
@@ -233,12 +230,10 @@ pub fn raycast_column(
             side_dist_x += delta_dist_x;
             map_x += step_x as i32;
             side = 0;
-            jump_x = true;
         } else {
             side_dist_y += delta_dist_y;
             map_y += step_y as i32;
             side = 1;
-            jump_y = true
         }
 
         remaining_range -= 1;
@@ -859,7 +854,7 @@ pub fn walk(
         range,
         wall_texture_width,
     );
-    if (perp_wall_dist <= perp_wall_dist_x) {
+    if perp_wall_dist <= perp_wall_dist_x {
         x += position.dir_x * distance;
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
@@ -882,7 +877,7 @@ pub fn walk(
         range,
         wall_texture_width,
     );
-    if (perp_wall_dist <= perp_wall_dist_y) {
+    if perp_wall_dist <= perp_wall_dist_y {
         y += position.dir_y * distance;
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();

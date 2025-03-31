@@ -38,7 +38,7 @@
 
 use num_traits::Float;
 
-use geo::{Coord, Coordinate, Line, Point};
+use geo::{Coord, Line};
 /// An interval (continuous subset) of a line.
 ///
 /// `interval_of_intersection` represents what subset of a line this `LineInterval` represents. If
