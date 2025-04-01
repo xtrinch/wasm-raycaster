@@ -203,6 +203,29 @@ pub struct StripePart {
     pub angle: i32,
 }
 
+pub fn has_set_bits(value: u32, values: &[u8], all: bool) -> bool {
+    let has_bits = if all {
+        values.iter().all(|&bit| value & (1 << bit) != 0)
+    } else {
+        values.iter().any(|&bit| value & (1 << bit) != 0)
+    };
+
+    has_bits
+}
+
+pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u32]) -> u32 {
+    if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
+        return (0);
+    }
+
+    let map_index = (map_y * map_width + map_x) as usize;
+    if map_index >= map_data.len() {
+        return (0);
+    }
+
+    return map_data[map_index];
+}
+
 pub fn has_set_bits_in_grid(
     map_x: i32,
     map_y: i32,

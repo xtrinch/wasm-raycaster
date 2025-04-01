@@ -1,6 +1,6 @@
 use helpers::{
-    copy_to_raw_pointer, get_bits_in_grid, has_set_bits_in_grid, parse_sprite_texture_array,
-    Coords, Position, Sprite, StripePart, TranslationResult,
+    copy_to_raw_pointer, get_bits_in_grid, get_grid_value, has_set_bits, has_set_bits_in_grid,
+    parse_sprite_texture_array, Coords, Position, Sprite, StripePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -74,29 +74,18 @@ pub fn raycast_column(
     let mut remaining_range = range;
 
     while hit == 0 && remaining_range >= 0 {
-        if let (true, value) =
-            has_set_bits_in_grid(map_x, map_y, map_width as i32, map_data, &[0], true)
-        {
+        let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
+
+        if has_set_bits(value, &[0], true) {
             hit_type = 1 as i8;
             // has door bit set
-            if let (true, value) =
-                has_set_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[0, 4, 5], true)
-            {
+            if has_set_bits(value, &[0, 4, 5], true) {
                 hit_type = value as i8;
             }
 
             // thin wall
-            if let (true, _) =
-                has_set_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[0, 4], true)
-            {
-                let (has_set_north_bit, _) = has_set_bits_in_grid(
-                    map_x as i32,
-                    map_y as i32,
-                    map_width as i32,
-                    &map_data,
-                    &[6],
-                    false,
-                );
+            if has_set_bits(value, &[0, 4], true) {
+                let has_set_north_bit = has_set_bits(value, &[6], false);
                 let is_east = !has_set_north_bit;
 
                 // from east or west side
@@ -405,20 +394,16 @@ pub fn raycast_visible_coordinates(
         let mut current_range = range;
 
         while !hit && current_range >= 0 {
+            let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
+
             // TODO: there isn't only thick walls anymore, thin walls should affect this too?
-            if let (true, _) =
-                has_set_bits_in_grid(map_x, map_y, map_width as i32, map_data, &[0], true)
-            {
+            if has_set_bits(value, &[0], true) {
                 hit = true;
             }
 
             let coord_key = format!("{}-{}", map_x, map_y);
             if !coords.contains_key(&coord_key) {
                 coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
-
-                // use web_sys::console;
-                // let js: JsValue = vec![coord_key.clone()].into();
-                // console::log_2(&"Znj?".into(), &js);
 
                 if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                     for &sprite in sprite_list {
@@ -526,41 +511,27 @@ pub fn draw_ceiling_floor_raycast(
                     continue;
                 }
 
-                let (has_set_bits, _) = has_set_bits_in_grid(
-                    floor_x as i32,
-                    floor_y as i32,
-                    map_width as i32,
-                    &map_data,
+                let value =
+                    get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
+
+                let has_set_any_bits = has_set_bits(
+                    value,
                     &[1, 2, 3], // ceiling, floor or road
                     false,
                 );
 
-                if !has_set_bits {
+                if !has_set_any_bits {
                     continue;
                 }
 
-                // TODO: optimize
-                let (has_set_ceiling_bit, _) = has_set_bits_in_grid(
-                    floor_x as i32,
-                    floor_y as i32,
-                    map_width as i32,
-                    &map_data,
-                    &[2],
-                    false,
-                );
-                let (has_set_floor_bit, _) = has_set_bits_in_grid(
-                    floor_x as i32,
-                    floor_y as i32,
-                    map_width as i32,
-                    &map_data,
+                let has_set_ceiling_bit = has_set_bits(value, &[2], false);
+                let has_set_floor_bit = has_set_bits(
+                    value,
                     &[1], // ceiling, floor or road
                     false,
                 );
-                let (has_set_road_bit, _) = has_set_bits_in_grid(
-                    floor_x as i32,
-                    floor_y as i32,
-                    map_width as i32,
-                    &map_data,
+                let has_set_road_bit = has_set_bits(
+                    value,
                     &[3], // ceiling, floor or road
                     false,
                 );
@@ -679,10 +650,6 @@ pub fn draw_sprites_wasm(
         all_sprites_count,
         found_sprites_array,
     );
-
-    // use web_sys::console;
-    // let js: JsValue = vec![found_sprites_length as f32].into();
-    // console::log_2(&"Znj?".into(), &js);
 
     let mut stripe_parts: Vec<StripePart> = Vec::new();
 
@@ -839,8 +806,6 @@ pub fn walk(
         x += position.dir_x * distance;
         y += position.dir_y * distance;
 
-        console::log_1(&"moving xy".into());
-
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
@@ -867,8 +832,6 @@ pub fn walk(
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
 
-        console::log_1(&"moving x".into());
-
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
@@ -894,8 +857,6 @@ pub fn walk(
     if perp_wall_dist_y > 0.2 {
         // if perp_wall_dist <= perp_wall_dist_y {
         y += position.dir_y * distance;
-
-        console::log_1(&"moving y".into());
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
