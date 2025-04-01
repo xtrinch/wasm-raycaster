@@ -232,8 +232,12 @@ export class Camera {
     this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
   }
 
-  drawWallsRaycastWasm(player: Player, map: GridMap): void {
-    draw_walls_raycast(
+  drawWallsRaycastWasm(
+    player: Player,
+    map: GridMap,
+    spriteMap: SpriteMap
+  ): number {
+    let foundSpritesCount = draw_walls_raycast(
       this.columnsRef.ptr,
       this.zBufferRef.ptr,
       player.toRustPosition(),
@@ -245,7 +249,10 @@ export class Camera {
       this.widthSpacing,
       this.lightRange,
       this.range,
-      map.wallTexture.width
+      map.wallTexture.width,
+      this.visibleSpritesRef.ptr,
+      this.allSpritesRef.ptr,
+      spriteMap.size
     );
     let width = Math.ceil(this.widthSpacing);
     for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
@@ -277,9 +284,16 @@ export class Camera {
         this.ctx.globalAlpha = 1;
       }
     }
+
+    return foundSpritesCount;
   }
 
-  drawSpritesWasm(player: Player, map: GridMap, spriteMap: SpriteMap): void {
+  drawSpritesWasm(
+    player: Player,
+    map: GridMap,
+    spriteMap: SpriteMap,
+    foundSpritesCount: number
+  ): void {
     const stripeParts: StripePart[] = draw_sprites_wasm(
       player.toRustPosition(),
       this.width,
@@ -297,7 +311,8 @@ export class Camera {
       map.size, // Width of original 2D array
       this.allSpritesRef.ptr,
       spriteMap.size,
-      this.visibleSpritesRef.ptr
+      this.visibleSpritesRef.ptr,
+      foundSpritesCount
     );
 
     for (let stripeIdx = 0; stripeIdx < stripeParts.length; stripeIdx++) {
@@ -338,8 +353,8 @@ export class Camera {
     this.ctx.save();
 
     this.drawCeilingFloorRaycastWasm(player, map);
-    this.drawWallsRaycastWasm(player, map);
-    this.drawSpritesWasm(player, map, spriteMap);
+    const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
+    this.drawSpritesWasm(player, map, spriteMap, foundSpritesCount);
 
     this.ctx.restore();
   }

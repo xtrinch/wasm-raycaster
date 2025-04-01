@@ -9,9 +9,8 @@ mod line_intersection;
 use geo::Line;
 use line_intersection::LineInterval;
 use std::collections::HashMap;
-
 use web_sys::console;
-// let js: JsValue = vec![position.x as f32, position.y as f32].into();
+// let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
 
 pub fn raycast_column(
@@ -26,7 +25,22 @@ pub fn raycast_column(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
+    coords: Option<&mut HashMap<String, Coords>>,
+    sprites_map: Option<&mut HashMap<(i32, i32), Vec<[f32; 5]>>>,
+    found_sprites_count: Option<&mut u32>,
+    found_sprites: Option<&mut [f32]>,
 ) -> (f32, [i32; 7]) {
+    // Use an empty HashMap if None is provided
+    let mut default_coords = HashMap::new();
+    let coords = coords.unwrap_or_else(|| &mut default_coords);
+    let mut default_sprites_map = HashMap::new();
+    let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
+    let found_sprites = found_sprites.unwrap_or_else(|| &mut []);
+
+    // If found_sprites_count is None, use a local variable
+    let mut found_sprites_dummy = 0;
+    let found_sprites_count = found_sprites_count.unwrap_or(&mut found_sprites_dummy);
+
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
 
@@ -218,6 +232,20 @@ pub fn raycast_column(
             }
         }
 
+        let coord_key = format!("{}-{}", map_x, map_y);
+        if !coords.contains_key(&coord_key) {
+            coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+            if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+                for &sprite in sprite_list {
+                    let index = (*found_sprites_count as usize) * 5; // Convert u32 to usize
+
+                    found_sprites[index..index + 5].copy_from_slice(&sprite);
+                    *found_sprites_count += 1;
+                }
+            }
+        }
+
         // don't do any more coordinate increments if hit
         if hit == 1 {
             break;
@@ -318,10 +346,33 @@ pub fn draw_walls_raycast(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
-) -> () {
+    found_sprites_array: *mut f32,
+    all_sprites_array: *mut f32,
+    all_sprites_count: usize,
+) -> u32 {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data =
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let all_sprites_data =
+        unsafe { std::slice::from_raw_parts(all_sprites_array, all_sprites_count * 5) };
+    let mut found_sprites =
+        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, all_sprites_count * 5) };
+
+    let mut coords: HashMap<String, Coords> = HashMap::new();
+    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
+    let mut found_sprites_count = 0;
+
+    // map them by x & y coordinate for easy access
+    for i in (0..all_sprites_count * 5).step_by(5) {
+        let sprite_data: [_; 5] = all_sprites_data[i..i + 5].try_into().unwrap();
+
+        let key = (sprite_data[0].floor() as i32, sprite_data[1].floor() as i32);
+
+        sprites_map
+            .entry(key)
+            .or_insert_with(Vec::new)
+            .push(sprite_data);
+    }
 
     for column in 0..width_resolution {
         let (perp_wall_dist, col_data) = raycast_column(
@@ -336,108 +387,112 @@ pub fn draw_walls_raycast(
             light_range,
             range,
             wall_texture_width,
+            Some(&mut coords),
+            Some(&mut sprites_map),
+            Some(&mut found_sprites_count),
+            Some(&mut found_sprites),
         );
 
         copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
         copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
     }
-}
 
-pub fn raycast_visible_coordinates(
-    position: JsValue,
-    width_resolution: usize,
-    range: i32,
-    map_array: *mut u32,
-    map_width: i32,
-    all_sprites_array: *mut f32,
-    sprites_count: usize,
-    found_sprites_array: *mut f32,
-) -> usize {
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let all_sprites_data =
-        unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 5) };
-    let map_data =
-        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
-    let found_sprites =
-        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 5) };
-
-    // TODO: perhaps gather the coords during the raycasting wall stage?
-    let mut coords: HashMap<String, Coords> = HashMap::new();
-    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
-    let mut found_sprites_count = 0;
-
-    // map them by x & y coordinate for easy access
-    for i in (0..sprites_count * 5).step_by(5) {
-        let sprite_data: [_; 5] = all_sprites_data[i..i + 5].try_into().unwrap();
-
-        let key = (sprite_data[0].floor() as i32, sprite_data[1].floor() as i32);
-
-        sprites_map
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push(sprite_data);
-    }
-
-    for column in 0..width_resolution {
-        let camera_x = 2.0 * column as f32 / width_resolution as f32 - 1.0;
-        let ray_dir_x = position.dir_x + position.plane_x * camera_x;
-        let ray_dir_y = position.dir_y + position.plane_y * camera_x;
-
-        let mut map_x = position.x.floor() as i32;
-        let mut map_y = position.y.floor() as i32;
-        let delta_dist_x = (1.0 / ray_dir_x).abs();
-        let delta_dist_y = (1.0 / ray_dir_y).abs();
-
-        let (mut side_dist_x, step_x) = if ray_dir_x < 0.0 {
-            ((position.x - map_x as f32) * delta_dist_x, -1)
-        } else {
-            (((map_x + 1) as f32 - position.x) * delta_dist_x, 1)
-        };
-        let (mut side_dist_y, step_y) = if ray_dir_y < 0.0 {
-            ((position.y - map_y as f32) * delta_dist_y, -1)
-        } else {
-            (((map_y + 1) as f32 - position.y) * delta_dist_y, 1)
-        };
-
-        let mut hit = false;
-        let mut current_range = range;
-
-        while !hit && current_range >= 0 {
-            let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
-
-            // // TODO: there isn't only thick walls anymore, thin walls should affect this too?
-            // if has_set_bits(value, &[0], true) {
-            //     hit = true;
-            // }
-
-            let coord_key = format!("{}-{}", map_x, map_y);
-            if !coords.contains_key(&coord_key) {
-                coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
-
-                if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-                    for &sprite in sprite_list {
-                        found_sprites[found_sprites_count * 5..found_sprites_count * 5 + 5]
-                            .copy_from_slice(&sprite);
-                        found_sprites_count += 1;
-                    }
-                }
-            }
-
-            if side_dist_x < side_dist_y {
-                side_dist_x += delta_dist_x;
-                map_x += step_x;
-            } else {
-                side_dist_y += delta_dist_y;
-                map_y += step_y;
-            }
-            current_range -= 1;
-        }
-    }
-
-    let js: JsValue = vec![found_sprites_count as f32].into();
-    console::log_2(&"Znj?".into(), &js);
     found_sprites_count
 }
+
+// pub fn raycast_visible_coordinates(
+//     position: JsValue,
+//     width_resolution: usize,
+//     range: i32,
+//     map_array: *mut u32,
+//     map_width: i32,
+//     all_sprites_array: *mut f32,
+//     sprites_count: usize,
+//     found_sprites_array: *mut f32,
+// ) -> usize {
+//     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+//     let all_sprites_data =
+//         unsafe { std::slice::from_raw_parts(all_sprites_array, sprites_count * 5) };
+//     let map_data =
+//         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
+//     let found_sprites =
+//         unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 5) };
+
+//     // TODO: perhaps gather the coords during the raycasting wall stage?
+//     let mut coords: HashMap<String, Coords> = HashMap::new();
+//     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
+//     let mut found_sprites_count = 0;
+
+//     // map them by x & y coordinate for easy access
+//     for i in (0..sprites_count * 5).step_by(5) {
+//         let sprite_data: [_; 5] = all_sprites_data[i..i + 5].try_into().unwrap();
+
+//         let key = (sprite_data[0].floor() as i32, sprite_data[1].floor() as i32);
+
+//         sprites_map
+//             .entry(key)
+//             .or_insert_with(Vec::new)
+//             .push(sprite_data);
+//     }
+
+//     for column in 0..width_resolution {
+//         let camera_x = 2.0 * column as f32 / width_resolution as f32 - 1.0;
+//         let ray_dir_x = position.dir_x + position.plane_x * camera_x;
+//         let ray_dir_y = position.dir_y + position.plane_y * camera_x;
+
+//         let mut map_x = position.x.floor() as i32;
+//         let mut map_y = position.y.floor() as i32;
+//         let delta_dist_x = (1.0 / ray_dir_x).abs();
+//         let delta_dist_y = (1.0 / ray_dir_y).abs();
+
+//         let (mut side_dist_x, step_x) = if ray_dir_x < 0.0 {
+//             ((position.x - map_x as f32) * delta_dist_x, -1)
+//         } else {
+//             (((map_x + 1) as f32 - position.x) * delta_dist_x, 1)
+//         };
+//         let (mut side_dist_y, step_y) = if ray_dir_y < 0.0 {
+//             ((position.y - map_y as f32) * delta_dist_y, -1)
+//         } else {
+//             (((map_y + 1) as f32 - position.y) * delta_dist_y, 1)
+//         };
+
+//         let mut hit = false;
+//         let mut current_range = range;
+
+//         while !hit && current_range >= 0 {
+//             let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
+
+//             // // TODO: there isn't only thick walls anymore, thin walls should affect this too?
+//             // if has_set_bits(value, &[0], true) {
+//             //     hit = true;
+//             // }
+
+//             let coord_key = format!("{}-{}", map_x, map_y);
+//             if !coords.contains_key(&coord_key) {
+//                 coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+//                 if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+//                     for &sprite in sprite_list {
+//                         found_sprites[found_sprites_count * 5..found_sprites_count * 5 + 5]
+//                             .copy_from_slice(&sprite);
+//                         found_sprites_count += 1;
+//                     }
+//                 }
+//             }
+
+//             if side_dist_x < side_dist_y {
+//                 side_dist_x += delta_dist_x;
+//                 map_x += step_x;
+//             } else {
+//                 side_dist_y += delta_dist_y;
+//                 map_y += step_y;
+//             }
+//             current_range -= 1;
+//         }
+//     }
+
+//     found_sprites_count
+// }
 
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
@@ -650,17 +705,9 @@ pub fn draw_sprites_wasm(
     all_sprites_array: *mut f32,
     all_sprites_count: usize,
     found_sprites_array: *mut f32,
+    found_sprites_count: u32,
 ) -> JsValue {
-    let found_sprites_length = raycast_visible_coordinates(
-        position_js.clone(),
-        100, // this really needs only enough to hit each square once
-        range,
-        map_array,
-        map_width,
-        all_sprites_array,
-        all_sprites_count,
-        found_sprites_array,
-    );
+    let found_sprites_length = found_sprites_count as usize;
 
     let mut stripe_parts: Vec<StripePart> = Vec::new();
 
@@ -807,6 +854,10 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        None,
+        None,
+        None,
+        None,
     );
 
     let mut x = position.x;
@@ -836,6 +887,10 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        None,
+        None,
+        None,
+        None,
     );
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
@@ -861,6 +916,10 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        None,
+        None,
+        None,
+        None,
     );
     if perp_wall_dist_y > 0.2 {
         y += position.dir_y * distance;
