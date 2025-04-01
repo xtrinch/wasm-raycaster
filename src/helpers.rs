@@ -276,3 +276,10 @@ pub fn get_bits_in_grid(
         .enumerate()
         .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
 }
+
+pub fn get_bits(value: u32, values: &[u8]) -> u32 {
+    values
+        .iter()
+        .enumerate()
+        .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
+}

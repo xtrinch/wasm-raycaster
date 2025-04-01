@@ -1,6 +1,6 @@
 use helpers::{
-    copy_to_raw_pointer, get_bits_in_grid, get_grid_value, has_set_bits, has_set_bits_in_grid,
-    parse_sprite_texture_array, Coords, Position, Sprite, StripePart, TranslationResult,
+    copy_to_raw_pointer, get_bits, get_grid_value, has_set_bits, parse_sprite_texture_array,
+    Coords, Position, Sprite, StripePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -26,7 +26,7 @@ pub fn raycast_column(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
-) -> (f32, usize, [i32; 7]) {
+) -> (f32, [i32; 7]) {
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
 
@@ -89,16 +89,16 @@ pub fn raycast_column(
                 let is_east = !has_set_north_bit;
 
                 // from east or west side
-                // offset is defined from the east
+                // offset is defined from the east or north
                 let offset: f32;
                 let distance_offset: f32;
-                let bit_offset =
-                    get_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[8, 9, 10, 11]);
-                let bit_thickness =
-                    get_bits_in_grid(map_x, map_y, map_width as i32, &map_data, &[12, 13, 14, 15]);
+                let bit_offset = get_bits(value, &[8, 9, 10, 11]);
+                let bit_thickness = get_bits(value, &[12, 13, 14, 15]);
+                let bit_width = get_bits(value, &[16, 17, 18, 19]);
                 let offset1: f32 = bit_offset as f32 / 10.0;
-                // let thickness = 0.1;
-                let thickness = bit_thickness as f32 / 10.0;
+                let thickness: f32 = bit_thickness as f32 / 10.0;
+                let depth: f32 = bit_width as f32 / 10.0;
+
                 let ray_dirs: [f32; 2];
                 let sides: [i32; 2];
 
@@ -129,12 +129,12 @@ pub fn raycast_column(
                     new_map_start_x = map_x as f32 + offset;
                     new_map_end_x = map_x as f32 + offset;
                     new_map_start_y = map_y as f32;
-                    new_map_end_y = map_y as f32 + 1.0 as f32;
+                    new_map_end_y = map_y as f32 + (1.0 as f32 * depth);
                 } else {
                     new_map_start_y = map_y as f32 + offset;
                     new_map_end_y = map_y as f32 + offset;
                     new_map_start_x = map_x as f32;
-                    new_map_end_x = map_x as f32 + 1.0 as f32;
+                    new_map_end_x = map_x as f32 + (1.0 as f32 * depth);
                 }
 
                 // the segment of line at the offset of the wall
@@ -149,7 +149,7 @@ pub fn raycast_column(
                     // depending on which side we're looking at the space between the offsets from
                     segment_map_adder = 0.0;
                 } else {
-                    segment_map_adder = 1.0;
+                    segment_map_adder = (1.0 * depth) / 1.0;
                 }
 
                 let new_map_between_start_x;
@@ -185,21 +185,31 @@ pub fn raycast_column(
                     end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32).into(),
                 });
 
+                // check main segment line
                 let intersection = segment.relate(&line).unique_intersection();
                 if let Some(_) = intersection {
                     hit = 1;
                     // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
+
                     side_dist_x += delta_dist_x * (1.0 - (distance_offset));
                     side_dist_y += delta_dist_y * (1.0 - (distance_offset));
 
                     side = sides[0];
-                }
+                } else {
+                    // check line between segments of thickness
+                    let intersection_between = segment_between.relate(&line).unique_intersection();
+                    if let Some(_) = intersection_between {
+                        hit = 1;
+                        side = sides[1];
+                        hit_type = 1; // show wall
 
-                let intersection_between = segment_between.relate(&line).unique_intersection();
-                if let Some(_) = intersection_between {
-                    hit = 1;
-                    side = sides[1];
-                    hit_type = 1; // show wall
+                        // move it back for the amount it should move back
+                        // if we're looking at it from the shortened side
+                        if ray_dirs[1] < 0.0 {
+                            side_dist_y += delta_dist_y * (1.0 - depth);
+                            side_dist_x += delta_dist_x * (1.0 - depth);
+                        }
+                    }
                 }
             }
 
@@ -279,11 +289,9 @@ pub fn raycast_column(
 
     let left = ((column as f32 * width_spacing).ceil() as i32) as i32;
     let wall_height = (draw_end_y - draw_start_y) as i32;
-    let array_idx = 8 * column as usize;
 
     (
         perp_wall_dist,
-        array_idx,
         [
             tex_x,
             left,
@@ -316,7 +324,7 @@ pub fn draw_walls_raycast(
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     for column in 0..width_resolution {
-        let (perp_wall_dist, array_idx, col_data) = raycast_column(
+        let (perp_wall_dist, col_data) = raycast_column(
             column,
             position,
             map_data,
@@ -330,7 +338,7 @@ pub fn draw_walls_raycast(
             wall_texture_width,
         );
 
-        copy_to_raw_pointer(columns_array, array_idx, &col_data);
+        copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
         copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
     }
 }
@@ -353,6 +361,7 @@ pub fn raycast_visible_coordinates(
     let found_sprites =
         unsafe { std::slice::from_raw_parts_mut(found_sprites_array, sprites_count * 5) };
 
+    // TODO: perhaps gather the coords during the raycasting wall stage?
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
     let mut found_sprites_count = 0;
@@ -396,10 +405,10 @@ pub fn raycast_visible_coordinates(
         while !hit && current_range >= 0 {
             let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
 
-            // TODO: there isn't only thick walls anymore, thin walls should affect this too?
-            if has_set_bits(value, &[0], true) {
-                hit = true;
-            }
+            // // TODO: there isn't only thick walls anymore, thin walls should affect this too?
+            // if has_set_bits(value, &[0], true) {
+            //     hit = true;
+            // }
 
             let coord_key = format!("{}-{}", map_x, map_y);
             if !coords.contains_key(&coord_key) {
@@ -425,6 +434,8 @@ pub fn raycast_visible_coordinates(
         }
     }
 
+    let js: JsValue = vec![found_sprites_count as f32].into();
+    console::log_2(&"Znj?".into(), &js);
     found_sprites_count
 }
 
@@ -784,7 +795,7 @@ pub fn walk(
     }
 
     // raycast middle column to get the distance
-    let (perp_wall_dist, _, col_data) = raycast_column(
+    let (perp_wall_dist, col_data) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position,
         map_data,
@@ -809,13 +820,11 @@ pub fn walk(
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
-    // if we're near the wall, check if we can move x
     let mut raycast_position_x = raycast_position.clone();
-    // raycast_position_x.x = x + position.dir_x * distance;
     raycast_position_x.dir_y = 0.0;
 
     // raycast middle column to get the distance
-    let (perp_wall_dist_x, _, _) = raycast_column(
+    let (perp_wall_dist_x, _) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position_x,
         map_data,
@@ -828,7 +837,6 @@ pub fn walk(
         range,
         wall_texture_width,
     );
-    // if perp_wall_dist <= perp_wall_dist_x {
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
 
@@ -841,7 +849,7 @@ pub fn walk(
     raycast_position_y.dir_x = 0.0;
 
     // raycast middle column to get the distance
-    let (perp_wall_dist_y, _, _) = raycast_column(
+    let (perp_wall_dist_y, _) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position_y,
         map_data,
@@ -855,7 +863,6 @@ pub fn walk(
         wall_texture_width,
     );
     if perp_wall_dist_y > 0.2 {
-        // if perp_wall_dist <= perp_wall_dist_y {
         y += position.dir_y * distance;
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
