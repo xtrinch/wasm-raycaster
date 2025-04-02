@@ -109,9 +109,12 @@ pub fn raycast_column(
                 let bit_offset = get_bits(value, &[8, 9, 10, 11]);
                 let bit_thickness = get_bits(value, &[12, 13, 14, 15]);
                 let bit_width = get_bits(value, &[16, 17, 18, 19]);
-                let offset1: f32 = bit_offset as f32 / 10.0;
-                let thickness: f32 = bit_thickness as f32 / 10.0;
-                let depth: f32 = bit_width as f32 / 10.0;
+                let bit_offset_secondary = get_bits(value, &[20, 21, 22, 23]);
+
+                let offset1: f32 = (bit_offset % 10) as f32 / 10.0;
+                let thickness: f32 = (bit_thickness % 10) as f32 / 10.0;
+                let offset_secondary: f32 = (bit_offset_secondary % 10) as f32 / 10.0;
+                let depth: f32 = (bit_width % 10) as f32 / 10.0;
 
                 let ray_dirs: [f32; 2];
                 let sides: [i32; 2];
@@ -142,13 +145,13 @@ pub fn raycast_column(
                 if is_east {
                     new_map_start_x = map_x as f32 + offset;
                     new_map_end_x = map_x as f32 + offset;
-                    new_map_start_y = map_y as f32;
-                    new_map_end_y = map_y as f32 + (1.0 as f32 * depth);
+                    new_map_start_y = map_y as f32 + offset_secondary;
+                    new_map_end_y = map_y as f32 + offset_secondary + (depth);
                 } else {
                     new_map_start_y = map_y as f32 + offset;
                     new_map_end_y = map_y as f32 + offset;
-                    new_map_start_x = map_x as f32;
-                    new_map_end_x = map_x as f32 + (1.0 as f32 * depth);
+                    new_map_start_x = map_x as f32 + offset_secondary;
+                    new_map_end_x = map_x as f32 + offset_secondary + (depth);
                 }
 
                 // the segment of line at the offset of the wall
@@ -161,9 +164,9 @@ pub fn raycast_column(
                 // the segment of line between the offsets of the wall
                 if ray_dirs[1] > 0.0 {
                     // depending on which side we're looking at the space between the offsets from
-                    segment_map_adder = 0.0;
+                    segment_map_adder = offset_secondary + 0.0;
                 } else {
-                    segment_map_adder = (1.0 * depth) / 1.0;
+                    segment_map_adder = offset_secondary + (depth);
                 }
 
                 let new_map_between_start_x;
@@ -217,11 +220,19 @@ pub fn raycast_column(
                         side = sides[1];
                         hit_type = 1; // show wall
 
-                        // move it back for the amount it should move back
-                        // if we're looking at it from the shortened side
                         if ray_dirs[1] < 0.0 {
+                            // move it back for the amount it should move back due to depth
+                            // if we're looking at it from the shortened side
                             side_dist_y += delta_dist_y * (1.0 - depth);
                             side_dist_x += delta_dist_x * (1.0 - depth);
+
+                            // move it forward for the amount it should move forward due to secondary offset
+                            side_dist_y -= delta_dist_y * (offset_secondary);
+                            side_dist_x -= delta_dist_x * (offset_secondary);
+                        } else {
+                            // move it back for the amount it should move back due to secondary offset
+                            side_dist_y += delta_dist_y * (offset_secondary);
+                            side_dist_x += delta_dist_x * (offset_secondary);
                         }
                     }
                 }
@@ -232,6 +243,7 @@ pub fn raycast_column(
             }
         }
 
+        // add in sprites from the coordinate in the way, if we haven't already
         let coord_key = format!("{}-{}", map_x, map_y);
         if !coords.contains_key(&coord_key) {
             coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
