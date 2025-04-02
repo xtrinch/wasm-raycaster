@@ -1,7 +1,7 @@
 import { Position } from "../game/player";
 
 interface MapDetailProps {
-  map: Uint32Array;
+  map: BigUint64Array;
   size: number;
   playerPosition: Position;
 }
@@ -14,8 +14,8 @@ const MapDetail = (props: MapDetailProps) => {
           <div
             key={idx}
             className={`w-[4px] h-[4px] ${
-              (pix & 1) == 1 ? "bg-gray-500" : "bg-black"
-            } ${pix == 2 ? "bg-green-500" : "bg-black"}`}
+              (pix & BigInt(1)) == BigInt(1) ? "bg-gray-500" : "bg-black"
+            } ${false ? "bg-green-500" : "bg-black"}`}
           />
         );
       })}

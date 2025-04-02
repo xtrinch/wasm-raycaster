@@ -118,6 +118,34 @@ impl WasmUInt32Array {
     }
 }
 
+#[wasm_bindgen]
+pub struct WasmUInt64Array(Vec<u64>);
+
+#[wasm_bindgen]
+impl WasmUInt64Array {
+    #[wasm_bindgen(constructor)]
+    pub fn new(size: usize) -> Self {
+        let buffer = vec![0; size];
+        Self { 0: buffer }
+    }
+
+    #[wasm_bindgen(getter, js_name = buffer)]
+    pub fn buffer(&mut self) -> js_sys::BigUint64Array {
+        unsafe { js_sys::BigUint64Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
+    }
+
+    #[wasm_bindgen(getter, js_name = ptr)]
+    pub fn ptr(&mut self) -> *mut u64 {
+        self.0.as_mut_ptr()
+    }
+
+    #[wasm_bindgen]
+    pub fn set(&mut self, data: js_sys::BigUint64Array) {
+        let len = self.0.len().min(data.length() as usize);
+        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
+    }
+}
+
 pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
     unsafe {
         let target_ptr = ptr.add(index);
@@ -203,7 +231,7 @@ pub struct StripePart {
     pub angle: i32,
 }
 
-pub fn has_set_bits(value: u32, values: &[u8], all: bool) -> bool {
+pub fn has_set_bits(value: u64, values: &[u8], all: bool) -> bool {
     let has_bits = if all {
         values.iter().all(|&bit| value & (1 << bit) != 0)
     } else {
@@ -213,14 +241,14 @@ pub fn has_set_bits(value: u32, values: &[u8], all: bool) -> bool {
     has_bits
 }
 
-pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u32]) -> u32 {
+pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) -> u64 {
     if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
-        return (0);
+        return 0;
     }
 
     let map_index = (map_y * map_width + map_x) as usize;
     if map_index >= map_data.len() {
-        return (0);
+        return 0;
     }
 
     return map_data[map_index];
@@ -230,10 +258,10 @@ pub fn has_set_bits_in_grid(
     map_x: i32,
     map_y: i32,
     map_width: i32,
-    map_data: &[u32],
+    map_data: &[u64],
     values: &[u8],
     all: bool,
-) -> (bool, u32) {
+) -> (bool, u64) {
     if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
         return (false, 0);
     }
@@ -258,9 +286,9 @@ pub fn get_bits_in_grid(
     map_x: i32,
     map_y: i32,
     map_width: i32,
-    map_data: &[u32],
+    map_data: &[u64],
     values: &[u8],
-) -> u32 {
+) -> u64 {
     if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
         return 0;
     }
@@ -277,7 +305,7 @@ pub fn get_bits_in_grid(
         .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
 }
 
-pub fn get_bits(value: u32, values: &[u8]) -> u32 {
+pub fn get_bits(value: u64, values: &[u8]) -> u64 {
     values
         .iter()
         .enumerate()

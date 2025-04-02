@@ -7,7 +7,7 @@ import {
   StripePart,
   WasmFloat32Array,
   WasmInt32Array,
-  WasmUInt32Array,
+  WasmUInt64Array,
   WasmUint8Array,
 } from "../../../wasm";
 import { Bitmap } from "./bitmap";
@@ -54,7 +54,7 @@ export class Camera {
   public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
-  public mapRef: WasmUInt32Array;
+  public mapRef: WasmUInt64Array;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d");
@@ -110,7 +110,7 @@ export class Camera {
       Object.values(SpriteType).length * 3
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
-    this.mapRef = new WasmUInt32Array(map.size * map.size);
+    this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
 
     makeAutoObservable(this);
