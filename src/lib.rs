@@ -111,10 +111,10 @@ pub fn raycast_column(
                 let bit_width = get_bits(value, &[16, 17, 18, 19]);
                 let bit_offset_secondary = get_bits(value, &[20, 21, 22, 23]);
 
-                let offset1: f32 = (bit_offset % 10) as f32 / 10.0;
-                let thickness: f32 = (bit_thickness % 10) as f32 / 10.0;
-                let offset_secondary: f32 = (bit_offset_secondary % 10) as f32 / 10.0;
-                let depth: f32 = (bit_width % 10) as f32 / 10.0;
+                let offset1: f32 = (bit_offset % 11) as f32 / 10.0;
+                let thickness: f32 = (bit_thickness % 11) as f32 / 10.0;
+                let offset_secondary: f32 = (bit_offset_secondary % 11) as f32 / 10.0;
+                let depth: f32 = (bit_width % 11) as f32 / 10.0;
 
                 let ray_dirs: [f32; 2];
                 let sides: [i32; 2];
