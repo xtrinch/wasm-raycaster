@@ -617,12 +617,6 @@ pub fn draw_sprites_wasm(
     light_range: f32,
     map_light: f32,
     width_resolution: usize,
-    range: i32,
-    map_array: *mut u32,
-    map_width: i32,
-    all_sprites_array: *mut f32,
-    all_sprites_count: usize,
-    found_sprites_array: *mut f32,
     found_sprites_count: u32,
 ) -> JsValue {
     let found_sprites_length = found_sprites_count as usize;

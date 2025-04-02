@@ -51,13 +51,8 @@ export class GameLoop {
   }
 
   findSpawnPoint() {
-    for (let y = 4; y < this.map.size; y++) {
-      for (let x = 4; x < this.map.size; x++) {
-        if (this.map.get(x, y) !== 1) {
-          // return new Player(x + 0.5, y + 0.5, -1, 0, 0, 0.66); // original
-          return new Player(x, y, 0, -1, 0, 0, 1.1, this.camera);
-        }
-      }
-    }
+    // return new Player(x + 0.5, y + 0.5, -1, 0, 0, 0.66); // original
+    // return new Player(4, 4, 0, -1, 0, 0, 1.1, this.camera); // looking east
+    return new Player(4, 4, 0, 0, -1, -1.1, 0, this.camera); // looking north
   }
 }

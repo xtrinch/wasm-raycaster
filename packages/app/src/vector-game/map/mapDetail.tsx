@@ -14,7 +14,7 @@ const MapDetail = (props: MapDetailProps) => {
           <div
             key={idx}
             className={`w-[4px] h-[4px] ${
-              pix == 1 ? "bg-gray-500" : "bg-black"
+              (pix & 1) == 1 ? "bg-gray-500" : "bg-black"
             } ${pix == 2 ? "bg-green-500" : "bg-black"}`}
           />
         );

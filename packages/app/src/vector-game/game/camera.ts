@@ -291,7 +291,6 @@ export class Camera {
   drawSpritesWasm(
     player: Player,
     map: GridMap,
-    spriteMap: SpriteMap,
     foundSpritesCount: number
   ): void {
     const stripeParts: StripePart[] = draw_sprites_wasm(
@@ -306,12 +305,6 @@ export class Camera {
       this.lightRange,
       map.light,
       this.widthResolution,
-      this.range,
-      this.mapRef.ptr,
-      map.size, // Width of original 2D array
-      this.allSpritesRef.ptr,
-      spriteMap.size,
-      this.visibleSpritesRef.ptr,
       foundSpritesCount
     );
 
@@ -354,7 +347,7 @@ export class Camera {
 
     this.drawCeilingFloorRaycastWasm(player, map);
     const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
-    this.drawSpritesWasm(player, map, spriteMap, foundSpritesCount);
+    this.drawSpritesWasm(player, map, foundSpritesCount);
 
     this.ctx.restore();
   }
