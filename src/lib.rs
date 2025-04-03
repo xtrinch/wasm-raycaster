@@ -97,15 +97,19 @@ pub fn raycast_column(
         // if wall bit is set
         if has_set_bits(value, &[0], true) {
             hit_type = 1 as i8;
-            let is_door = has_set_bits(value, &[0, 4, 5], true);
+            // let is_door = has_set_bits(value, &[0, 4, 5], true);
             // has door bit set
-            if is_door {
-                hit_type = value as i8;
-            }
+            // if is_door {
+            //     hit_type = value as i8;
+            // }
 
             // thin wall
             // if has_set_bits(value, &[0, 4], true) {
-            let is_doors = [has_set_bits(value, &[0, 4, 5], true)];
+            let is_doors = [
+                has_set_bits(value, &[5], true),
+                has_set_bits(value, &[4], true),
+                has_set_bits(value, &[4], true),
+            ];
 
             let bit_offsets = [
                 get_bits(value, &[8, 9, 10, 11]),
@@ -145,6 +149,12 @@ pub fn raycast_column(
                     continue;
                 }
                 let is_east = !has_set_north_bits[i];
+                let is_door = is_doors[i];
+
+                // has door bit set
+                if is_door {
+                    hit_type = value as i8;
+                }
 
                 let mut local_delta_dist_x = 0.0;
                 let mut local_delta_dist_y = 0.0;
