@@ -18,7 +18,10 @@ const Map = () => {
     return <></>;
   }
   return (
-    <div className="absolute bottom-0 left-0" style={{ width: size * 4 }}>
+    <div
+      className="absolute bottom-0 left-0 min-w-[100px]"
+      style={{ width: size * 4 }}
+    >
       <div className="text-white">{fps} FPS</div>
       <MapPerson playerPosition={{ ...playerPosition }} size={size} />
       <MapDetail playerPosition={playerPosition} map={map} size={size} />
