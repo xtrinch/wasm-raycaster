@@ -12,6 +12,7 @@ use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
+use core::array::from_fn;
 
 pub fn raycast_column(
     column: i32,
@@ -111,25 +112,62 @@ pub fn raycast_column(
                 has_set_bits(value, &[4], true),
             ];
 
+            let initial_bit_offset = 16;
             let bit_offsets = [
-                get_bits(value, &[8, 9, 10, 11]),
-                get_bits(value, &[24, 25, 26, 27]),
-                get_bits(value, &[40, 41, 42, 43]),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 16 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 32 + i as u8),
+                ),
             ];
             let bit_thicknesses = [
-                get_bits(value, &[12, 13, 14, 15]),
-                get_bits(value, &[28, 29, 30, 31]),
-                get_bits(value, &[44, 45, 46, 47]),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 4 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 20 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 36 + i as u8),
+                ),
             ];
             let bit_widths = [
-                get_bits(value, &[16, 17, 18, 19]),
-                get_bits(value, &[32, 33, 34, 35]),
-                get_bits(value, &[48, 49, 50, 51]),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 8 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 24 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 40 + i as u8),
+                ),
             ];
             let bit_offset_secondaries = [
-                get_bits(value, &[20, 21, 22, 23]),
-                get_bits(value, &[36, 37, 38, 39]),
-                get_bits(value, &[52, 53, 54, 55]),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 12 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 28 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 44 + i as u8),
+                ),
             ];
             let has_set_north_bits = [
                 has_set_bits(value, &[6], false),
@@ -150,11 +188,6 @@ pub fn raycast_column(
                 }
                 let is_east = !has_set_north_bits[i];
                 let is_door = is_doors[i];
-
-                // has door bit set
-                if is_door {
-                    hit_type = value as i8;
-                }
 
                 let mut local_delta_dist_x = 0.0;
                 let mut local_delta_dist_y = 0.0;
@@ -319,6 +352,12 @@ pub fn raycast_column(
                         hit = 1;
                         wall_width = local_width;
                         wall_offset = local_offset;
+                        // has door bit set
+                        if is_door {
+                            hit_type = value as i8;
+                        } else {
+                            hit_type = 1;
+                        }
                     }
                 }
             }
@@ -326,7 +365,6 @@ pub fn raycast_column(
                 side_dist_x += coord_delta_dist_x;
                 side_dist_y += coord_delta_dist_y;
                 calculated_texture_width = (wall_texture_width as f32) as i32;
-                // calculated_texture_width = (wall_texture_width as f32 * local_width) as i32;
             }
         }
 
