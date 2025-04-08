@@ -112,6 +112,8 @@ pub fn raycast_column(
                 has_set_bits(value, &[4], true),
             ];
 
+            let is_windows = [has_set_bits(value, &[8], true), false, false];
+
             let initial_bit_offset = 16;
             let bit_offsets = [
                 get_bits(
@@ -183,11 +185,12 @@ pub fn raycast_column(
             // we support two lines per coordinate
             for i in 0..3 {
                 // no shenanigans if the thickness is 0
-                if bit_thicknesses[i] == 0 {
+                if bit_widths[i] == 0 {
                     continue;
                 }
                 let is_east = !has_set_north_bits[i];
                 let is_door = is_doors[i];
+                let is_window = is_windows[i];
 
                 let mut local_delta_dist_x = 0.0;
                 let mut local_delta_dist_y = 0.0;
@@ -354,7 +357,11 @@ pub fn raycast_column(
                         wall_offset = local_offset;
                         // has door bit set
                         if is_door {
-                            hit_type = value as i8;
+                            hit_type = 0x2 as i8;
+                        } else if is_window {
+                            hit_type = 0x3 as i8;
+                            // TODO: remove
+                            // hit = 0;
                         } else {
                             hit_type = 1;
                         }
@@ -368,6 +375,7 @@ pub fn raycast_column(
             }
         }
 
+        // handle thick wall; TODO: by bitmap
         if value == 1 {
             hit = 1;
         }

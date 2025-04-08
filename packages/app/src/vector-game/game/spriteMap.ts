@@ -16,6 +16,7 @@ export class SpriteMap {
   constructor() {
     // x, y, angle (0-360), height (multiplier of 1 z), type
     this.sprites = [
+      [3, -1, 0, 1, SpriteType.TREE_COLUMNAR],
       [-1, 5, 0, 1.5, SpriteType.TREE_CONE],
       [-2, 5, 0, 0.5, SpriteType.TREE_CONE],
       [-1, 6, 0, 0.9, SpriteType.BUSH1],

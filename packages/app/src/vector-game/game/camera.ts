@@ -267,7 +267,18 @@ export class Camera {
       ] = this.columnsRef.buffer.slice(idx, idx + 7);
 
       if (hit) {
-        const texture = hit_type === 1 ? map.wallTexture : map.doorTexture;
+        let texture: Bitmap;
+        switch (hit_type) {
+          case 1:
+            texture = map.wallTexture;
+            break;
+          case 2:
+            texture = map.doorTexture;
+            break;
+          case 3:
+            texture = map.windowTexture;
+            break;
+        }
         this.ctx.drawImage(
           texture.image,
           tex_x, // sx
@@ -279,9 +290,17 @@ export class Camera {
           width, // dw
           wall_height // dh
         );
+
+        this.ctx.save();
         this.ctx.globalAlpha = global_alpha / 100;
+        // if (hit_type === 3) {
+        //   this.ctx.fillStyle = "#333";
+        //   this.ctx.globalAlpha = 0.7;
+        // }
+        // black overlay to simulate darkness
         this.ctx.fillRect(left, draw_start_y, width, wall_height);
-        this.ctx.globalAlpha = 1;
+        this.ctx.restore();
+        // this.ctx.globalAlpha = 1;
       }
     }
 

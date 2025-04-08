@@ -10,6 +10,7 @@ import treeTextureColumnar from "../../assets/trees/columnnar.png";
 import treeTexture from "../../assets/trees/pyramid.png";
 import treeTextureVase from "../../assets/trees/vase.png";
 import wallTexture from "../../assets/wall_texture.jpg";
+import windowTexture from "../../assets/window.png";
 import lady1Texture from "../../assets/woman/woman1.png";
 import lady2Texture from "../../assets/woman/woman2.png";
 import lady3Texture from "../../assets/woman/woman3.png";
@@ -49,6 +50,7 @@ export class GridMap {
   public pillarTexture: Bitmap;
   public bush1Texture: Bitmap;
   public doorTexture: Bitmap;
+  public windowTexture: Bitmap;
   public ladyTextures: Bitmap[];
   public light: number;
 
@@ -56,6 +58,7 @@ export class GridMap {
     this.size = size;
     this.wallGrid = new BigUint64Array(size * size);
     this.skybox = new Bitmap(panorama, 2000, 750);
+    this.windowTexture = new Bitmap(windowTexture, 1024, 1024);
     this.wallTexture = new Bitmap(wallTexture, 1024, 1024);
     this.doorTexture = new Bitmap(doorTexture, 1024, 1024); // these two should be equal width / height for simplicity sake
     this.roadTexture = new Bitmap(roadTexture, 874, 874);
@@ -79,7 +82,7 @@ export class GridMap {
     this.light = 0;
 
     // 64 bits, 8 bytes
-    //     offset_secondary3  width3     thickness3 offset_primary3    offset_secondary2  width2     thickness2 offset_primary2    offset_secondary  width     thickness offset_primary   reserve1 reserve2 reserve3 reserve4 reserve5 reserve6 reserve7 reserve 8   north2  north  door  door23   road   north3 ceiling&floor  wall
+    //     offset_secondary3  width3     thickness3 offset_primary3    offset_secondary2  width2     thickness2 offset_primary2    offset_secondary  width     thickness offset_primary   reserve1 reserve2 reserve3 reserve4 reserve5 reserve6 reserve7 is_window   north2  north  door  door23   road   north3 ceiling&floor  wall
     // BIN 0000               0000       0000       0000               0000               0000       0000       0000               0000              0000      0000      0000             0        0        0        0        0        0        0        0           0       0      0     0        0      0       0              0
 
     // - offset primary would be from east / north, and secondary for east would be north, and for north it will be east
@@ -104,7 +107,7 @@ export class GridMap {
       /*       0,            1,            2,            3,            4,            5,            6,            7,            8,            9,            10,           11           */
       /* 0  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
       /* 1  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 2  */ 0x0000000000000008, 0x000000000A190059, 0x00000A100A100087, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x00000110191000A9, 0x0000000000000008,
+      /* 2  */ 0x0000000000000008, 0x000000000A190059, 0x00000A200A100087, 0x000000000A010157, 0x000000000A200057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x000000000A100057, 0x00000110191000A9, 0x0000000000000008,
       /* 3  */ 0x0000000000000008, 0x000000000A100037, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000028190017, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x00000A100A190087, 0x0000000000000008,
       /* 4  */ 0x0000000000000008, 0x000000000A100059, 0x000000000A100017, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x000000000A190057, 0x000000000A190057, 0x000000000A190057, 0x00000A190A190087, 0x0000000000000008,
       /* 5  */ 0x0000000000000008, 0x0000000000000008, 0x000000000A100017, 0x0000000000000006, 0x0000000022370057, 0x000000000A190057, 0x0000000000000006, 0x0000000000000006, 0x0000000000000001, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
