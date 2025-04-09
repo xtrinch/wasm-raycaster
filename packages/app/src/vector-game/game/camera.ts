@@ -305,10 +305,7 @@ export class Camera {
 
         this.ctx.save();
         this.ctx.globalAlpha = global_alpha / 100;
-        // if (hit_type === 3) {
-        //   this.ctx.fillStyle = "#333";
-        //   this.ctx.globalAlpha = 0.7;
-        // }
+
         // black overlay to simulate darkness
         this.ctx.fillRect(left, draw_start_y, width, wall_height);
         this.ctx.restore();
@@ -365,9 +362,13 @@ export class Camera {
 
       this.ctx.save();
       // TODO: this is slow, fix
-      // this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
-      // this can be used for sprites but not for windows (there we should use a black overlay)
+      if (spriteType !== SpriteType.COLUMN) {
+        // this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
+        // this can be used for sprites but not for windows (there we should use a black overlay)
+      }
 
+      const width = stripeRightX - stripeLeftX;
+      const height = screenYFloor - screenYCeiling;
       this.ctx.drawImage(
         texture.image,
         texX1, // sx
@@ -376,9 +377,16 @@ export class Camera {
         texture.height, // sh
         stripeLeftX, // dx
         screenYCeiling, // dy
-        stripeRightX - stripeLeftX, // dw
-        screenYFloor - screenYCeiling // dh
+        width, // dw
+        height // dh
       );
+
+      // if (spriteType === SpriteType.COLUMN) {
+      //   this.ctx.globalAlpha = 1 - alpha / 100;
+
+      //   // black overlay to simulate darkness
+      //   this.ctx.fillRect(stripeLeftX, screenYCeiling, width, height);
+      // }
       this.ctx.restore();
     }
   }

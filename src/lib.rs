@@ -728,6 +728,7 @@ pub fn draw_ceiling_floor_raycast(
     }
 }
 
+// TODO: note that z up / down does not work for all resolutions
 pub fn translate_coordinate_to_camera(
     position: Position,
     point_x: f32,
@@ -814,6 +815,7 @@ pub fn draw_sprites_wasm(
         });
     }
 
+    // since we should draw those in the distance first, we sort them
     sprites.sort_by(|a, b| {
         let da = (position.x - a.x).powi(2) + (position.y - a.y).powi(2);
         let db = (position.x - b.x).powi(2) + (position.y - b.y).powi(2);
@@ -842,20 +844,23 @@ pub fn draw_sprites_wasm(
 
         if sprite.r#type == 7 {
             // switch which side we were raycasting from to take the fract part to know where the texture was hit
-            let mut fract = sprite.y.abs().fract();
+            let fract: f32;
             if sprite.side == 1 {
                 fract = sprite.x.abs().fract();
+            } else {
+                fract = sprite.y.abs().fract();
             }
+            let texture_x: i32 = (fract * texture_width as f32) as i32;
             sprite_parts.push(SpritePart {
                 sprite_type: sprite.r#type,
                 sprite_left_x: sprite.column as i32,
                 sprite_right_x: sprite.column as i32 + width_spacing,
                 screen_y_ceiling: projection.screen_y_ceiling as i32,
                 screen_y_floor: projection.screen_y_floor as i32,
-                tex_x1: (fract * texture_width as f32) as i32,
+                tex_x1: texture_x,
                 tex_x2: (1.0
                     + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
-                    + fract * texture_width as f32) as i32,
+                    + texture_x as f32) as i32,
                 alpha: alpha_i,
                 angle: 0,
             });
@@ -938,7 +943,6 @@ pub fn draw_sprites_wasm(
         );
     }
 
-    // serde_wasm_bindgen::to_value(&sprite_parts).unwrap()
     sprite_parts.len()
 }
 

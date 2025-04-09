@@ -10,7 +10,7 @@ import treeTextureColumnar from "../../assets/trees/columnnar.png";
 import treeTexture from "../../assets/trees/pyramid.png";
 import treeTextureVase from "../../assets/trees/vase.png";
 import wallTexture from "../../assets/wall_texture.jpg";
-import windowTexture from "../../assets/window.png";
+import windowTexture from "../../assets/window1.png";
 import lady1Texture from "../../assets/woman/woman1.png";
 import lady2Texture from "../../assets/woman/woman2.png";
 import lady3Texture from "../../assets/woman/woman3.png";
