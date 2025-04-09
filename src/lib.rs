@@ -841,8 +841,9 @@ pub fn draw_sprites_wasm(
             .unwrap_or((100, 100));
 
         if sprite.r#type == 7 {
+            // switch which side we were raycasting from to take the fract part to know where the texture was hit
             let mut fract = sprite.y.abs().fract();
-            if (sprite.side == 1) {
+            if sprite.side == 1 {
                 fract = sprite.x.abs().fract();
             }
             sprite_parts.push(SpritePart {
