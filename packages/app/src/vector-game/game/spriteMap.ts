@@ -7,6 +7,7 @@ export enum SpriteType {
   TREE_VASE = 4,
   TREE_COLUMNAR = 5,
   LADY = 6,
+  COLUMN = 7,
 }
 
 export class SpriteMap {

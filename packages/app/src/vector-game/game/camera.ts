@@ -4,7 +4,6 @@ import {
   draw_ceiling_floor_raycast,
   draw_sprites_wasm,
   draw_walls_raycast,
-  StripePart,
   WasmFloat32Array,
   WasmInt32Array,
   WasmUInt64Array,
@@ -51,6 +50,7 @@ export class Camera {
   public roadTextureRef: WasmUint8Array;
   public doorTextureRef: WasmUint8Array;
   public visibleSpritesRef: WasmFloat32Array;
+  public spritePartsRef: WasmInt32Array;
   public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
@@ -103,8 +103,19 @@ export class Camera {
         )
       )
     );
+    this.spritePartsRef = new WasmInt32Array(
+      (spriteMap.size + // this will be the max sprites there will ever be in here
+        2 * this.widthResolution) * // two times the columns to account for windows
+        5 *
+        2 // we'll expect at most two parts for each
+    ); // this will be the max sprites there will ever be in here
+
     // TODO: don't think this is necessary now that we don't pass it around
-    this.visibleSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
+    this.visibleSpritesRef = new WasmFloat32Array(
+      (spriteMap.size + // this will be the max sprites there will ever be in here
+        2 * this.widthResolution) * // two times the columns to account for windows
+        6
+    );
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
     this.spritesTextureRef = new WasmInt32Array(
       Object.values(SpriteType).length * 3
@@ -254,6 +265,7 @@ export class Camera {
       this.allSpritesRef.ptr,
       spriteMap.size
     );
+    // console.log(foundSpritesCount);
     let width = Math.ceil(this.widthSpacing);
     for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
       let [
@@ -310,41 +322,52 @@ export class Camera {
   drawSpritesWasm(
     player: Player,
     map: GridMap,
-    foundSpritesCount: number
+    foundSpritesCount: number,
+    spriteMap: SpriteMap
   ): void {
-    const stripeParts: StripePart[] = draw_sprites_wasm(
+    const stripePartCount = draw_sprites_wasm(
       player.toRustPosition(),
       this.width,
       this.height,
       this.widthSpacing,
       this.visibleSpritesRef.ptr,
+      this.spritePartsRef.ptr,
       this.zBufferRef.ptr,
       this.spritesTextureRef.ptr,
       Object.values(SpriteType).length * 3,
       this.lightRange,
       map.light,
       this.widthResolution,
-      foundSpritesCount
+      foundSpritesCount,
+      spriteMap.size
     );
-
-    for (let stripeIdx = 0; stripeIdx < stripeParts.length; stripeIdx++) {
-      const stripePart = stripeParts[stripeIdx];
-      const {
-        stripe_left_x: stripeLeftX,
-        stripe_right_x: stripeRightX,
-        tex_x1: texX1,
-        tex_x2: texX2,
-        sprite_type: spriteType,
-        screen_y_ceiling: screenYCeiling,
-        screen_y_floor: screenYFloor,
-        alpha: alpha,
+    // console.log(stripePartCount);
+    for (let stripeIdx = 0; stripeIdx < stripePartCount; stripeIdx++) {
+      const arrayIdx = stripeIdx * 9;
+      const [
+        spriteType,
+        stripeLeftX,
+        stripeRightX,
+        screenYCeiling,
+        screenYFloor,
+        texX1,
+        texX2,
+        alpha,
         angle,
-      } = stripePart;
-
+      ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
+      // console.log(texX1, texX2, stripeLeftX, stripeRightX);
+      // console.log(spriteType);
+      // console.log(this.spritePartsRef.buffer.length);
+      // console.log(
+      //   this.spritePartsRef.buffer.slice(stripeIdx * 9, stripeIdx * 9 + 9)
+      // );
       const { texture } = map.getSpriteTexture(spriteType, angle);
 
       this.ctx.save();
-      this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
+      // TODO: this is slow, fix
+      // this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
+      // this can be used for sprites but not for windows (there we should use a black overlay)
+
       this.ctx.drawImage(
         texture.image,
         texX1, // sx
@@ -366,7 +389,7 @@ export class Camera {
 
     this.drawCeilingFloorRaycastWasm(player, map);
     const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
-    this.drawSpritesWasm(player, map, foundSpritesCount);
+    this.drawSpritesWasm(player, map, foundSpritesCount, spriteMap);
 
     this.ctx.restore();
   }

@@ -203,6 +203,7 @@ pub struct Sprite {
     pub angle: i32,
     pub height: i32,
     pub r#type: i32,
+    pub column: u32,
 }
 
 #[wasm_bindgen]
@@ -219,10 +220,10 @@ pub struct TranslationResult {
 
 #[wasm_bindgen]
 #[derive(Serialize)]
-pub struct StripePart {
+pub struct SpritePart {
     pub sprite_type: i32,
-    pub stripe_left_x: i32,
-    pub stripe_right_x: i32,
+    pub sprite_left_x: i32,
+    pub sprite_right_x: i32,
     pub screen_y_ceiling: i32,
     pub screen_y_floor: i32,
     pub tex_x1: i32,

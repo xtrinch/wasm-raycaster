@@ -1,6 +1,6 @@
 use helpers::{
     copy_to_raw_pointer, get_bits, get_grid_value, has_set_bits, parse_sprite_texture_array,
-    Coords, Position, Sprite, StripePart, TranslationResult,
+    Coords, Position, Sprite, SpritePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -30,6 +30,7 @@ pub fn raycast_column(
     sprites_map: Option<&mut HashMap<(i32, i32), Vec<[f32; 5]>>>,
     found_sprites_count: Option<&mut u32>,
     found_sprites: Option<&mut [f32]>,
+    skip_sprites: bool,
 ) -> (f32, [i32; 7]) {
     // Use an empty HashMap if None is provided
     let mut default_coords = HashMap::new();
@@ -361,7 +362,25 @@ pub fn raycast_column(
                         } else if is_window {
                             hit_type = 0x3 as i8;
                             // TODO: remove
-                            // hit = 0;
+                            hit = 0;
+
+                            // add to visible sprites
+                            if !skip_sprites {
+                                let index = (*found_sprites_count as usize) * 6; // Convert u32 to usize
+                                found_sprites[index..index + 6].copy_from_slice(
+                                    &[
+                                        local_intersection_coord.x,
+                                        local_intersection_coord.y,
+                                        0.0,
+                                        100.0,
+                                        7 as f32,
+                                        column as f32,
+                                    ], // x, y, angle (0-360), height (multiplier of 1 z), type, column
+                                );
+                                // let js: JsValue = vec![*found_sprites_count as f32].into();
+                                // console::log_2(&"Znj?".into(), &js);
+                                *found_sprites_count += 1;
+                            }
                         } else {
                             hit_type = 1;
                         }
@@ -375,11 +394,10 @@ pub fn raycast_column(
             }
         }
 
-        // handle thick wall; TODO: by bitmap
+        // handle thick wall
         if value == 1 {
             hit = 1;
         }
-        // }
 
         // add in sprites from the coordinate in the way, if we haven't already
         let coord_key = format!("{}-{}", map_x, map_y);
@@ -388,7 +406,7 @@ pub fn raycast_column(
 
             if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                 for &sprite in sprite_list {
-                    let index = (*found_sprites_count as usize) * 5; // Convert u32 to usize
+                    let index = (*found_sprites_count as usize) * 6; // Convert u32 to usize
 
                     found_sprites[index..index + 5].copy_from_slice(&sprite);
                     *found_sprites_count += 1;
@@ -509,8 +527,12 @@ pub fn draw_walls_raycast(
         unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
     let all_sprites_data =
         unsafe { std::slice::from_raw_parts(all_sprites_array, all_sprites_count * 5) };
-    let mut found_sprites =
-        unsafe { std::slice::from_raw_parts_mut(found_sprites_array, all_sprites_count * 5) };
+    let mut found_sprites = unsafe {
+        std::slice::from_raw_parts_mut(
+            found_sprites_array,
+            (all_sprites_count + (2 * width_resolution) as usize) * 6,
+        )
+    };
 
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
@@ -545,11 +567,15 @@ pub fn draw_walls_raycast(
             Some(&mut sprites_map),
             Some(&mut found_sprites_count),
             Some(&mut found_sprites),
+            false,
         );
 
         copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
         copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
     }
+
+    // let js: JsValue = vec![*found_sprites_count as f32].into();
+    // console::log_2(&"Znj?".into(), &js);
 
     found_sprites_count
 }
@@ -736,7 +762,7 @@ pub fn translate_coordinate_to_camera(
     let full_height = sprite_ceiling_screen_y - sprite_floor_screen_y;
 
     TranslationResult {
-        screen_x,
+        screen_x, // TODO: to i32??
         screen_y_floor: sprite_floor_screen_y,
         screen_y_ceiling: sprite_ceiling_screen_y,
         distance: transform_y,
@@ -752,7 +778,8 @@ pub fn draw_sprites_wasm(
     width: i32,
     height: i32,
     width_spacing: i32,
-    sprites_array: *mut f32,
+    visible_sprites_array: *mut f32,
+    sprite_parts_array: *mut i32,
     zbuffer_array: *mut f32,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
@@ -760,26 +787,28 @@ pub fn draw_sprites_wasm(
     map_light: f32,
     width_resolution: usize,
     found_sprites_count: u32,
-) -> JsValue {
+    all_sprites_count: u32,
+) -> usize {
     let found_sprites_length = found_sprites_count as usize;
 
-    let mut stripe_parts: Vec<StripePart> = Vec::new();
+    let mut sprite_parts: Vec<SpritePart> = Vec::new();
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, width_resolution) };
     let sprite_data =
-        unsafe { std::slice::from_raw_parts(sprites_array, found_sprites_length * 5) };
+        unsafe { std::slice::from_raw_parts(visible_sprites_array, found_sprites_length * 6) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..found_sprites_length * 5).step_by(5) {
+    for i in (0..found_sprites_length * 6).step_by(6) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],
             angle: sprite_data[i + 2] as i32,
             height: sprite_data[i + 3] as i32,
             r#type: sprite_data[i + 4] as i32,
+            column: sprite_data[i + 5] as u32,
         });
     }
 
@@ -790,14 +819,6 @@ pub fn draw_sprites_wasm(
     });
 
     for sprite in sprites.iter() {
-        // TODO: this is causing the first one to disappear??
-        let (texture_height, texture_width) = texture_array
-            .get(&sprite.r#type)
-            .copied()
-            .unwrap_or((100, 100));
-
-        let aspect_ratio = texture_width as f32 / texture_height as f32;
-
         let projection = translate_coordinate_to_camera(
             position,
             sprite.x,
@@ -807,15 +828,40 @@ pub fn draw_sprites_wasm(
             height,
         );
 
+        let alpha = projection.distance / light_range - map_light;
+        // ensure sprites are always at least a little bit visible - alpha 1 is all black
+        let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
+
+        // TODO: this is causing the first one to disappear??
+        let (texture_height, texture_width) = texture_array
+            .get(&sprite.r#type)
+            .copied()
+            .unwrap_or((100, 100));
+
+        if sprite.r#type == 7 {
+            sprite_parts.push(SpritePart {
+                sprite_type: sprite.r#type,
+                sprite_left_x: sprite.column as i32,
+                sprite_right_x: sprite.column as i32 + width_spacing,
+                screen_y_ceiling: projection.screen_y_ceiling as i32,
+                screen_y_floor: projection.screen_y_floor as i32,
+                tex_x1: (sprite.y.abs().fract() * texture_width as f32) as i32,
+                tex_x2: (1.0
+                    + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
+                    + sprite.y.abs().fract() * texture_width as f32) as i32,
+                alpha: alpha_i,
+                angle: 0,
+            });
+            continue;
+        }
+
+        let aspect_ratio = texture_width as f32 / texture_height as f32;
+
         let dx = position.x - sprite.x;
         let dy = position.y - sprite.y;
         let angle = atan2(dx as f64, dy as f64);
         // will return from -180 to 180
         let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
-
-        let alpha = projection.distance / light_range - map_light;
-        // ensure sprites are always at least a little bit visible - alpha 1 is all black
-        let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
 
         let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
 
@@ -823,25 +869,25 @@ pub fn draw_sprites_wasm(
         let draw_end_x =
             (sprite_width as f32 / 2.0 + projection.screen_x).min(width as f32 - 1.0) as i32;
 
-        let mut stripe_parts_temp = Vec::new();
+        let mut sprite_parts_temp = Vec::new();
         for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
             if projection.distance > 0.0 && stripe >= 0 && stripe < width {
                 let z_index = ((stripe / width_spacing) as usize).clamp(0, width_resolution - 1);
 
                 if projection.distance < zbuffer[z_index] {
-                    if stripe_parts_temp.len() % 2 == 0 {
-                        stripe_parts_temp.push(stripe);
+                    if sprite_parts_temp.len() % 2 == 0 {
+                        sprite_parts_temp.push(stripe);
                     }
-                    if stripe + width_spacing >= draw_end_x && stripe_parts_temp.len() % 2 == 1 {
-                        stripe_parts_temp.push(stripe);
+                    if stripe + width_spacing >= draw_end_x && sprite_parts_temp.len() % 2 == 1 {
+                        sprite_parts_temp.push(stripe);
                     }
-                } else if stripe_parts_temp.len() % 2 == 1 {
-                    stripe_parts_temp.push(stripe);
+                } else if sprite_parts_temp.len() % 2 == 1 {
+                    sprite_parts_temp.push(stripe);
                 }
             }
         }
 
-        for pair in stripe_parts_temp.chunks_exact(2) {
+        for pair in sprite_parts_temp.chunks_exact(2) {
             let sprite_width_f64 = sprite_width as f64;
             let screen_x_f64 = projection.screen_x as f64;
 
@@ -852,10 +898,10 @@ pub fn draw_sprites_wasm(
                 * texture_width as f64)
                 / sprite_width_f64) as i32;
 
-            stripe_parts.push(StripePart {
+            sprite_parts.push(SpritePart {
                 sprite_type: sprite.r#type,
-                stripe_left_x: pair[0],
-                stripe_right_x: pair[1],
+                sprite_left_x: pair[0],
+                sprite_right_x: pair[1],
                 screen_y_ceiling: projection.screen_y_ceiling as i32,
                 screen_y_floor: projection.screen_y_floor as i32,
                 tex_x1,
@@ -866,7 +912,27 @@ pub fn draw_sprites_wasm(
         }
     }
 
-    serde_wasm_bindgen::to_value(&stripe_parts).unwrap()
+    for i in 0..sprite_parts.len() {
+        let sprite = &sprite_parts[i];
+        copy_to_raw_pointer(
+            sprite_parts_array,
+            9 * i,
+            &[
+                sprite.sprite_type,
+                sprite.sprite_left_x,
+                sprite.sprite_right_x,
+                sprite.screen_y_ceiling,
+                sprite.screen_y_floor,
+                sprite.tex_x1,
+                sprite.tex_x2,
+                sprite.alpha,
+                sprite.angle,
+            ],
+        );
+    }
+
+    // serde_wasm_bindgen::to_value(&sprite_parts).unwrap()
+    sprite_parts.len()
 }
 
 // move if no wall in front of you
@@ -912,6 +978,7 @@ pub fn walk(
         None,
         None,
         None,
+        true,
     );
 
     let mut x = position.x;
@@ -945,6 +1012,7 @@ pub fn walk(
         None,
         None,
         None,
+        true,
     );
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
@@ -974,6 +1042,7 @@ pub fn walk(
         None,
         None,
         None,
+        true,
     );
     if perp_wall_dist_y > 0.2 {
         y += position.dir_y * distance;
