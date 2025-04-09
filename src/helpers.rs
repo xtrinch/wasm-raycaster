@@ -204,6 +204,7 @@ pub struct Sprite {
     pub height: i32,
     pub r#type: i32,
     pub column: u32,
+    pub side: u8,
 }
 
 #[wasm_bindgen]

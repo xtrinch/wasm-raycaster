@@ -361,13 +361,13 @@ pub fn raycast_column(
                             hit_type = 0x2 as i8;
                         } else if is_window {
                             hit_type = 0x3 as i8;
-                            // TODO: remove
+                            // keep going but add to sprites array
                             hit = 0;
 
                             // add to visible sprites
                             if !skip_sprites {
-                                let index = (*found_sprites_count as usize) * 6; // Convert u32 to usize
-                                found_sprites[index..index + 6].copy_from_slice(
+                                let index = (*found_sprites_count as usize) * 7; // Convert u32 to usize
+                                found_sprites[index..index + 7].copy_from_slice(
                                     &[
                                         local_intersection_coord.x,
                                         local_intersection_coord.y,
@@ -375,6 +375,7 @@ pub fn raycast_column(
                                         100.0,
                                         7 as f32,
                                         column as f32,
+                                        side as f32,
                                     ], // x, y, angle (0-360), height (multiplier of 1 z), type, column
                                 );
                                 // let js: JsValue = vec![*found_sprites_count as f32].into();
@@ -406,7 +407,7 @@ pub fn raycast_column(
 
             if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                 for &sprite in sprite_list {
-                    let index = (*found_sprites_count as usize) * 6; // Convert u32 to usize
+                    let index = (*found_sprites_count as usize) * 7; // Convert u32 to usize
 
                     found_sprites[index..index + 5].copy_from_slice(&sprite);
                     *found_sprites_count += 1;
@@ -530,7 +531,7 @@ pub fn draw_walls_raycast(
     let mut found_sprites = unsafe {
         std::slice::from_raw_parts_mut(
             found_sprites_array,
-            (all_sprites_count + (2 * width_resolution) as usize) * 6,
+            (all_sprites_count + (2 * width_resolution) as usize) * 7,
         )
     };
 
@@ -796,12 +797,12 @@ pub fn draw_sprites_wasm(
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, width_resolution) };
     let sprite_data =
-        unsafe { std::slice::from_raw_parts(visible_sprites_array, found_sprites_length * 6) };
+        unsafe { std::slice::from_raw_parts(visible_sprites_array, found_sprites_length * 7) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..found_sprites_length * 6).step_by(6) {
+    for i in (0..found_sprites_length * 7).step_by(7) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],
@@ -809,6 +810,7 @@ pub fn draw_sprites_wasm(
             height: sprite_data[i + 3] as i32,
             r#type: sprite_data[i + 4] as i32,
             column: sprite_data[i + 5] as u32,
+            side: sprite_data[i + 6] as u8,
         });
     }
 
@@ -839,16 +841,20 @@ pub fn draw_sprites_wasm(
             .unwrap_or((100, 100));
 
         if sprite.r#type == 7 {
+            let mut fract = sprite.y.abs().fract();
+            if (sprite.side == 1) {
+                fract = sprite.x.abs().fract();
+            }
             sprite_parts.push(SpritePart {
                 sprite_type: sprite.r#type,
                 sprite_left_x: sprite.column as i32,
                 sprite_right_x: sprite.column as i32 + width_spacing,
                 screen_y_ceiling: projection.screen_y_ceiling as i32,
                 screen_y_floor: projection.screen_y_floor as i32,
-                tex_x1: (sprite.y.abs().fract() * texture_width as f32) as i32,
+                tex_x1: (fract * texture_width as f32) as i32,
                 tex_x2: (1.0
                     + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
-                    + sprite.y.abs().fract() * texture_width as f32) as i32,
+                    + fract * texture_width as f32) as i32,
                 alpha: alpha_i,
                 angle: 0,
             });
