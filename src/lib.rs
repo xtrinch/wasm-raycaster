@@ -13,6 +13,9 @@ use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
 use core::array::from_fn;
+use std::ptr::write_bytes;
+use std::slice::from_raw_parts;
+use std::slice::from_raw_parts_mut;
 
 pub fn raycast_column(
     column: i32,
@@ -30,7 +33,10 @@ pub fn raycast_column(
     sprites_map: Option<&mut HashMap<(i32, i32), Vec<[f32; 5]>>>,
     found_sprites_count: Option<&mut u32>,
     found_sprites: Option<&mut [f32]>,
-    skip_sprites: bool,
+    skip_sprites_and_writes: bool,
+    columns_array: Option<*mut i32>,
+    zbuffer_array: Option<&mut [f32]>,
+    stop_at_window: bool,
 ) -> (f32, [i32; 7]) {
     // Use an empty HashMap if None is provided
     let mut default_coords = HashMap::new();
@@ -38,6 +44,8 @@ pub fn raycast_column(
     let mut default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
     let found_sprites = found_sprites.unwrap_or_else(|| &mut []);
+    let zbuffer = zbuffer_array.unwrap_or_else(|| &mut []);
+    let columns = columns_array.unwrap_or_else(|| &mut 0);
 
     let mut calculated_texture_width: i32 = wall_texture_width;
 
@@ -99,14 +107,7 @@ pub fn raycast_column(
         // if wall bit is set
         if has_set_bits(value, &[0], true) {
             hit_type = 1 as i8;
-            // let is_door = has_set_bits(value, &[0, 4, 5], true);
-            // has door bit set
-            // if is_door {
-            //     hit_type = value as i8;
-            // }
 
-            // thin wall
-            // if has_set_bits(value, &[0, 4], true) {
             let is_doors = [
                 has_set_bits(value, &[5], true),
                 has_set_bits(value, &[4], true),
@@ -185,7 +186,7 @@ pub fn raycast_column(
 
             // we support two lines per coordinate
             for i in 0..3 {
-                // no shenanigans if the thickness is 0
+                // no shenanigans if the thickness is 0, we'll allow width to be 0 for e.g. windows
                 if bit_widths[i] == 0 {
                     continue;
                 }
@@ -362,10 +363,12 @@ pub fn raycast_column(
                         } else if is_window {
                             hit_type = 0x3 as i8;
                             // keep going but add to sprites array
-                            hit = 0;
+                            if !stop_at_window {
+                                hit = 0;
+                            }
 
                             // add to visible sprites
-                            if !skip_sprites {
+                            if !skip_sprites_and_writes {
                                 let index = (*found_sprites_count as usize) * 7; // Convert u32 to usize
                                 found_sprites[index..index + 7].copy_from_slice(
                                     &[
@@ -491,18 +494,22 @@ pub fn raycast_column(
     let left = ((column as f32 * width_spacing).ceil() as i32) as i32;
     let wall_height = (draw_end_y - draw_start_y) as i32;
 
-    (
-        perp_wall_dist,
-        [
-            tex_x,
-            left,
-            draw_start_y as i32,
-            wall_height,
-            (global_alpha * 100.0) as i32,
-            hit as i32,
-            hit_type as i32,
-        ],
-    )
+    let col_data = [
+        tex_x,
+        left,
+        draw_start_y as i32,
+        wall_height,
+        (global_alpha * 100.0) as i32,
+        hit as i32,
+        hit_type as i32,
+    ];
+
+    if !skip_sprites_and_writes {
+        copy_to_raw_pointer(columns, 8 * column as usize, &col_data);
+        zbuffer[column as usize] = perp_wall_dist;
+    }
+
+    (perp_wall_dist, col_data)
 }
 
 #[wasm_bindgen]
@@ -524,16 +531,15 @@ pub fn draw_walls_raycast(
     all_sprites_count: usize,
 ) -> u32 {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let map_data =
-        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
-    let all_sprites_data =
-        unsafe { std::slice::from_raw_parts(all_sprites_array, all_sprites_count * 5) };
+    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let all_sprites_data = unsafe { from_raw_parts(all_sprites_array, all_sprites_count * 5) };
     let mut found_sprites = unsafe {
-        std::slice::from_raw_parts_mut(
+        from_raw_parts_mut(
             found_sprites_array,
             (all_sprites_count + (2 * width_resolution) as usize) * 7,
         )
     };
+    let mut zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
 
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
@@ -569,10 +575,16 @@ pub fn draw_walls_raycast(
             Some(&mut found_sprites_count),
             Some(&mut found_sprites),
             false,
+            Some(columns_array),
+            Some(&mut zbuffer),
+            false,
         );
 
-        copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
-        copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
+        // copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
+        // copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
+        // if zbuffer_walk[column as usize] != 0.0 {
+        //     copy_to_raw_pointer(zbuffer_walk_array, column as usize, &[perp_wall_dist]);
+        // }
     }
 
     // let js: JsValue = vec![*found_sprites_count as f32].into();
@@ -605,12 +617,11 @@ pub fn draw_ceiling_floor_raycast(
     map_width: usize,
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let map_data =
-        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     unsafe {
         // blank out the whole image buffer
-        std::ptr::write_bytes(
+        write_bytes(
             ceiling_floor_img,
             0,
             ceiling_width_resolution * ceiling_height_resolution * 4,
@@ -796,9 +807,8 @@ pub fn draw_sprites_wasm(
     let mut sprite_parts: Vec<SpritePart> = Vec::new();
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
-    let zbuffer = unsafe { std::slice::from_raw_parts(zbuffer_array, width_resolution) };
-    let sprite_data =
-        unsafe { std::slice::from_raw_parts(visible_sprites_array, found_sprites_length * 7) };
+    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution) };
+    let sprite_data = unsafe { from_raw_parts(visible_sprites_array, found_sprites_length * 7) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
@@ -962,10 +972,10 @@ pub fn walk(
     wall_texture_width: i32,
 ) -> JsValue {
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
-    let map_data =
-        unsafe { std::slice::from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     let mut raycast_position = position.clone();
+
     // check behind you by turning
     if distance < 0.0 {
         raycast_position.dir_x = position.dir_x * -1.0;
@@ -990,19 +1000,23 @@ pub fn walk(
         None,
         None,
         true,
+        None,
+        None,
+        true,
     );
 
     let mut x = position.x;
     let mut y = position.y;
 
-    // if far enough or not a wall
-    if perp_wall_dist > 0.2 || col_data[6] != 1 {
+    // if far enough or not a door
+    if perp_wall_dist > 0.2 || (col_data[6] == 2) {
         x += position.dir_x * distance;
         y += position.dir_y * distance;
 
         return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
     }
 
+    // since we can't move in both direction, check just y
     let mut raycast_position_x = raycast_position.clone();
     raycast_position_x.dir_y = 0.0;
 
@@ -1024,6 +1038,9 @@ pub fn walk(
         None,
         None,
         true,
+        None,
+        None,
+        true,
     );
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
@@ -1033,7 +1050,6 @@ pub fn walk(
 
     // if we weren't able to move x, check if we can move y
     let mut raycast_position_y = raycast_position.clone();
-    // raycast_position_y.y = y + position.dir_y * distance;
     raycast_position_y.dir_x = 0.0;
 
     // raycast middle column to get the distance
@@ -1051,6 +1067,9 @@ pub fn walk(
         wall_texture_width,
         None,
         None,
+        None,
+        None,
+        true,
         None,
         None,
         true,

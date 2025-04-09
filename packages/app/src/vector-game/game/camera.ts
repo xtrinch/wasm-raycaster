@@ -117,6 +117,7 @@ export class Camera {
         7
     );
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
+
     this.spritesTextureRef = new WasmInt32Array(
       Object.values(SpriteType).length * 3
     );
@@ -363,7 +364,7 @@ export class Camera {
       this.ctx.save();
       // TODO: this is slow, fix
       if (spriteType !== SpriteType.COLUMN) {
-        // this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
+        this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
         // this can be used for sprites but not for windows (there we should use a black overlay)
       }
 
@@ -381,12 +382,12 @@ export class Camera {
         height // dh
       );
 
-      // if (spriteType === SpriteType.COLUMN) {
-      //   this.ctx.globalAlpha = 1 - alpha / 100;
+      if (spriteType === SpriteType.COLUMN) {
+        this.ctx.globalAlpha = 1 - alpha / 100;
 
-      //   // black overlay to simulate darkness
-      //   this.ctx.fillRect(stripeLeftX, screenYCeiling, width, height);
-      // }
+        // black overlay to simulate darkness
+        this.ctx.fillRect(stripeLeftX, screenYCeiling, width, height);
+      }
       this.ctx.restore();
     }
   }
