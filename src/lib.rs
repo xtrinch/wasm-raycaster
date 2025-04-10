@@ -402,6 +402,8 @@ pub fn raycast_column(
 
         // handle thick wall
         if value == 1 {
+            wall_width = 1.0;
+            wall_offset = 0.0;
             hit = 1;
         }
 
@@ -624,6 +626,7 @@ pub fn draw_ceiling_floor_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
+    // TODO: get rid of the unsafe and use from_raw_parts
     unsafe {
         // blank out the whole image buffer
         write_bytes(
@@ -631,115 +634,114 @@ pub fn draw_ceiling_floor_raycast(
             0,
             ceiling_width_resolution * ceiling_height_resolution * 4,
         );
-        let ray_dir_x0 = position.dir_x - position.plane_x;
-        let ray_dir_y0 = position.dir_y - position.plane_y;
-        let ray_dir_x1 = position.dir_x + position.plane_x;
-        let ray_dir_y1 = position.dir_y + position.plane_y;
-        let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
-        let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
+    }
+    let ray_dir_x0 = position.dir_x - position.plane_x;
+    let ray_dir_y0 = position.dir_y - position.plane_y;
+    let ray_dir_x1 = position.dir_x + position.plane_x;
+    let ray_dir_y1 = position.dir_y + position.plane_y;
+    let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
+    let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
-        let half_height = ceiling_height_resolution as f32 / 2.0;
-        let scale = ceiling_height_resolution as f32 / height as f32;
-        let scaled_pitch = position.pitch * scale;
-        let scaled_z = position.z * scale;
+    let half_height = ceiling_height_resolution as f32 / 2.0;
+    let scale = ceiling_height_resolution as f32 / height as f32;
+    let scaled_pitch = position.pitch * scale;
+    let scaled_z = position.z * scale;
 
-        let height_resolution_ratio =
-            ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
-        let height_spacing_ratio = ceiling_height_spacing as f32 / ceiling_width_spacing as f32;
-        let distance_divider =
-            (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
-        for y in 0..ceiling_height_resolution {
-            let is_floor = (y as f32) > half_height + scaled_pitch;
+    let height_resolution_ratio =
+        ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
+    let height_spacing_ratio = ceiling_height_spacing as f32 / ceiling_width_spacing as f32;
+    let distance_divider =
+        (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
+    for y in 0..ceiling_height_resolution {
+        let is_floor = (y as f32) > half_height + scaled_pitch;
 
-            let p = if is_floor {
-                y as f32 - half_height - scaled_pitch
-            } else {
-                half_height - y as f32 + scaled_pitch
-            };
-            let cam_z = if is_floor {
-                half_height + scaled_z
-            } else {
-                half_height - scaled_z
-            };
+        let p = if is_floor {
+            y as f32 - half_height - scaled_pitch
+        } else {
+            half_height - y as f32 + scaled_pitch
+        };
+        let cam_z = if is_floor {
+            half_height + scaled_z
+        } else {
+            half_height - scaled_z
+        };
 
-            let row_distance = cam_z / (p * distance_divider);
-            let mut alpha = (row_distance + 0.0) / light_range - map_light;
-            alpha = alpha.min(0.8);
+        let row_distance = cam_z / (p * distance_divider);
+        let mut alpha = (row_distance + 0.0) / light_range - map_light;
+        alpha = alpha.min(0.8);
 
-            let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
-            let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
-            let mut floor_x = position.x + row_distance * ray_dir_x0;
-            let mut floor_y = position.y + row_distance * ray_dir_y0;
+        let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
+        let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
+        let mut floor_x = position.x + row_distance * ray_dir_x0;
+        let mut floor_y = position.y + row_distance * ray_dir_y0;
 
-            for x in 0..ceiling_width_resolution {
-                floor_x += floor_step_x;
-                floor_y += floor_step_y;
+        for x in 0..ceiling_width_resolution {
+            floor_x += floor_step_x;
+            floor_y += floor_step_y;
 
-                // don't draw anything at values < 0
-                if floor_x < 0.0 || floor_y < 0.0 {
-                    continue;
-                }
-
-                let value =
-                    get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
-
-                let has_set_any_bits = has_set_bits(
-                    value,
-                    &[1, 3], // ceiling, floor or road
-                    false,
-                );
-
-                if !has_set_any_bits {
-                    continue;
-                }
-
-                let has_set_ceiling_bit = has_set_bits(value, &[1], false);
-                let has_set_floor_bit = has_set_bits(
-                    value,
-                    &[1], // ceiling, floor or road
-                    false,
-                );
-                let has_set_road_bit = has_set_bits(
-                    value,
-                    &[3], // ceiling, floor or road
-                    false,
-                );
-
-                // no ceiling for roads
-                if !is_floor && !has_set_ceiling_bit {
-                    continue;
-                }
-
-                let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
-                    (road_texture, road_texture_width, road_texture_height)
-                } else if is_floor && has_set_floor_bit {
-                    (floor_texture, floor_texture_width, floor_texture_height)
-                } else {
-                    (
-                        ceiling_texture,
-                        ceiling_texture_width,
-                        ceiling_texture_height,
-                    )
-                };
-
-                let pixel_idx = (y * ceiling_width_resolution + x) * 4;
-
-                let cell_x = floor_x.fract();
-                let cell_y = floor_y.fract();
-
-                let tx = (texture_width as f32 * cell_x) as usize;
-                let ty = (texture_height as f32 * cell_y) as usize;
-                let tex_idx = (ty * texture_width + tx) * 4;
-
-                let texture_ptr = texture.offset(tex_idx as isize); // Assuming tex_idx is within bounds
-
-                let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
-                let r = (*texture_ptr as f32 * darkening_factor) as u8;
-                let g = (*texture_ptr.add(1) as f32 * darkening_factor) as u8;
-                let b = (*texture_ptr.add(2) as f32 * darkening_factor) as u8;
-
-                copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[r, g, b, 255]);
+            // don't draw anything at values < 0
+            if floor_x < 0.0 || floor_y < 0.0 {
+                continue;
             }
+
+            let value = get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
+
+            let has_set_any_bits = has_set_bits(
+                value,
+                &[1, 3], // ceiling, floor or road
+                false,
+            );
+
+            if !has_set_any_bits {
+                continue;
+            }
+
+            let has_set_ceiling_bit = has_set_bits(value, &[1], false);
+            let has_set_floor_bit = has_set_bits(
+                value,
+                &[1], // ceiling, floor or road
+                false,
+            );
+            let has_set_road_bit = has_set_bits(
+                value,
+                &[3], // ceiling, floor or road
+                false,
+            );
+
+            // no ceiling for roads
+            if !is_floor && !has_set_ceiling_bit {
+                continue;
+            }
+
+            let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
+                (road_texture, road_texture_width, road_texture_height)
+            } else if is_floor && has_set_floor_bit {
+                (floor_texture, floor_texture_width, floor_texture_height)
+            } else {
+                (
+                    ceiling_texture,
+                    ceiling_texture_width,
+                    ceiling_texture_height,
+                )
+            };
+            let texture_arr =
+                unsafe { from_raw_parts(texture, (texture_width * texture_height * 4) as usize) };
+
+            let pixel_idx = (y * ceiling_width_resolution + x) * 4;
+
+            let cell_x = floor_x.fract();
+            let cell_y = floor_y.fract();
+
+            let tx = (texture_width as f32 * cell_x) as usize;
+            let ty = (texture_height as f32 * cell_y) as usize;
+            let tex_idx = (ty * texture_width + tx) * 4;
+
+            let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
+            let r = (texture_arr[tex_idx] as f32 * darkening_factor) as u8;
+            let g = (texture_arr[tex_idx + 1] as f32 * darkening_factor) as u8;
+            let b = (texture_arr[tex_idx + 2] as f32 * darkening_factor) as u8;
+
+            copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[r, g, b, 255]);
         }
     }
 }
