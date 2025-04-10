@@ -309,7 +309,7 @@ pub fn raycast_column(
                     local_side = sides[0];
 
                     // since we'd like texture to match the width if it's a door
-                    if is_door {
+                    if is_door || is_window {
                         local_width = depth;
                         local_offset = offset_secondary;
                     } else {
@@ -369,8 +369,8 @@ pub fn raycast_column(
 
                             // add to visible sprites
                             if !skip_sprites_and_writes {
-                                let index = (*found_sprites_count as usize) * 7; // Convert u32 to usize
-                                found_sprites[index..index + 7].copy_from_slice(
+                                let index = (*found_sprites_count as usize) * 9; // Convert u32 to usize
+                                found_sprites[index..index + 9].copy_from_slice(
                                     &[
                                         local_intersection_coord.x,
                                         local_intersection_coord.y,
@@ -379,7 +379,9 @@ pub fn raycast_column(
                                         7 as f32,
                                         column as f32,
                                         side as f32,
-                                    ], // x, y, angle (0-360), height (multiplier of 1 z), type, column
+                                        wall_offset,
+                                        wall_width,
+                                    ], // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
                                 );
                                 // let js: JsValue = vec![*found_sprites_count as f32].into();
                                 // console::log_2(&"Znj?".into(), &js);
@@ -410,7 +412,7 @@ pub fn raycast_column(
 
             if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
                 for &sprite in sprite_list {
-                    let index = (*found_sprites_count as usize) * 7; // Convert u32 to usize
+                    let index = (*found_sprites_count as usize) * 9; // Convert u32 to usize
 
                     found_sprites[index..index + 5].copy_from_slice(&sprite);
                     *found_sprites_count += 1;
@@ -536,7 +538,7 @@ pub fn draw_walls_raycast(
     let mut found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
-            (all_sprites_count + (2 * width_resolution) as usize) * 7,
+            (all_sprites_count + (2 * width_resolution) as usize) * 9,
         )
     };
     let mut zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
@@ -582,9 +584,6 @@ pub fn draw_walls_raycast(
 
         // copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
         // copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
-        // if zbuffer_walk[column as usize] != 0.0 {
-        //     copy_to_raw_pointer(zbuffer_walk_array, column as usize, &[perp_wall_dist]);
-        // }
     }
 
     // let js: JsValue = vec![*found_sprites_count as f32].into();
@@ -808,12 +807,12 @@ pub fn draw_sprites_wasm(
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution) };
-    let sprite_data = unsafe { from_raw_parts(visible_sprites_array, found_sprites_length * 7) };
+    let sprite_data = unsafe { from_raw_parts(visible_sprites_array, found_sprites_length * 9) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let mut sprites = Vec::new();
-    for i in (0..found_sprites_length * 7).step_by(7) {
+    for i in (0..found_sprites_length * 9).step_by(9) {
         sprites.push(Sprite {
             x: sprite_data[i],
             y: sprite_data[i + 1],
@@ -822,6 +821,8 @@ pub fn draw_sprites_wasm(
             r#type: sprite_data[i + 4] as i32,
             column: sprite_data[i + 5] as u32,
             side: sprite_data[i + 6] as u8,
+            offset: sprite_data[i + 7],
+            width: sprite_data[i + 8],
         });
     }
 
@@ -854,12 +855,17 @@ pub fn draw_sprites_wasm(
 
         if sprite.r#type == 7 {
             // switch which side we were raycasting from to take the fract part to know where the texture was hit
-            let fract: f32;
+            let mut fract: f32;
+            // TODO: maybe not keep all of this in memory and just pass the fract around?
             if sprite.side == 1 {
                 fract = sprite.x.abs().fract();
             } else {
                 fract = sprite.y.abs().fract();
             }
+            // since we'd like the texture to match the width
+            fract -= sprite.offset;
+            fract /= sprite.width;
+
             let texture_x: i32 = (fract * texture_width as f32) as i32;
             sprite_parts.push(SpritePart {
                 sprite_type: sprite.r#type,

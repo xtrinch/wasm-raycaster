@@ -114,7 +114,7 @@ export class Camera {
     this.visibleSpritesRef = new WasmFloat32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
         2 * this.widthResolution) * // two times the columns to account for windows
-        7
+        9
     );
     this.zBufferRef = new WasmFloat32Array(this.widthResolution);
 
