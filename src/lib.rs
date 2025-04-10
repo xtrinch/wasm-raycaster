@@ -626,7 +626,6 @@ pub fn draw_ceiling_floor_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
-    // TODO: get rid of the unsafe and use from_raw_parts
     unsafe {
         // blank out the whole image buffer
         write_bytes(
