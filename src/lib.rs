@@ -455,12 +455,18 @@ pub fn raycast_column(
     }
 
     perp_wall_dist = perp_wall_dist * position.plane_y_initial;
+    // scale the height according to width so they're square!
     let line_height = width as f32 / 2.0 / perp_wall_dist;
+    let aspect_ratio = height as f32 / width as f32;
 
-    let draw_start_y =
-        -line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z / perp_wall_dist;
-    let draw_end_y =
-        line_height / 2.0 + height as f32 / 2.0 + position.pitch + position.z / perp_wall_dist;
+    let draw_start_y = -line_height / 2.0
+        + height as f32 / 2.0
+        + position.pitch
+        + position.z / (perp_wall_dist * (2.0 * aspect_ratio));
+    let draw_end_y = line_height / 2.0
+        + height as f32 / 2.0
+        + position.pitch
+        + position.z / (perp_wall_dist * (2.0 * aspect_ratio));
 
     wall_x -= wall_x.floor();
 
@@ -738,7 +744,6 @@ pub fn draw_ceiling_floor_raycast(
     }
 }
 
-// TODO: note that z up / down does not work for all resolutions
 pub fn translate_coordinate_to_camera(
     position: Position,
     point_x: f32,
@@ -761,7 +766,8 @@ pub fn translate_coordinate_to_camera(
     let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
 
     // to control the pitch/jump
-    let v_move_screen = position.pitch + position.z / transform_y;
+    let aspect_ratio = height as f32 / width as f32;
+    let v_move_screen = position.pitch + (position.z) / (transform_y * (aspect_ratio * 2.0));
 
     // divide by focal length (length of the plane vector)
     let y_height_before_adjustment = (width as f32 / 2.0 / (transform_y)).abs();
