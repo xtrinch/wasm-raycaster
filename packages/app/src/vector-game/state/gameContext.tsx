@@ -1,7 +1,8 @@
 import { makeAutoObservable } from "mobx";
 import { createContext, useEffect, useMemo } from "react";
+import { threads } from "wasm-feature-detect";
+import def from "../../../wasm";
 import { GameLoop } from "../game/gameLoop";
-
 export class GameStore {
   public gameLoop: GameLoop;
 
@@ -9,7 +10,13 @@ export class GameStore {
     makeAutoObservable(this);
   }
 
-  public initialize = () => {
+  public initialize = async () => {
+    await def();
+    if (await threads()) {
+      const { initThreadPool } = await import("../../../wasm");
+      await initThreadPool(navigator.hardwareConcurrency);
+    }
+
     this.gameLoop = new GameLoop();
     this.gameLoop.start();
   };

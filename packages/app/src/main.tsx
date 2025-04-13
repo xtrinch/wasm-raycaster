@@ -2,7 +2,7 @@ import { observer } from "mobx-react";
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import Map from "./vector-game/map/map";
+import Game from "./vector-game/game";
 import { GameContextProvider } from "./vector-game/state/gameContext";
 import { test } from "./wasm";
 
@@ -13,15 +13,7 @@ const App = observer(() => {
 
   return (
     <GameContextProvider>
-      <div>
-        <canvas
-          id="display"
-          width="1"
-          height="1"
-          style={{ width: "100%", height: "100%" }}
-        ></canvas>
-        <Map />
-      </div>
+      <Game />
     </GameContextProvider>
   );
 });

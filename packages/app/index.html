@@ -3,9 +3,68 @@
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Raycaster</title>
+    <style>
+        html, body {
+            height: 100vh;
+            margin: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .button-container {
+            display: flex;
+            gap: 3pt;
+        }
+
+        input[type="button"] {
+            flex: 1; /* Distribute available space equally among buttons */
+        }
+
+        #canvas-container {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #canvas {
+            max-width: 100%; /* Make canvas responsive */
+            max-height: 100%; /* Make canvas responsive */
+            width: auto; /* Make canvas responsive */
+            height: auto; /* Make canvas responsive */
+            aspect-ratio: 1; /* Preserve aspect ratio */
+        }
+
+        p {
+            padding: 3pt;
+        }
+
+        .demo-container {
+          position: absolute;
+          top: 0;
+          left:0;
+        }
+    </style>
     <script type="module" src="/src/main.tsx"></script>
   </head>
   <body style='background: #000; margin: 0; padding: 0; width: 100%; height: 100%;'>
-     <div id="root"></div>
+    <div id="root"></div>
+
+    <div class="demo-container">
+      <p>This is a demo for <a href="https://github.com/RReverser/wasm-bindgen-rayon">wasm-bindgen-rayon</a>, generating a <a href="https://en.wikipedia.org/wiki/Mandelbrot_set">Mandelbrot fractal</a> with WebAssembly threads.</p>
+      <div class="button-container">
+          <input type="button" id="singleThread" value="Draw using a single thread">
+          <input type="button" id="multiThread" value="Draw using all available threads">
+      </div>
+      <p><output id="time">Click one of the buttons to see the image & timings.</output></p>
+      <div id="canvas-container">
+          <canvas id="canvas" width="700" height="700"></canvas>
+      </div>
+    </div>
+    <script src="index.js"></script>
   </body>
 </html>

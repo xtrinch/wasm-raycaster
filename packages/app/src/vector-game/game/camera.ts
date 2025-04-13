@@ -55,8 +55,12 @@ export class Camera {
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
   public mapRef: WasmUInt64Array;
+  public initialized: boolean;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
+    // this.initialize(canvas, map, spriteMap);
+    // return;
+
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
     this.width = this.width;
@@ -85,6 +89,7 @@ export class Camera {
     this.skipCounter = this.initialSkipCounter;
     this.map = map;
     this.originalCanvas = canvas;
+
     this.initializeTexture(this.map.floorTexture, "floorTextureRef");
     this.initializeTexture(this.map.ceilingTexture, "ceilingTextureRef");
     this.initializeTexture(this.map.roadTexture, "roadTextureRef");
@@ -124,11 +129,13 @@ export class Camera {
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
+    // initThreadPool(navigator.hardwareConcurrency);
 
     makeAutoObservable(this);
   }
 
   async initializeTexture(texture: Bitmap, refKey: string) {
+    console.log("YARMS?");
     const img = texture.image;
     const canvas = document.createElement("canvas") as HTMLCanvasElement;
     this.context = canvas.getContext("2d");
@@ -144,10 +151,32 @@ export class Camera {
       )?.data;
       this[refKey] = new WasmUint8Array(texture.width * texture.height * 4);
       (this[refKey] as WasmUint8Array).set(data as any as Uint8Array);
+      console.log("loaded texture " + refKey);
     };
+
+    // // @ts-ignore
+    // // let def,
+    // //   { WasmUint8Array: WasmUint8Array1 } = await import("../../../wasm/index");
+    // console.log(def);
+    // // console.log(WasmUint8Array1);
+    // const resp = await def();
+    // console.log(resp);
+    // let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
+    // this.ceilingFloorPixelsRef = new WasmUint8Array(length);
+    // console.log("YARS");
   }
 
   render(player: Player, map: GridMap, spriteMap: SpriteMap) {
+    if (
+      !this.ceilingTextureRef ||
+      !this.floorTextureRef ||
+      !this.roadTextureRef ||
+      !this.doorTextureRef
+    ) {
+      console.log("not initialized");
+      return;
+    }
+
     this.ctx.save();
     this.ctx.fillStyle = "#000000";
     this.ctx.fillRect(0, 0, this.width, this.height);

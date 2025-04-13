@@ -9,16 +9,15 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "typescript": "^5.7.3",
-    "vite-plugin-wasm": "^3.0.0",
     "@tailwindcss/vite": "^4.0.7",
-    "canvas-arbitrary-quads": "git+https://github.com/HalfdanJ/canvas-arbitrary-quads",
     "color": "^5.0.0",
     "comlink": "^4.4.2",
+    "d3": "7.9.0",
     "lodash": "^4.17.21",
     "mobx": "^6.13.6",
     "mobx-react": "^9.2.0",
     "mobx-react-lite": "^4.1.0",
+    "node-matrices": "1.0.0",
     "noisejs": "^2.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -26,8 +25,10 @@
     "simplex-noise": "^4.0.3",
     "structurae": "^4.0.2",
     "tailwindcss": "^4.0.7",
-    "d3":"7.9.0",
-    "node-matrices":"1.0.0"
+    "typescript": "^5.7.3",
+    "vite-plugin-cross-origin-isolation": "^0.1.6",
+    "vite-plugin-wasm": "^3.0.0",
+    "wasm-feature-detect": "^1.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
