@@ -43,8 +43,6 @@ pub fn raycast_column(
     let mut default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
 
-    let mut calculated_texture_width: i32 = wall_texture_width;
-
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
 
@@ -99,6 +97,22 @@ pub fn raycast_column(
         // if wall bit is set
         if has_set_bits(value, &[0], true) {
             hit_type = 1 as i8;
+            let initial_bit_offset = 16;
+
+            let bit_widths = [
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 8 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 24 + i as u8),
+                ),
+                get_bits(
+                    value,
+                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 40 + i as u8),
+                ),
+            ];
 
             let is_doors = [
                 has_set_bits(value, &[5], true),
@@ -106,9 +120,12 @@ pub fn raycast_column(
                 has_set_bits(value, &[4], true),
             ];
 
-            let is_windows = [has_set_bits(value, &[8], true), false, false];
+            let is_windows = [
+                has_set_bits(value, &[8], true),
+                has_set_bits(value, &[9], true),
+                false,
+            ];
 
-            let initial_bit_offset = 16;
             let bit_offsets = [
                 get_bits(
                     value,
@@ -135,20 +152,6 @@ pub fn raycast_column(
                 get_bits(
                     value,
                     &from_fn::<u8, 4, _>(|i| initial_bit_offset + 36 + i as u8),
-                ),
-            ];
-            let bit_widths = [
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 8 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 24 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 40 + i as u8),
                 ),
             ];
             let bit_offset_secondaries = [
@@ -384,7 +387,6 @@ pub fn raycast_column(
             if hit == 1 {
                 side_dist_x += coord_delta_dist_x;
                 side_dist_y += coord_delta_dist_y;
-                calculated_texture_width = (wall_texture_width as f32) as i32;
             }
         }
 
@@ -456,14 +458,14 @@ pub fn raycast_column(
     wall_x -= wall_offset;
     wall_x /= wall_width;
 
-    let tex_x = (wall_x * calculated_texture_width as f32) as i32;
+    let tex_x = (wall_x * wall_texture_width as f32) as i32;
     let tex_x = if side == 0 && ray_dir_x > 0.0 {
-        calculated_texture_width - tex_x - 1
+        wall_texture_width - tex_x - 1
     } else {
         tex_x
     };
     let tex_x = if side == 1 && ray_dir_y < 0.0 {
-        calculated_texture_width - tex_x - 1
+        wall_texture_width - tex_x - 1
     } else {
         tex_x
     };
