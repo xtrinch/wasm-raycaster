@@ -988,7 +988,7 @@ pub fn draw_sprites_wasm(
 ) -> usize {
     let found_sprites_length = found_sprites_count as usize;
 
-    let mut sprite_parts: Vec<SpritePart> = Vec::new();
+    // let mut sprite_parts: Vec<SpritePart> = Vec::new();
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution) };
@@ -996,6 +996,7 @@ pub fn draw_sprites_wasm(
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
+    // TODO: don't copy this around??
     let mut sprites = Vec::new();
     for i in (0..found_sprites_length * 9).step_by(9) {
         sprites.push(Sprite {
@@ -1018,115 +1019,126 @@ pub fn draw_sprites_wasm(
         db.partial_cmp(&da).unwrap()
     });
 
-    for sprite in sprites.iter() {
-        let projection = translate_coordinate_to_camera(
-            position,
-            sprite.x,
-            sprite.y,
-            sprite.height as f32 / 100.0,
-            width,
-            height,
-        );
+    let sprite_parts_collected: Vec<Vec<SpritePart>> = sprites
+        .into_par_iter()
+        .map(|sprite| {
+            let mut sprite_parts_inner: Vec<SpritePart> = Vec::new();
 
-        let alpha = projection.distance / light_range - map_light;
-        // ensure sprites are always at least a little bit visible - alpha 1 is all black
-        let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
+            let projection = translate_coordinate_to_camera(
+                position,
+                sprite.x,
+                sprite.y,
+                sprite.height as f32 / 100.0,
+                width,
+                height,
+            );
 
-        // TODO: this is causing the first one to disappear??
-        let (texture_height, texture_width) = texture_array
-            .get(&sprite.r#type)
-            .copied()
-            .unwrap_or((100, 100));
+            let alpha = projection.distance / light_range - map_light;
+            // ensure sprites are always at least a little bit visible - alpha 1 is all black
+            let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
 
-        if sprite.r#type == 7 {
-            // switch which side we were raycasting from to take the fract part to know where the texture was hit
-            let mut fract: f32;
-            // TODO: maybe not keep all of this in memory and just pass the fract around?
-            if sprite.side == 1 {
-                fract = sprite.x.abs().fract();
-            } else {
-                fract = sprite.y.abs().fract();
+            // TODO: this is causing the first one to disappear??
+            let (texture_height, texture_width) = texture_array
+                .get(&sprite.r#type)
+                .copied()
+                .unwrap_or((100, 100));
+
+            if sprite.r#type == 7 {
+                // switch which side we were raycasting from to take the fract part to know where the texture was hit
+                let mut fract: f32;
+                // TODO: maybe not keep all of this in memory and just pass the fract around?
+                if sprite.side == 1 {
+                    fract = sprite.x.abs().fract();
+                } else {
+                    fract = sprite.y.abs().fract();
+                }
+                // since we'd like the texture to match the width
+                fract -= sprite.offset;
+                fract /= sprite.width;
+
+                let texture_x: i32 = (fract * texture_width as f32) as i32;
+                sprite_parts_inner.push(SpritePart {
+                    sprite_type: sprite.r#type,
+                    sprite_left_x: sprite.column as i32,
+                    sprite_right_x: sprite.column as i32 + width_spacing,
+                    screen_y_ceiling: projection.screen_y_ceiling as i32,
+                    screen_y_floor: projection.screen_y_floor as i32,
+                    tex_x1: texture_x,
+                    tex_x2: (1.0
+                        + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
+                        + texture_x as f32) as i32,
+                    alpha: alpha_i,
+                    angle: 0,
+                });
+                return sprite_parts_inner;
             }
-            // since we'd like the texture to match the width
-            fract -= sprite.offset;
-            fract /= sprite.width;
 
-            let texture_x: i32 = (fract * texture_width as f32) as i32;
-            sprite_parts.push(SpritePart {
-                sprite_type: sprite.r#type,
-                sprite_left_x: sprite.column as i32,
-                sprite_right_x: sprite.column as i32 + width_spacing,
-                screen_y_ceiling: projection.screen_y_ceiling as i32,
-                screen_y_floor: projection.screen_y_floor as i32,
-                tex_x1: texture_x,
-                tex_x2: (1.0
-                    + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
-                    + texture_x as f32) as i32,
-                alpha: alpha_i,
-                angle: 0,
-            });
-            continue;
-        }
+            let aspect_ratio = texture_width as f32 / texture_height as f32;
 
-        let aspect_ratio = texture_width as f32 / texture_height as f32;
+            let dx = position.x - sprite.x;
+            let dy = position.y - sprite.y;
+            let angle = atan2(dx as f64, dy as f64);
+            // will return from -180 to 180
+            let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
-        let dx = position.x - sprite.x;
-        let dy = position.y - sprite.y;
-        let angle = atan2(dx as f64, dy as f64);
-        // will return from -180 to 180
-        let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
+            let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
 
-        let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
+            let draw_start_x = (-sprite_width as f32 / 2.0 + projection.screen_x).max(0.0) as i32;
+            let draw_end_x =
+                (sprite_width as f32 / 2.0 + projection.screen_x).min(width as f32 - 1.0) as i32;
 
-        let draw_start_x = (-sprite_width as f32 / 2.0 + projection.screen_x).max(0.0) as i32;
-        let draw_end_x =
-            (sprite_width as f32 / 2.0 + projection.screen_x).min(width as f32 - 1.0) as i32;
+            let mut sprite_parts_temp = Vec::new();
+            for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
+                if projection.distance > 0.0 && stripe >= 0 && stripe < width {
+                    let z_index =
+                        ((stripe / width_spacing) as usize).clamp(0, width_resolution - 1);
 
-        let mut sprite_parts_temp = Vec::new();
-        for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
-            if projection.distance > 0.0 && stripe >= 0 && stripe < width {
-                let z_index = ((stripe / width_spacing) as usize).clamp(0, width_resolution - 1);
-
-                if projection.distance < zbuffer[z_index] {
-                    if sprite_parts_temp.len() % 2 == 0 {
+                    if projection.distance < zbuffer[z_index] {
+                        if sprite_parts_temp.len() % 2 == 0 {
+                            sprite_parts_temp.push(stripe);
+                        }
+                        if stripe + width_spacing >= draw_end_x && sprite_parts_temp.len() % 2 == 1
+                        {
+                            sprite_parts_temp.push(stripe);
+                        }
+                    } else if sprite_parts_temp.len() % 2 == 1 {
                         sprite_parts_temp.push(stripe);
                     }
-                    if stripe + width_spacing >= draw_end_x && sprite_parts_temp.len() % 2 == 1 {
-                        sprite_parts_temp.push(stripe);
-                    }
-                } else if sprite_parts_temp.len() % 2 == 1 {
-                    sprite_parts_temp.push(stripe);
                 }
             }
-        }
 
-        for pair in sprite_parts_temp.chunks_exact(2) {
-            let sprite_width_f64 = sprite_width as f64;
-            let screen_x_f64 = projection.screen_x as f64;
+            for pair in sprite_parts_temp.chunks_exact(2) {
+                let sprite_width_f64 = sprite_width as f64;
+                let screen_x_f64 = projection.screen_x as f64;
 
-            let tex_x1 = (((pair[0] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                * texture_width as f64)
-                / sprite_width_f64) as i32;
-            let tex_x2 = (((pair[1] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                * texture_width as f64)
-                / sprite_width_f64) as i32;
+                let tex_x1 = (((pair[0] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                    * texture_width as f64)
+                    / sprite_width_f64) as i32;
+                let tex_x2 = (((pair[1] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                    * texture_width as f64)
+                    / sprite_width_f64) as i32;
 
-            sprite_parts.push(SpritePart {
-                sprite_type: sprite.r#type,
-                sprite_left_x: pair[0],
-                sprite_right_x: pair[1],
-                screen_y_ceiling: projection.screen_y_ceiling as i32,
-                screen_y_floor: projection.screen_y_floor as i32,
-                tex_x1,
-                tex_x2,
-                alpha: alpha_i,
-                angle: angle_i,
-            });
-        }
-    }
+                sprite_parts_inner.push(SpritePart {
+                    sprite_type: sprite.r#type,
+                    sprite_left_x: pair[0],
+                    sprite_right_x: pair[1],
+                    screen_y_ceiling: projection.screen_y_ceiling as i32,
+                    screen_y_floor: projection.screen_y_floor as i32,
+                    tex_x1,
+                    tex_x2,
+                    alpha: alpha_i,
+                    angle: angle_i,
+                });
+            }
 
-    for i in 0..sprite_parts.len() {
-        let sprite = &sprite_parts[i];
+            sprite_parts_inner
+        })
+        .collect();
+    let sprite_parts_flattened: Vec<SpritePart> =
+        sprite_parts_collected.into_iter().flatten().collect();
+
+    for i in 0..sprite_parts_flattened.len() {
+        let sprite = &sprite_parts_flattened[i];
         copy_to_raw_pointer(
             sprite_parts_array,
             9 * i,
@@ -1144,7 +1156,7 @@ pub fn draw_sprites_wasm(
         );
     }
 
-    sprite_parts.len()
+    sprite_parts_flattened.len()
 }
 
 // move if no wall in front of you
