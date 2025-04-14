@@ -58,9 +58,6 @@ export class Camera {
   public initialized: boolean;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
-    // this.initialize(canvas, map, spriteMap);
-    // return;
-
     this.ctx = canvas.getContext("2d");
     this.width = canvas.width = window.innerWidth;
     this.width = this.width;
@@ -70,11 +67,10 @@ export class Camera {
     // note that this should be whole numbers
     this.widthSpacing = 1;
     this.heightSpacing = 1;
-    this.ceilingWidthSpacing = 3;
+    this.ceilingWidthSpacing = 2;
     this.ceilingHeightSpacing = 2;
 
     this.widthResolution = Math.ceil(this.width / this.widthSpacing);
-    console.log(this.widthResolution);
     this.heightResolution = Math.ceil(this.height / this.heightSpacing);
     this.ceilingWidthResolution = Math.ceil(
       this.width / this.ceilingWidthSpacing

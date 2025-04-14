@@ -345,22 +345,21 @@ pub fn raycast_column(
                     let local_distance = local_intersection_coord
                         .hausdorff_distance(&[Coord::from([position.x, position.y])]);
                     if local_distance < distance {
-                        distance = local_distance;
-                        coord_delta_dist_x = local_delta_dist_x;
-                        coord_delta_dist_y = local_delta_dist_y;
-                        side = local_side;
-                        hit = 1;
-                        wall_width = local_width;
-                        wall_offset = local_offset;
+                        // we'll only use this data f we're stopping at a window or it's not a window
+                        if !is_window || stop_at_window {
+                            distance = local_distance;
+                            coord_delta_dist_x = local_delta_dist_x;
+                            coord_delta_dist_y = local_delta_dist_y;
+                            side = local_side;
+                            wall_width = local_width;
+                            wall_offset = local_offset;
+                            hit = 1;
+                        }
                         // has door bit set
                         if is_door {
                             hit_type = 0x2 as i8;
                         } else if is_window {
                             hit_type = 0x3 as i8;
-                            // keep going but add to sprites array
-                            if !stop_at_window {
-                                hit = 0;
-                            }
 
                             // add to visible sprites
                             if !skip_sprites_and_writes {
@@ -371,9 +370,9 @@ pub fn raycast_column(
                                     100.0,
                                     7 as f32,
                                     column as f32,
-                                    side as f32,
-                                    wall_offset,
-                                    wall_width,
+                                    local_side as f32,
+                                    local_offset,
+                                    local_width,
                                 ];
 
                                 window_sprites.push(window_data);
@@ -708,14 +707,16 @@ pub fn draw_ceiling_floor_raycast(
             let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
             let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
 
-            let mut floor_x = position.x + row_distance * ray_dir_x0;
-            let mut floor_y = position.y + row_distance * ray_dir_y0;
-
+            let floor_x_base = position.x + row_distance * ray_dir_x0;
+            let floor_y_base = position.y + row_distance * ray_dir_y0;
             let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
                 .into_iter()
                 .map(|x| {
-                    floor_x += floor_step_x;
-                    floor_y += floor_step_y;
+                    let floor_x = floor_x_base + (x as f32 * floor_step_x);
+                    let floor_y = floor_y_base + (x as f32 * floor_step_y);
+
+                    // floor_x += floor_step_x;
+                    // floor_y += floor_step_y;
 
                     // don't draw anything at values < 0
                     if floor_x < 0.0 || floor_y < 0.0 {
@@ -921,6 +922,12 @@ pub fn draw_sprites_wasm(
                 .unwrap_or((100, 100));
 
             if sprite.r#type == 7 {
+                let z_index = ((sprite.column as i32 / width_spacing) as usize)
+                    .clamp(0, width_resolution - 1);
+                // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
+                if projection.distance > zbuffer[z_index] {
+                    return sprite_parts_inner;
+                }
                 // switch which side we were raycasting from to take the fract part to know where the texture was hit
                 let mut fract: f32;
                 // TODO: maybe not keep all of this in memory and just pass the fract around?
