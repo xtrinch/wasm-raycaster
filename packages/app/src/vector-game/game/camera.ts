@@ -74,6 +74,7 @@ export class Camera {
     this.ceilingHeightSpacing = 2;
 
     this.widthResolution = Math.ceil(this.width / this.widthSpacing);
+    console.log(this.widthResolution);
     this.heightResolution = Math.ceil(this.height / this.heightSpacing);
     this.ceilingWidthResolution = Math.ceil(
       this.width / this.ceilingWidthSpacing

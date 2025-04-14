@@ -1,3 +1,5 @@
+#![feature(map_try_insert)]
+
 use helpers::{
     copy_to_raw_pointer, get_bits, get_grid_value, has_set_bits, parse_sprite_texture_array,
     Coords, Position, Sprite, SpritePart, TranslationResult,
@@ -8,6 +10,10 @@ mod helpers;
 mod line_intersection;
 use geo::{Coord, HausdorffDistance, Line};
 use line_intersection::LineInterval;
+use std::collections::HashSet;
+use std::default;
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
@@ -30,29 +36,39 @@ pub fn raycast_column(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
-    coords: Option<&mut HashMap<String, Coords>>,
-    sprites_map: Option<&mut HashMap<(i32, i32), Vec<[f32; 5]>>>,
-    found_sprites_count: Option<&mut u32>,
-    found_sprites: Option<&mut [f32]>,
+    // coords: Option<&Arc<Mutex<HashMap<std::string::String, Coords>>>>,
+    sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
+    // found_sprites_count: Option<&Arc<Mutex<u32>>>,
+    // found_sprites: Option<&Arc<Mutex<&mut [f32]>>>,
     skip_sprites_and_writes: bool,
-    columns_array: Option<*mut i32>,
-    zbuffer_array: Option<&mut [f32]>,
+    // columns_array: Option<&Arc<Mutex<&mut [i32]>>>,
+    // zbuffer_array: Option<&Arc<Mutex<&mut [f32]>>>,
     stop_at_window: bool,
-) -> (f32, [i32; 7]) {
+) -> (f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>) {
+    let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
+    let mut window_sprites: Vec<[f32; 9]> = vec![];
+
     // Use an empty HashMap if None is provided
-    let mut default_coords = HashMap::new();
-    let coords = coords.unwrap_or_else(|| &mut default_coords);
+    // let mut default_coords = Arc::new(Mutex::new(HashMap::new()));
+    // let coords = coords.unwrap_or_else(|| &default_coords);
+
     let mut default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
-    let found_sprites = found_sprites.unwrap_or_else(|| &mut []);
-    let zbuffer = zbuffer_array.unwrap_or_else(|| &mut []);
-    let columns = columns_array.unwrap_or_else(|| &mut 0);
+
+    // let mut default_found_sprites: Arc<Mutex<&mut [f32]>> = Arc::new(Mutex::new(&mut []));
+    // let found_sprites = found_sprites.unwrap_or_else(|| &mut default_found_sprites);
+
+    // let mut default_zbuffer: Arc<Mutex<&mut [f32]>> = Arc::new(Mutex::new(&mut []));
+    // let zbuffer = zbuffer_array.unwrap_or_else(|| &mut default_zbuffer);
+
+    // let mut default_columns: Arc<Mutex<&mut [i32]>> = Arc::new(Mutex::new(&mut []));
+    // let columns = columns_array.unwrap_or_else(|| &mut default_columns);
 
     let mut calculated_texture_width: i32 = wall_texture_width;
 
     // If found_sprites_count is None, use a local variable
-    let mut found_sprites_dummy = 0;
-    let found_sprites_count = found_sprites_count.unwrap_or(&mut found_sprites_dummy);
+    // let found_sprites_dummy: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    // let found_sprites_count = found_sprites_count.unwrap_or_else(|| &found_sprites_dummy);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
@@ -370,23 +386,31 @@ pub fn raycast_column(
 
                             // add to visible sprites
                             if !skip_sprites_and_writes {
-                                let index = (*found_sprites_count as usize) * 9; // Convert u32 to usize
-                                found_sprites[index..index + 9].copy_from_slice(
-                                    &[
-                                        local_intersection_coord.x,
-                                        local_intersection_coord.y,
-                                        0.0,
-                                        100.0,
-                                        7 as f32,
-                                        column as f32,
-                                        side as f32,
-                                        wall_offset,
-                                        wall_width,
-                                    ], // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
-                                );
-                                // let js: JsValue = vec![*found_sprites_count as f32].into();
-                                // console::log_2(&"Znj?".into(), &js);
-                                *found_sprites_count += 1;
+                                let window_data = [
+                                    local_intersection_coord.x,
+                                    local_intersection_coord.y,
+                                    0.0,
+                                    100.0,
+                                    7 as f32,
+                                    column as f32,
+                                    side as f32,
+                                    wall_offset,
+                                    wall_width,
+                                ];
+
+                                window_sprites.push(window_data);
+                                // let mut unlocked_found_sprites_count =
+                                //     found_sprites_count.lock().unwrap();
+                                // let index = ((*unlocked_found_sprites_count) as usize) * 9; // Convert u32 to usize
+
+                                // let mut unlocked_found_sprites = found_sprites.lock().unwrap();
+
+                                // (*unlocked_found_sprites)[index..index + 9].copy_from_slice(
+                                //     &window_data, // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
+                                // );
+                                // // let js: JsValue = vec![*found_sprites_count as f32].into();
+                                // // console::log_2(&"Znj?".into(), &js);
+                                // *unlocked_found_sprites_count += 1;
                             }
                         } else {
                             hit_type = 1;
@@ -408,20 +432,27 @@ pub fn raycast_column(
             hit = 1;
         }
 
-        // add in sprites from the coordinate in the way, if we haven't already
-        let coord_key = format!("{}-{}", map_x, map_y);
-        if !coords.contains_key(&coord_key) {
-            coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
-
-            if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-                for &sprite in sprite_list {
-                    let index = (*found_sprites_count as usize) * 9; // Convert u32 to usize
-
-                    found_sprites[index..index + 5].copy_from_slice(&sprite);
-                    *found_sprites_count += 1;
-                }
-            }
+        // only add coord if sprites exist in it
+        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+            let _ = met_coords.try_insert((map_x, map_y), 0);
         }
+        // add in sprites from the coordinate in the way, if we haven't already
+        // let coord_key = format!("{}-{}", map_x, map_y);
+        // let mut unlocked_coords = coords.lock().unwrap();
+        // if !unlocked_coords.contains_key(&coord_key) {
+        //     (*unlocked_coords).insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+        //     if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+        //         for &sprite in sprite_list {
+        //             let mut unlocked_found_sprites_count = found_sprites_count.lock().unwrap();
+        //             let index = (*unlocked_found_sprites_count as usize) * 9; // Convert u32 to usize
+
+        //             let mut unlocked_found_sprites = found_sprites.lock().unwrap();
+        //             (*unlocked_found_sprites)[index..index + 5].copy_from_slice(&sprite);
+        //             *unlocked_found_sprites_count += 1;
+        //         }
+        //     }
+        // }
 
         // don't do any more coordinate increments if hit
         if hit == 1 {
@@ -515,17 +546,26 @@ pub fn raycast_column(
         hit_type as i32,
     ];
 
-    if !skip_sprites_and_writes {
-        copy_to_raw_pointer(columns, 8 * column as usize, &col_data);
-        zbuffer[column as usize] = perp_wall_dist;
-    }
+    // if !skip_sprites_and_writes {
+    //     let mut unlocked_columns = columns.lock().unwrap();
+    //     (*unlocked_columns)[8 * column as usize..(8 * column + 7) as usize]
+    //         .copy_from_slice(&col_data);
+    //     // copy_to_raw_pointer(columns, 8 * column as usize, &col_data);
+    //     let mut unlocked_zbuffer = zbuffer.lock().unwrap();
+    //     (*unlocked_zbuffer)[column as usize] = perp_wall_dist;
+    // }
 
-    (perp_wall_dist, col_data)
+    (
+        perp_wall_dist,
+        col_data,
+        met_coords.keys().cloned().collect(),
+        window_sprites,
+    )
 }
 
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
-    columns_array: *mut i32,
+    columns_array: *mut i32, // TODO: should these be pointers to arrays??
     zbuffer_array: *mut f32,
     position: JsValue,
     map_array: *mut u64, // 2D array representing the grid map
@@ -544,13 +584,14 @@ pub fn draw_walls_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
     let all_sprites_data = unsafe { from_raw_parts(all_sprites_array, all_sprites_count * 5) };
-    let mut found_sprites = unsafe {
+    let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
             (all_sprites_count + (2 * width_resolution) as usize) * 9,
         )
     };
-    let mut zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
+    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
+    let columns = unsafe { from_raw_parts_mut(columns_array, (8 * width_resolution) as usize) }; // TODO: is this not too much??
 
     let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
@@ -568,35 +609,125 @@ pub fn draw_walls_raycast(
             .push(sprite_data);
     }
 
-    for column in 0..width_resolution {
-        let (perp_wall_dist, col_data) = raycast_column(
-            column,
-            position,
-            map_data,
-            map_width,
-            width_resolution,
-            height,
-            width,
-            width_spacing,
-            light_range,
-            range,
-            wall_texture_width,
-            Some(&mut coords),
-            Some(&mut sprites_map),
-            Some(&mut found_sprites_count),
-            Some(&mut found_sprites),
-            false,
-            Some(columns_array),
-            Some(&mut zbuffer),
-            false,
-        );
+    // for column in 0..width_resolution {
+    //     raycast_column(
+    //         column,
+    //         position,
+    //         map_data,
+    //         map_width,
+    //         width_resolution,
+    //         height,
+    //         width,
+    //         width_spacing,
+    //         light_range,
+    //         range,
+    //         wall_texture_width,
+    //         Some(&coords),
+    //         Some(&mut sprites_map),
+    //         Some(&found_sprites_count),
+    //         Some(&found_sprites),
+    //         false,
+    //         Some(&mut columns),
+    //         Some(&zbuffer),
+    //         false,
+    //     );
+    // }
 
-        // copy_to_raw_pointer(columns_array, 8 * column as usize, &col_data);
-        // copy_to_raw_pointer(zbuffer_array, column as usize, &[perp_wall_dist]);
+    // let start = Instant::now();
+
+    let mut data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>)> = (0..width_resolution)
+        .into_par_iter()
+        .map(|column| {
+            let (perp_wall_dist, col_data, met_coords, window_sprites) = raycast_column(
+                column,
+                position,
+                map_data,
+                map_width,
+                width_resolution,
+                height,
+                width,
+                width_spacing,
+                light_range,
+                range,
+                wall_texture_width,
+                // Some(&coords),
+                Some(&sprites_map),
+                // Some(&found_sprites_count),
+                // Some(&found_sprites),
+                false,
+                // Some(&columns),
+                // Some(&zbuffer),
+                false,
+            );
+
+            (perp_wall_dist, col_data, met_coords, window_sprites)
+        })
+        .collect();
+
+    // let elapsed = start.elapsed().as_millis() as u32;
+    // let js: JsValue = vec![elapsed].into();
+    // console::log_2(&"Znj?".into(), &js);
+
+    let mut all_met_coords: Vec<(i32, i32)> = vec![];
+    for (_, _, met_coords, _) in data.iter_mut() {
+        all_met_coords.append(met_coords);
+    }
+    // let js: JsValue = vec![all_met_coords.len() as f32].into();
+    // console::log_2(&"Znj?".into(), &js);
+    let uniqued_met_coords = all_met_coords
+        .into_iter()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    // let js: JsValue = vec![uniqued_met_coords.len() as f32].into();
+    // console::log_2(&"Znj?1".into(), &js);
+    for (x, y) in uniqued_met_coords {
+        let (map_x, map_y) = (x as i32, y as i32);
+        // let coord_key = format!("{}-{}", map_x, map_y);
+        // if !coords.contains_key(&coord_key) {
+        // coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+            for &sprite in sprite_list {
+                let index = (found_sprites_count as usize) * 9; // Convert u32 to usize
+
+                (found_sprites)[index..index + 5].copy_from_slice(&sprite);
+                found_sprites_count += 1;
+            }
+        }
+        // }
     }
 
-    // let js: JsValue = vec![*found_sprites_count as f32].into();
-    // console::log_2(&"Znj?".into(), &js);
+    for (column, (perp_wall_dist, col_data, _, window_sprites)) in data.iter().enumerate() {
+        (columns)[8 * column as usize..(8 * column + 7) as usize].copy_from_slice(col_data);
+        (zbuffer)[column as usize] = *perp_wall_dist;
+
+        // for (x, y) in met_coords {
+        //     let (map_x, map_y) = (*x as i32, *y as i32);
+        //     let coord_key = format!("{}-{}", map_x, map_y);
+        //     if !coords.contains_key(&coord_key) {
+        //         coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
+
+        //         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+        //             for &sprite in sprite_list {
+        //                 let index = (found_sprites_count as usize) * 9; // Convert u32 to usize
+
+        //                 (found_sprites)[index..index + 5].copy_from_slice(&sprite);
+        //                 found_sprites_count += 1;
+        //             }
+        //         }
+        //     }
+        // }
+
+        for window_sprite in window_sprites {
+            let index = ((found_sprites_count) as usize) * 9; // Convert u32 to usize
+
+            (found_sprites)[index..index + 9].copy_from_slice(
+                window_sprite, // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
+            );
+            found_sprites_count += 1;
+        }
+    }
 
     found_sprites_count
 }
@@ -627,6 +758,25 @@ pub fn draw_ceiling_floor_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
+    let road_texture_array = unsafe {
+        from_raw_parts(
+            road_texture,
+            (road_texture_width * road_texture_height * 4) as usize,
+        )
+    };
+    let ceiling_texture_array = unsafe {
+        from_raw_parts(
+            ceiling_texture,
+            (ceiling_texture_width * ceiling_texture_height * 4) as usize,
+        )
+    };
+    let floor_texture_array = unsafe {
+        from_raw_parts(
+            floor_texture,
+            (floor_texture_width * floor_texture_height * 4) as usize,
+        )
+    };
+
     unsafe {
         // blank out the whole image buffer
         write_bytes(
@@ -652,96 +802,123 @@ pub fn draw_ceiling_floor_raycast(
     let height_spacing_ratio = ceiling_height_spacing as f32 / ceiling_width_spacing as f32;
     let distance_divider =
         (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
-    for y in 0..ceiling_height_resolution {
-        let is_floor = (y as f32) > half_height + scaled_pitch;
 
-        let p = if is_floor {
-            y as f32 - half_height - scaled_pitch
-        } else {
-            half_height - y as f32 + scaled_pitch
-        };
-        let cam_z = if is_floor {
-            half_height + scaled_z
-        } else {
-            half_height - scaled_z
-        };
+    let outer_data: Vec<Vec<(i32, [u8; 4])>> = (0..ceiling_height_resolution)
+        .into_par_iter()
+        .map(|y| {
+            let is_floor = (y as f32) > half_height + scaled_pitch;
 
-        let row_distance = cam_z / (p * distance_divider);
-        let mut alpha = (row_distance + 0.0) / light_range - map_light;
-        alpha = alpha.min(0.8);
-
-        let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
-        let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
-        let mut floor_x = position.x + row_distance * ray_dir_x0;
-        let mut floor_y = position.y + row_distance * ray_dir_y0;
-
-        for x in 0..ceiling_width_resolution {
-            floor_x += floor_step_x;
-            floor_y += floor_step_y;
-
-            // don't draw anything at values < 0
-            if floor_x < 0.0 || floor_y < 0.0 {
-                continue;
-            }
-
-            let value = get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
-
-            let has_set_any_bits = has_set_bits(
-                value,
-                &[1, 3], // ceiling, floor or road
-                false,
-            );
-
-            if !has_set_any_bits {
-                continue;
-            }
-
-            let has_set_ceiling_bit = has_set_bits(value, &[1], false);
-            let has_set_floor_bit = has_set_bits(
-                value,
-                &[1], // ceiling, floor or road
-                false,
-            );
-            let has_set_road_bit = has_set_bits(
-                value,
-                &[3], // ceiling, floor or road
-                false,
-            );
-
-            // no ceiling for roads
-            if !is_floor && !has_set_ceiling_bit {
-                continue;
-            }
-
-            let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
-                (road_texture, road_texture_width, road_texture_height)
-            } else if is_floor && has_set_floor_bit {
-                (floor_texture, floor_texture_width, floor_texture_height)
+            let p = if is_floor {
+                y as f32 - half_height - scaled_pitch
             } else {
-                (
-                    ceiling_texture,
-                    ceiling_texture_width,
-                    ceiling_texture_height,
-                )
+                half_height - y as f32 + scaled_pitch
             };
-            let texture_arr =
-                unsafe { from_raw_parts(texture, (texture_width * texture_height * 4) as usize) };
+            let cam_z = if is_floor {
+                half_height + scaled_z
+            } else {
+                half_height - scaled_z
+            };
 
-            let pixel_idx = (y * ceiling_width_resolution + x) * 4;
+            let row_distance = cam_z / (p * distance_divider);
+            let mut alpha = (row_distance + 0.0) / light_range - map_light;
+            alpha = alpha.min(0.8);
 
-            let cell_x = floor_x.fract();
-            let cell_y = floor_y.fract();
+            let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
+            let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
 
-            let tx = (texture_width as f32 * cell_x) as usize;
-            let ty = (texture_height as f32 * cell_y) as usize;
-            let tex_idx = (ty * texture_width + tx) * 4;
+            let mut floor_x = position.x + row_distance * ray_dir_x0;
+            let mut floor_y = position.y + row_distance * ray_dir_y0;
 
-            let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
-            let r = (texture_arr[tex_idx] as f32 * darkening_factor) as u8;
-            let g = (texture_arr[tex_idx + 1] as f32 * darkening_factor) as u8;
-            let b = (texture_arr[tex_idx + 2] as f32 * darkening_factor) as u8;
+            let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
+                .into_iter()
+                .map(|x| {
+                    // });
+                    // for x in 0..ceiling_width_resolution {
+                    floor_x += floor_step_x;
+                    floor_y += floor_step_y;
 
-            copy_to_raw_pointer(ceiling_floor_img, pixel_idx, &[r, g, b, 255]);
+                    // don't draw anything at values < 0
+                    if floor_x < 0.0 || floor_y < 0.0 {
+                        return (-1, [0, 0, 0, 0]);
+                    }
+
+                    let value =
+                        get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
+
+                    let has_set_any_bits = has_set_bits(
+                        value,
+                        &[1, 3], // ceiling, floor or road
+                        false,
+                    );
+
+                    if !has_set_any_bits {
+                        return (-1, [0, 0, 0, 0]);
+                    }
+
+                    let has_set_ceiling_bit = has_set_bits(value, &[1], false);
+                    let has_set_floor_bit = has_set_bits(
+                        value,
+                        &[1], // ceiling, floor or road
+                        false,
+                    );
+                    let has_set_road_bit = has_set_bits(
+                        value,
+                        &[3], // ceiling, floor or road
+                        false,
+                    );
+
+                    // no ceiling for roads
+                    if !is_floor && !has_set_ceiling_bit {
+                        return (-1, [0, 0, 0, 0]);
+                    }
+
+                    let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
+                        (road_texture_array, road_texture_width, road_texture_height)
+                    } else if is_floor && has_set_floor_bit {
+                        (
+                            floor_texture_array,
+                            floor_texture_width,
+                            floor_texture_height,
+                        )
+                    } else {
+                        (
+                            ceiling_texture_array,
+                            ceiling_texture_width,
+                            ceiling_texture_height,
+                        )
+                    };
+
+                    let pixel_idx = (y * ceiling_width_resolution + x) * 4;
+
+                    let cell_x = floor_x.fract();
+                    let cell_y = floor_y.fract();
+
+                    let tx = (texture_width as f32 * cell_x) as usize;
+                    let ty = (texture_height as f32 * cell_y) as usize;
+                    let tex_idx = (ty * texture_width + tx) * 4;
+
+                    let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
+                    let r = (texture[tex_idx] as f32 * darkening_factor) as u8;
+                    let g = (texture[tex_idx + 1] as f32 * darkening_factor) as u8;
+                    let b = (texture[tex_idx + 2] as f32 * darkening_factor) as u8;
+
+                    (pixel_idx as i32, [r, g, b, 255])
+                })
+                .collect();
+
+            data
+        })
+        .collect();
+
+    for data in outer_data {
+        for (pixel_idx, rgb_array) in data {
+            if pixel_idx >= 0 {
+                copy_to_raw_pointer(
+                    ceiling_floor_img,
+                    pixel_idx as usize,
+                    &[rgb_array[0], rgb_array[1], rgb_array[2], rgb_array[3]],
+                );
+            }
         }
     }
 }
@@ -997,7 +1174,7 @@ pub fn walk(
     }
 
     // raycast middle column to get the distance
-    let (perp_wall_dist, col_data) = raycast_column(
+    let (perp_wall_dist, col_data, _, _) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position,
         map_data,
@@ -1009,13 +1186,13 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        // None,
         None,
-        None,
-        None,
-        None,
+        // None,
+        // None,
         true,
-        None,
-        None,
+        // None,
+        // None,
         true,
     );
 
@@ -1035,7 +1212,7 @@ pub fn walk(
     raycast_position_x.dir_y = 0.0;
 
     // raycast middle column to get the distance
-    let (perp_wall_dist_x, _) = raycast_column(
+    let (perp_wall_dist_x, _, _, _) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position_x,
         map_data,
@@ -1047,13 +1224,13 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        // None,
+        // None,
         None,
-        None,
-        None,
-        None,
+        // None,
         true,
-        None,
-        None,
+        // None,
+        // None,
         true,
     );
     if perp_wall_dist_x > 0.2 {
@@ -1067,7 +1244,7 @@ pub fn walk(
     raycast_position_y.dir_x = 0.0;
 
     // raycast middle column to get the distance
-    let (perp_wall_dist_y, _) = raycast_column(
+    let (perp_wall_dist_y, _, _, _) = raycast_column(
         (width_resolution / 2) as i32,
         raycast_position_y,
         map_data,
@@ -1079,13 +1256,13 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
+        // None,
+        // None,
         None,
-        None,
-        None,
-        None,
+        // None,
         true,
-        None,
-        None,
+        // None,
+        // None,
         true,
     );
     if perp_wall_dist_y > 0.2 {
