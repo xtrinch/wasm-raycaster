@@ -126,13 +126,11 @@ export class Camera {
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
-    // initThreadPool(navigator.hardwareConcurrency);
 
     makeAutoObservable(this);
   }
 
   async initializeTexture(texture: Bitmap, refKey: string) {
-    console.log("YARMS?");
     const img = texture.image;
     const canvas = document.createElement("canvas") as HTMLCanvasElement;
     this.context = canvas.getContext("2d");
@@ -148,19 +146,7 @@ export class Camera {
       )?.data;
       this[refKey] = new WasmUint8Array(texture.width * texture.height * 4);
       (this[refKey] as WasmUint8Array).set(data as any as Uint8Array);
-      console.log("loaded texture " + refKey);
     };
-
-    // // @ts-ignore
-    // // let def,
-    // //   { WasmUint8Array: WasmUint8Array1 } = await import("../../../wasm/index");
-    // console.log(def);
-    // // console.log(WasmUint8Array1);
-    // const resp = await def();
-    // console.log(resp);
-    // let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
-    // this.ceilingFloorPixelsRef = new WasmUint8Array(length);
-    // console.log("YARS");
   }
 
   render(player: Player, map: GridMap, spriteMap: SpriteMap) {
@@ -170,7 +156,6 @@ export class Camera {
       !this.roadTextureRef ||
       !this.doorTextureRef
     ) {
-      console.log("not initialized");
       return;
     }
 
@@ -292,7 +277,6 @@ export class Camera {
       this.allSpritesRef.ptr,
       spriteMap.size
     );
-    // console.log(foundSpritesCount);
     let width = Math.ceil(this.widthSpacing);
     for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
       let [
@@ -376,12 +360,6 @@ export class Camera {
         alpha,
         angle,
       ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
-      // console.log(texX1, texX2, stripeLeftX, stripeRightX);
-      // console.log(spriteType);
-      // console.log(this.spritePartsRef.buffer.length);
-      // console.log(
-      //   this.spritePartsRef.buffer.slice(stripeIdx * 9, stripeIdx * 9 + 9)
-      // );
       const { texture } = map.getSpriteTexture(spriteType, angle);
 
       this.ctx.save();

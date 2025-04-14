@@ -25,7 +25,6 @@ const Game = observer(() => {
       // Assign onclick handler + enable the button.
       Object.assign(document.getElementById(id), {
         async onclick() {
-          console.log("click");
           const start = performance.now();
           const rawImageData = generate(width, height, maxIterations);
           const time = performance.now() - start;
@@ -45,7 +44,6 @@ const Game = observer(() => {
       setupBtn("singleThread", { generate: def.generate });
     })();
 
-    console.log("will init mutli thread?");
     (async function initMultiThread() {
       if (!(await threads())) return;
       const { generate } = await import("../../wasm");

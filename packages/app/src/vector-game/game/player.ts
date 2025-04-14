@@ -71,13 +71,6 @@ export class Player {
     this.position.planeY =
       oldPlaneX * Math.sin(-rotSpeed) +
       this.position.planeY * Math.cos(-rotSpeed);
-
-    // console.log(
-    //   this.position.dirX,
-    //   this.position.dirY,
-    //   this.position.planeX,
-    //   this.position.planeY
-    // );
   };
 
   // move if no wall in front of you
@@ -95,7 +88,6 @@ export class Player {
       this.camera.range,
       map.wallTexture.width
     );
-    // console.log(x, y);
     this.position.x = x;
     this.position.y = y;
   };
