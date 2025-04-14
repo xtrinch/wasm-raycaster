@@ -996,8 +996,8 @@ pub fn draw_sprites_wasm(
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
-    // TODO: don't copy this around??
     let mut sprites = Vec::new();
+    // copy them since we need to sort them anyway
     for i in (0..found_sprites_length * 9).step_by(9) {
         sprites.push(Sprite {
             x: sprite_data[i],
