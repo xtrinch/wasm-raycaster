@@ -2,7 +2,7 @@
 
 use helpers::{
     copy_to_raw_pointer, get_bits, get_grid_value, has_set_bits, parse_sprite_texture_array,
-    Coords, Position, Sprite, SpritePart, TranslationResult,
+    Position, Sprite, SpritePart, TranslationResult,
 };
 use js_sys::Math::atan2;
 use wasm_bindgen::prelude::*;
@@ -11,9 +11,6 @@ mod line_intersection;
 use geo::{Coord, HausdorffDistance, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
-use std::default;
-use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
@@ -36,39 +33,17 @@ pub fn raycast_column(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
-    // coords: Option<&Arc<Mutex<HashMap<std::string::String, Coords>>>>,
     sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
-    // found_sprites_count: Option<&Arc<Mutex<u32>>>,
-    // found_sprites: Option<&Arc<Mutex<&mut [f32]>>>,
     skip_sprites_and_writes: bool,
-    // columns_array: Option<&Arc<Mutex<&mut [i32]>>>,
-    // zbuffer_array: Option<&Arc<Mutex<&mut [f32]>>>,
     stop_at_window: bool,
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>) {
     let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
     let mut window_sprites: Vec<[f32; 9]> = vec![];
 
-    // Use an empty HashMap if None is provided
-    // let mut default_coords = Arc::new(Mutex::new(HashMap::new()));
-    // let coords = coords.unwrap_or_else(|| &default_coords);
-
     let mut default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
 
-    // let mut default_found_sprites: Arc<Mutex<&mut [f32]>> = Arc::new(Mutex::new(&mut []));
-    // let found_sprites = found_sprites.unwrap_or_else(|| &mut default_found_sprites);
-
-    // let mut default_zbuffer: Arc<Mutex<&mut [f32]>> = Arc::new(Mutex::new(&mut []));
-    // let zbuffer = zbuffer_array.unwrap_or_else(|| &mut default_zbuffer);
-
-    // let mut default_columns: Arc<Mutex<&mut [i32]>> = Arc::new(Mutex::new(&mut []));
-    // let columns = columns_array.unwrap_or_else(|| &mut default_columns);
-
     let mut calculated_texture_width: i32 = wall_texture_width;
-
-    // If found_sprites_count is None, use a local variable
-    // let found_sprites_dummy: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
-    // let found_sprites_count = found_sprites_count.unwrap_or_else(|| &found_sprites_dummy);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
@@ -399,18 +374,6 @@ pub fn raycast_column(
                                 ];
 
                                 window_sprites.push(window_data);
-                                // let mut unlocked_found_sprites_count =
-                                //     found_sprites_count.lock().unwrap();
-                                // let index = ((*unlocked_found_sprites_count) as usize) * 9; // Convert u32 to usize
-
-                                // let mut unlocked_found_sprites = found_sprites.lock().unwrap();
-
-                                // (*unlocked_found_sprites)[index..index + 9].copy_from_slice(
-                                //     &window_data, // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
-                                // );
-                                // // let js: JsValue = vec![*found_sprites_count as f32].into();
-                                // // console::log_2(&"Znj?".into(), &js);
-                                // *unlocked_found_sprites_count += 1;
                             }
                         } else {
                             hit_type = 1;
@@ -433,26 +396,11 @@ pub fn raycast_column(
         }
 
         // only add coord if sprites exist in it
-        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-            let _ = met_coords.try_insert((map_x, map_y), 0);
+        if !skip_sprites_and_writes {
+            if let Some(_) = sprites_map.get(&(map_x, map_y)) {
+                let _ = met_coords.try_insert((map_x, map_y), 0);
+            }
         }
-        // add in sprites from the coordinate in the way, if we haven't already
-        // let coord_key = format!("{}-{}", map_x, map_y);
-        // let mut unlocked_coords = coords.lock().unwrap();
-        // if !unlocked_coords.contains_key(&coord_key) {
-        //     (*unlocked_coords).insert(coord_key.clone(), Coords { x: map_x, y: map_y });
-
-        //     if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-        //         for &sprite in sprite_list {
-        //             let mut unlocked_found_sprites_count = found_sprites_count.lock().unwrap();
-        //             let index = (*unlocked_found_sprites_count as usize) * 9; // Convert u32 to usize
-
-        //             let mut unlocked_found_sprites = found_sprites.lock().unwrap();
-        //             (*unlocked_found_sprites)[index..index + 5].copy_from_slice(&sprite);
-        //             *unlocked_found_sprites_count += 1;
-        //         }
-        //     }
-        // }
 
         // don't do any more coordinate increments if hit
         if hit == 1 {
@@ -546,15 +494,6 @@ pub fn raycast_column(
         hit_type as i32,
     ];
 
-    // if !skip_sprites_and_writes {
-    //     let mut unlocked_columns = columns.lock().unwrap();
-    //     (*unlocked_columns)[8 * column as usize..(8 * column + 7) as usize]
-    //         .copy_from_slice(&col_data);
-    //     // copy_to_raw_pointer(columns, 8 * column as usize, &col_data);
-    //     let mut unlocked_zbuffer = zbuffer.lock().unwrap();
-    //     (*unlocked_zbuffer)[column as usize] = perp_wall_dist;
-    // }
-
     (
         perp_wall_dist,
         col_data,
@@ -593,7 +532,6 @@ pub fn draw_walls_raycast(
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
     let columns = unsafe { from_raw_parts_mut(columns_array, (8 * width_resolution) as usize) }; // TODO: is this not too much??
 
-    let mut coords: HashMap<String, Coords> = HashMap::new();
     let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
     let mut found_sprites_count = 0;
 
@@ -608,32 +546,6 @@ pub fn draw_walls_raycast(
             .or_insert_with(Vec::new)
             .push(sprite_data);
     }
-
-    // for column in 0..width_resolution {
-    //     raycast_column(
-    //         column,
-    //         position,
-    //         map_data,
-    //         map_width,
-    //         width_resolution,
-    //         height,
-    //         width,
-    //         width_spacing,
-    //         light_range,
-    //         range,
-    //         wall_texture_width,
-    //         Some(&coords),
-    //         Some(&mut sprites_map),
-    //         Some(&found_sprites_count),
-    //         Some(&found_sprites),
-    //         false,
-    //         Some(&mut columns),
-    //         Some(&zbuffer),
-    //         false,
-    //     );
-    // }
-
-    // let start = Instant::now();
 
     let mut data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>)> = (0..width_resolution)
         .into_par_iter()
@@ -650,13 +562,8 @@ pub fn draw_walls_raycast(
                 light_range,
                 range,
                 wall_texture_width,
-                // Some(&coords),
                 Some(&sprites_map),
-                // Some(&found_sprites_count),
-                // Some(&found_sprites),
                 false,
-                // Some(&columns),
-                // Some(&zbuffer),
                 false,
             );
 
@@ -664,28 +571,19 @@ pub fn draw_walls_raycast(
         })
         .collect();
 
-    // let elapsed = start.elapsed().as_millis() as u32;
-    // let js: JsValue = vec![elapsed].into();
-    // console::log_2(&"Znj?".into(), &js);
+    let all_met_coords: Vec<(i32, i32)> = data
+        .iter_mut()
+        .flat_map(|(_, _, met_coords, _)| met_coords.iter().cloned())
+        .collect();
 
-    let mut all_met_coords: Vec<(i32, i32)> = vec![];
-    for (_, _, met_coords, _) in data.iter_mut() {
-        all_met_coords.append(met_coords);
-    }
-    // let js: JsValue = vec![all_met_coords.len() as f32].into();
-    // console::log_2(&"Znj?".into(), &js);
     let uniqued_met_coords = all_met_coords
         .into_iter()
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    // let js: JsValue = vec![uniqued_met_coords.len() as f32].into();
-    // console::log_2(&"Znj?1".into(), &js);
+
     for (x, y) in uniqued_met_coords {
         let (map_x, map_y) = (x as i32, y as i32);
-        // let coord_key = format!("{}-{}", map_x, map_y);
-        // if !coords.contains_key(&coord_key) {
-        // coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
 
         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
             for &sprite in sprite_list {
@@ -695,29 +593,11 @@ pub fn draw_walls_raycast(
                 found_sprites_count += 1;
             }
         }
-        // }
     }
 
     for (column, (perp_wall_dist, col_data, _, window_sprites)) in data.iter().enumerate() {
         (columns)[8 * column as usize..(8 * column + 7) as usize].copy_from_slice(col_data);
         (zbuffer)[column as usize] = *perp_wall_dist;
-
-        // for (x, y) in met_coords {
-        //     let (map_x, map_y) = (*x as i32, *y as i32);
-        //     let coord_key = format!("{}-{}", map_x, map_y);
-        //     if !coords.contains_key(&coord_key) {
-        //         coords.insert(coord_key.clone(), Coords { x: map_x, y: map_y });
-
-        //         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-        //             for &sprite in sprite_list {
-        //                 let index = (found_sprites_count as usize) * 9; // Convert u32 to usize
-
-        //                 (found_sprites)[index..index + 5].copy_from_slice(&sprite);
-        //                 found_sprites_count += 1;
-        //             }
-        //         }
-        //     }
-        // }
 
         for window_sprite in window_sprites {
             let index = ((found_sprites_count) as usize) * 9; // Convert u32 to usize
@@ -832,8 +712,6 @@ pub fn draw_ceiling_floor_raycast(
             let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
                 .into_iter()
                 .map(|x| {
-                    // });
-                    // for x in 0..ceiling_width_resolution {
                     floor_x += floor_step_x;
                     floor_y += floor_step_y;
 
@@ -984,11 +862,8 @@ pub fn draw_sprites_wasm(
     map_light: f32,
     width_resolution: usize,
     found_sprites_count: u32,
-    all_sprites_count: u32,
 ) -> usize {
     let found_sprites_length = found_sprites_count as usize;
-
-    // let mut sprite_parts: Vec<SpritePart> = Vec::new();
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution) };
@@ -1198,13 +1073,8 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
-        // None,
         None,
-        // None,
-        // None,
         true,
-        // None,
-        // None,
         true,
     );
 
@@ -1236,13 +1106,8 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
-        // None,
-        // None,
         None,
-        // None,
         true,
-        // None,
-        // None,
         true,
     );
     if perp_wall_dist_x > 0.2 {
@@ -1268,13 +1133,8 @@ pub fn walk(
         light_range,
         range,
         wall_texture_width,
-        // None,
-        // None,
         None,
-        // None,
         true,
-        // None,
-        // None,
         true,
     );
     if perp_wall_dist_y > 0.2 {
