@@ -345,6 +345,7 @@ export class Camera {
       this.lightRange,
       map.light,
       this.widthResolution,
+      this.heightResolution,
       foundSpritesCount
     );
     for (let stripeIdx = 0; stripeIdx < stripePartCount; stripeIdx++) {
@@ -352,9 +353,9 @@ export class Camera {
       const [
         spriteType,
         stripeLeftX,
-        stripeRightX,
+        width,
         screenYCeiling,
-        screenYFloor,
+        height,
         texX1,
         texX2,
         alpha,
@@ -368,9 +369,6 @@ export class Camera {
         this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
         // this can be used for sprites but not for windows (there we should use a black overlay)
       }
-
-      const width = stripeRightX - stripeLeftX;
-      const height = screenYFloor - screenYCeiling;
       this.ctx.drawImage(
         texture.image,
         texX1, // sx

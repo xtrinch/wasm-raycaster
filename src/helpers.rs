@@ -212,9 +212,9 @@ pub struct Sprite {
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct TranslationResult {
-    pub screen_x: f32,
-    pub screen_y_floor: f32,
-    pub screen_y_ceiling: f32,
+    pub screen_x: f32,         // TODO: i32
+    pub screen_y_floor: f32,   // TODO: i32
+    pub screen_y_ceiling: f32, // TODO: i32
     pub distance: f32,
     pub full_height: f32,
     pub transform_x: f32,
@@ -226,9 +226,9 @@ pub struct TranslationResult {
 pub struct SpritePart {
     pub sprite_type: i32,
     pub sprite_left_x: i32,
-    pub sprite_right_x: i32,
+    pub width: i32,
     pub screen_y_ceiling: i32,
-    pub screen_y_floor: i32,
+    pub height: i32,
     pub tex_x1: i32,
     pub tex_x2: i32,
     pub alpha: i32,

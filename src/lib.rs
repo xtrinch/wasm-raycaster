@@ -639,6 +639,14 @@ pub fn draw_ceiling_floor_raycast(
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
+    // some pre-computations
+    let floor_texture_width_f32 = floor_texture_width as f32;
+    let floor_texture_height_f32 = floor_texture_height as f32;
+    let ceiling_texture_width_f32 = ceiling_texture_width as f32;
+    let ceiling_texture_height_f32 = ceiling_texture_height as f32;
+    let road_texture_width_f32 = road_texture_width as f32;
+    let road_texture_height_f32 = road_texture_height as f32;
+
     let road_texture_array = unsafe {
         from_raw_parts(
             road_texture,
@@ -684,15 +692,18 @@ pub fn draw_ceiling_floor_raycast(
     let distance_divider =
         (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
 
+    let nonexistant_pixel = (-1, [0, 0, 0, 0]);
+
     let outer_data: Vec<Vec<(i32, [u8; 4])>> = (0..ceiling_height_resolution)
         .into_par_iter()
         .map(|y| {
-            let is_floor = (y as f32) > half_height + scaled_pitch;
+            let y_f32 = y as f32;
+            let is_floor = (y_f32) > half_height + scaled_pitch;
 
             let p = if is_floor {
-                y as f32 - half_height - scaled_pitch
+                y_f32 - half_height - scaled_pitch
             } else {
-                half_height - y as f32 + scaled_pitch
+                half_height - y_f32 + scaled_pitch
             };
             let cam_z = if is_floor {
                 half_height + scaled_z
@@ -701,8 +712,7 @@ pub fn draw_ceiling_floor_raycast(
             };
 
             let row_distance = cam_z / (p * distance_divider);
-            let mut alpha = (row_distance + 0.0) / light_range - map_light;
-            alpha = alpha.min(0.8);
+            let alpha = ((row_distance + 0.0) / light_range - map_light).min(0.8);
 
             let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
             let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
@@ -712,70 +722,73 @@ pub fn draw_ceiling_floor_raycast(
             let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
                 .into_iter()
                 .map(|x| {
-                    let floor_x = floor_x_base + (x as f32 * floor_step_x);
-                    let floor_y = floor_y_base + (x as f32 * floor_step_y);
+                    let x_f32 = x as f32;
+                    let floor_x = floor_x_base + (x_f32 * floor_step_x);
+                    let floor_y = floor_y_base + (x_f32 * floor_step_y);
 
                     // floor_x += floor_step_x;
                     // floor_y += floor_step_y;
 
                     // don't draw anything at values < 0
                     if floor_x < 0.0 || floor_y < 0.0 {
-                        return (-1, [0, 0, 0, 0]);
+                        return nonexistant_pixel;
                     }
 
                     let value =
                         get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
 
-                    let has_set_any_bits = has_set_bits(
-                        value,
-                        &[1, 3], // ceiling, floor or road
-                        false,
-                    );
-
-                    if !has_set_any_bits {
-                        return (-1, [0, 0, 0, 0]);
-                    }
-
                     let has_set_ceiling_bit = has_set_bits(value, &[1], false);
-                    let has_set_floor_bit = has_set_bits(
-                        value,
-                        &[1], // ceiling, floor or road
-                        false,
-                    );
+                    let has_set_floor_bit = has_set_ceiling_bit;
                     let has_set_road_bit = has_set_bits(
                         value,
                         &[3], // ceiling, floor or road
                         false,
                     );
 
-                    // no ceiling for roads
-                    if !is_floor && !has_set_ceiling_bit {
-                        return (-1, [0, 0, 0, 0]);
+                    // if no bits are set
+                    if !has_set_ceiling_bit && !has_set_floor_bit && !has_set_road_bit {
+                        return nonexistant_pixel;
                     }
 
-                    let (texture, texture_width, texture_height) = if is_floor && has_set_road_bit {
-                        (road_texture_array, road_texture_width, road_texture_height)
-                    } else if is_floor && has_set_floor_bit {
-                        (
-                            floor_texture_array,
-                            floor_texture_width,
-                            floor_texture_height,
-                        )
-                    } else {
-                        (
-                            ceiling_texture_array,
-                            ceiling_texture_width,
-                            ceiling_texture_height,
-                        )
-                    };
+                    // no ceiling for roads
+                    if !is_floor && !has_set_ceiling_bit {
+                        return nonexistant_pixel;
+                    }
+
+                    let (texture, texture_width, _, texture_width_f32, texture_height_f32) =
+                        if is_floor && has_set_road_bit {
+                            (
+                                road_texture_array,
+                                road_texture_width,
+                                road_texture_height,
+                                road_texture_width_f32,
+                                road_texture_height_f32,
+                            )
+                        } else if is_floor && has_set_floor_bit {
+                            (
+                                floor_texture_array,
+                                floor_texture_width,
+                                floor_texture_height,
+                                floor_texture_width_f32,
+                                floor_texture_height_f32,
+                            )
+                        } else {
+                            (
+                                ceiling_texture_array,
+                                ceiling_texture_width,
+                                ceiling_texture_height,
+                                ceiling_texture_width_f32,
+                                ceiling_texture_height_f32,
+                            )
+                        };
 
                     let pixel_idx = (y * ceiling_width_resolution + x) * 4;
 
                     let cell_x = floor_x.fract();
                     let cell_y = floor_y.fract();
 
-                    let tx = (texture_width as f32 * cell_x) as usize;
-                    let ty = (texture_height as f32 * cell_y) as usize;
+                    let tx = (texture_width_f32 * cell_x) as usize;
+                    let ty = (texture_height_f32 * cell_y) as usize;
                     let tex_idx = (ty * texture_width + tx) * 4;
 
                     let darkening_factor = 1.0 - alpha; // Adjust for the desired darkness
@@ -811,6 +824,7 @@ pub fn translate_coordinate_to_camera(
     height_multiplier: f32,
     width: i32,
     height: i32,
+    height_resolution: usize,
 ) -> TranslationResult {
     // translate x, y position to relative to camera
     let sprite_x = point_x - position.x;
@@ -835,14 +849,14 @@ pub fn translate_coordinate_to_camera(
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
     let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
-    let sprite_floor_screen_y = screen_floor_y + v_move_screen + height_distance / 2.0;
-    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2.0;
-    let full_height = sprite_ceiling_screen_y - sprite_floor_screen_y;
+    let sprite_floor_screen_y = (screen_floor_y + v_move_screen + height_distance / 2.0);
+    let sprite_ceiling_screen_y = (screen_ceiling_y + v_move_screen + height_distance / 2.0);
+    let full_height = sprite_floor_screen_y - sprite_ceiling_screen_y;
 
     TranslationResult {
         screen_x, // TODO: to i32??
-        screen_y_floor: sprite_floor_screen_y,
-        screen_y_ceiling: sprite_ceiling_screen_y,
+        screen_y_floor: sprite_floor_screen_y.max(0.0),
+        screen_y_ceiling: sprite_ceiling_screen_y.min(height_resolution as f32),
         distance: transform_y,
         full_height,
         transform_x,
@@ -864,6 +878,7 @@ pub fn draw_sprites_wasm(
     light_range: f32,
     map_light: f32,
     width_resolution: usize,
+    height_resolution: usize,
     found_sprites_count: u32,
 ) -> usize {
     let found_sprites_length = found_sprites_count as usize;
@@ -909,6 +924,7 @@ pub fn draw_sprites_wasm(
                 sprite.height as f32 / 100.0,
                 width,
                 height,
+                height_resolution,
             );
 
             let alpha = projection.distance / light_range - map_light;
@@ -941,16 +957,17 @@ pub fn draw_sprites_wasm(
                 fract /= sprite.width;
 
                 let texture_x: i32 = (fract * texture_width as f32) as i32;
+                let texture_x2 = (1.0
+                    + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
+                    + texture_x as f32) as i32;
                 sprite_parts_inner.push(SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: sprite.column as i32,
-                    sprite_right_x: sprite.column as i32 + width_spacing,
+                    width: width_spacing,
                     screen_y_ceiling: projection.screen_y_ceiling as i32,
-                    screen_y_floor: projection.screen_y_floor as i32,
+                    height: projection.full_height as i32,
                     tex_x1: texture_x,
-                    tex_x2: (1.0
-                        + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
-                        + texture_x as f32) as i32,
+                    tex_x2: texture_x2,
                     alpha: alpha_i,
                     angle: 0,
                 });
@@ -1005,9 +1022,9 @@ pub fn draw_sprites_wasm(
                 sprite_parts_inner.push(SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: pair[0],
-                    sprite_right_x: pair[1],
+                    width: pair[1] - pair[0],
                     screen_y_ceiling: projection.screen_y_ceiling as i32,
-                    screen_y_floor: projection.screen_y_floor as i32,
+                    height: (projection.full_height) as i32,
                     tex_x1,
                     tex_x2,
                     alpha: alpha_i,
@@ -1029,9 +1046,9 @@ pub fn draw_sprites_wasm(
             &[
                 sprite.sprite_type,
                 sprite.sprite_left_x,
-                sprite.sprite_right_x,
+                sprite.width,
                 sprite.screen_y_ceiling,
-                sprite.screen_y_floor,
+                sprite.height,
                 sprite.tex_x1,
                 sprite.tex_x2,
                 sprite.alpha,
