@@ -1,3 +1,4 @@
+import { mean } from "lodash";
 import { makeAutoObservable } from "mobx";
 import { Camera } from "./camera";
 import { Controls } from "./controls";
@@ -14,6 +15,7 @@ export class GameLoop {
   public camera: Camera;
   public spriteMap: SpriteMap;
   public fps: number;
+  public lastNFps: number[];
   public frameTime: number;
 
   constructor() {
@@ -26,17 +28,25 @@ export class GameLoop {
     this.player = this.findSpawnPoint();
     this.fps = 0;
     this.frameTime = 0;
+    this.lastNFps = [];
     makeAutoObservable(this);
   }
 
   frame(time: number) {
     this.frameTime = (time - this.lastTime) / 1000;
 
-    this.fps = Math.floor((this.fps + Math.floor(1.0 / this.frameTime)) / 2);
+    const fps = Math.floor(1.0 / this.frameTime);
     if (this.frameTime > 0.01) {
       this.lastTime = time;
       this.loop();
     }
+
+    if (this.lastNFps.length >= 60) {
+      this.lastNFps.shift();
+    }
+    this.lastNFps.push(fps);
+    this.fps = Math.floor(mean(this.lastNFps));
+
     requestAnimationFrame(this.frame.bind(this));
   }
 

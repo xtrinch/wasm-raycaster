@@ -212,7 +212,7 @@ pub struct Sprite {
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct TranslationResult {
-    pub screen_x: f32,         // TODO: i32
+    pub screen_x: i32,         // TODO: i32
     pub screen_y_floor: f32,   // TODO: i32
     pub screen_y_ceiling: f32, // TODO: i32
     pub distance: f32,
@@ -235,14 +235,8 @@ pub struct SpritePart {
     pub angle: i32,
 }
 
-pub fn has_set_bits(value: u64, values: &[u8], all: bool) -> bool {
-    let has_bits = if all {
-        values.iter().all(|&bit| value & (1 << bit) != 0)
-    } else {
-        values.iter().any(|&bit| value & (1 << bit) != 0)
-    };
-
-    has_bits
+pub fn has_bit_set(value: u64, bit: u8) -> bool {
+    (value & (1 << bit)) != 0
 }
 
 pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) -> u64 {
@@ -258,60 +252,6 @@ pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) 
     return map_data[map_index];
 }
 
-pub fn has_set_bits_in_grid(
-    map_x: i32,
-    map_y: i32,
-    map_width: i32,
-    map_data: &[u64],
-    values: &[u8],
-    all: bool,
-) -> (bool, u64) {
-    if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
-        return (false, 0);
-    }
-
-    let map_index = (map_y * map_width + map_x) as usize;
-    if map_index >= map_data.len() {
-        return (false, 0);
-    }
-
-    let value = map_data[map_index];
-    let has_bits: bool;
-    if all {
-        has_bits = values.iter().all(|&bit| value & (1 << bit) != 0);
-    } else {
-        has_bits = values.iter().any(|&bit| value & (1 << bit) != 0);
-    }
-
-    (has_bits, value)
-}
-
-pub fn get_bits_in_grid(
-    map_x: i32,
-    map_y: i32,
-    map_width: i32,
-    map_data: &[u64],
-    values: &[u8],
-) -> u64 {
-    if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
-        return 0;
-    }
-
-    let map_index = (map_y * map_width + map_x) as usize;
-    if map_index >= map_data.len() {
-        return 0;
-    }
-
-    let value = map_data[map_index];
-    values
-        .iter()
-        .enumerate()
-        .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
-}
-
-pub fn get_bits(value: u64, values: &[u8]) -> u64 {
-    values
-        .iter()
-        .enumerate()
-        .fold(0, |acc, (i, &bit)| acc | (((value >> bit) & 1) << i))
+pub fn get_bits(value: u64, start_bit: u8) -> u32 {
+    ((value >> start_bit) & 0b1111) as u32
 }

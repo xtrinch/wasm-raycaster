@@ -1,7 +1,7 @@
 #![feature(map_try_insert)]
 
 use helpers::{
-    copy_to_raw_pointer, get_bits, get_grid_value, has_set_bits, parse_sprite_texture_array,
+    copy_to_raw_pointer, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array,
     Position, Sprite, SpritePart, TranslationResult,
 };
 use js_sys::Math::atan2;
@@ -101,83 +101,43 @@ pub fn raycast_column(
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
 
         // if wall bit is set
-        if has_set_bits(value, &[0], true) {
+        if has_bit_set(value, 0) {
             hit_type = 1 as i8;
             let initial_bit_offset = 16;
 
             let bit_widths = [
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 8 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 24 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 40 + i as u8),
-                ),
+                get_bits(value, initial_bit_offset + 8),
+                get_bits(value, initial_bit_offset + 24),
+                get_bits(value, initial_bit_offset + 40),
             ];
 
             let is_doors = [
-                has_set_bits(value, &[5], true),
-                has_set_bits(value, &[4], true),
-                has_set_bits(value, &[4], true),
+                has_bit_set(value, 5),
+                has_bit_set(value, 4),
+                has_bit_set(value, 4),
             ];
 
-            let is_windows = [
-                has_set_bits(value, &[8], true),
-                has_set_bits(value, &[9], true),
-                false,
-            ];
+            let is_windows = [has_bit_set(value, 8), has_bit_set(value, 9), false];
 
             let bit_offsets = [
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 16 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 32 + i as u8),
-                ),
+                get_bits(value, initial_bit_offset),
+                get_bits(value, initial_bit_offset + 16 as u8),
+                get_bits(value, initial_bit_offset + 32),
             ];
             let bit_thicknesses = [
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 4 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 20 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 36 + i as u8),
-                ),
+                get_bits(value, initial_bit_offset + 4),
+                get_bits(value, initial_bit_offset + 20),
+                get_bits(value, initial_bit_offset + 36),
             ];
             let bit_offset_secondaries = [
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 12 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 28 + i as u8),
-                ),
-                get_bits(
-                    value,
-                    &from_fn::<u8, 4, _>(|i| initial_bit_offset + 44 + i as u8),
-                ),
+                get_bits(value, initial_bit_offset + 12),
+                get_bits(value, initial_bit_offset + 28),
+                get_bits(value, initial_bit_offset + 44),
             ];
             let has_set_north_bits = [
-                has_set_bits(value, &[6], false),
-                has_set_bits(value, &[7], false),
-                has_set_bits(value, &[2], false),
+                has_bit_set(value, 6),
+                has_bit_set(value, 7),
+                has_bit_set(value, 2),
             ];
             let mut coord_delta_dist_x = MAX;
             let mut coord_delta_dist_y = MAX;
@@ -602,18 +562,23 @@ pub fn draw_walls_raycast(
         }
     }
 
-    for (column, (perp_wall_dist, col_data, _, window_sprites)) in data.iter().enumerate() {
+    let all_window_sprites: Vec<&[f32; 9]> = data
+        .iter()
+        .flat_map(|(_, _, _, window_sprites)| window_sprites)
+        .collect();
+
+    for window_sprite in all_window_sprites {
+        let index = ((found_sprites_count) as usize) * 9; // Convert u32 to usize
+
+        (found_sprites)[index..index + 9].copy_from_slice(
+            window_sprite, // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
+        );
+        found_sprites_count += 1;
+    }
+
+    for (column, (perp_wall_dist, col_data, _, _)) in data.iter().enumerate() {
         (columns)[8 * column as usize..(8 * column + 7) as usize].copy_from_slice(col_data);
         (zbuffer)[column as usize] = *perp_wall_dist;
-
-        for window_sprite in window_sprites {
-            let index = ((found_sprites_count) as usize) * 9; // Convert u32 to usize
-
-            (found_sprites)[index..index + 9].copy_from_slice(
-                window_sprite, // x, y, angle (0-360), height (multiplier of 1 z), type, column, side, offset, width
-            );
-            found_sprites_count += 1;
-        }
     }
 
     found_sprites_count
@@ -743,12 +708,10 @@ pub fn draw_ceiling_floor_raycast(
                     let value =
                         get_grid_value(floor_x as i32, floor_y as i32, map_width as i32, map_data);
 
-                    let has_set_ceiling_bit = has_set_bits(value, &[1], false);
+                    let has_set_ceiling_bit = has_bit_set(value, 1);
                     let has_set_floor_bit = has_set_ceiling_bit;
-                    let has_set_road_bit = has_set_bits(
-                        value,
-                        &[3], // ceiling, floor or road
-                        false,
+                    let has_set_road_bit = has_bit_set(
+                        value, 3, // ceiling, floor or road
                     );
 
                     // if no bits are set
@@ -843,7 +806,7 @@ pub fn translate_coordinate_to_camera(
     let transform_y = (inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y))
         / position.plane_y_initial;
 
-    let screen_x = (width as f32 / 2.0) * (1.0 + (transform_x / transform_y));
+    let screen_x = ((width as f32 / 2.0) * (1.0 + (transform_x / transform_y))) as i32;
 
     // to control the pitch/jump
     let aspect_ratio = height as f32 / width as f32;
@@ -860,7 +823,7 @@ pub fn translate_coordinate_to_camera(
     let full_height = sprite_floor_screen_y - sprite_ceiling_screen_y;
 
     TranslationResult {
-        screen_x, // TODO: to i32??
+        screen_x,
         screen_y_floor: sprite_floor_screen_y.max(0.0),
         screen_y_ceiling: sprite_ceiling_screen_y.min(height_resolution as f32),
         distance: transform_y,
@@ -912,7 +875,7 @@ pub fn draw_sprites_wasm(
     }
 
     // since we should draw those in the distance first, we sort them
-    sprites.sort_by(|a, b| {
+    sprites.sort_unstable_by(|a, b| {
         let da = (position.x - a.x).powi(2) + (position.y - a.y).powi(2);
         let db = (position.x - b.x).powi(2) + (position.y - b.y).powi(2);
         db.partial_cmp(&da).unwrap()
@@ -990,9 +953,10 @@ pub fn draw_sprites_wasm(
 
             let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
 
-            let draw_start_x = (-sprite_width as f32 / 2.0 + projection.screen_x).max(0.0) as i32;
-            let draw_end_x =
-                (sprite_width as f32 / 2.0 + projection.screen_x).min(width as f32 - 1.0) as i32;
+            let draw_start_x =
+                (-sprite_width as f32 / 2.0 + projection.screen_x as f32).max(0.0) as i32;
+            let draw_end_x = (sprite_width as f32 / 2.0 + projection.screen_x as f32)
+                .min(width as f32 - 1.0) as i32;
 
             let mut sprite_parts_temp = Vec::new();
             for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
