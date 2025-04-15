@@ -17,6 +17,7 @@ mod line_intersection;
 use geo::{Coord, HausdorffDistance, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
@@ -538,9 +539,9 @@ pub fn draw_walls_raycast(
         })
         .collect();
 
-    let all_met_coords: Vec<(i32, i32)> = data
-        .iter_mut()
-        .flat_map(|(_, _, met_coords, _)| met_coords.iter().cloned())
+    let all_met_coords: Vec<&(i32, i32)> = data
+        .iter()
+        .flat_map(|(_, _, met_coords, _)| met_coords)
         .collect();
 
     let uniqued_met_coords = all_met_coords
@@ -550,7 +551,7 @@ pub fn draw_walls_raycast(
         .collect::<Vec<_>>();
 
     for (x, y) in uniqued_met_coords {
-        let (map_x, map_y) = (x as i32, y as i32);
+        let (map_x, map_y) = (*x as i32, *y as i32);
 
         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
             for &sprite in sprite_list {

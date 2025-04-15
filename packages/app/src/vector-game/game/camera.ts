@@ -217,13 +217,6 @@ export class Camera {
   }
 
   drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
-    if (
-      !this.ceilingTextureRef ||
-      !this.floorTextureRef ||
-      !this.roadTextureRef
-    ) {
-      return;
-    }
     draw_ceiling_floor_raycast(
       player.toRustPosition(),
       this.ceilingFloorPixelsRef.ptr,
