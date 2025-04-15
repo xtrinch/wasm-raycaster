@@ -4,9 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "pnpm run build:wasm && pnpm run build:wasm-no-parallel && pnpm run build:app",
+    "build": "pnpm run build:wasm && pnpm run build:app",
     "build:wasm": "wasm-pack build  --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
-    "build:wasm-no-parallel": "wasm-pack build  --target web --out-dir packages/app/wasm-no-parallel --out-name index",
     "build:app": "pnpm --filter app run build",
     "start": "pnpm --filter app run start",
     "dev": "pnpm --filter app run run-dev"

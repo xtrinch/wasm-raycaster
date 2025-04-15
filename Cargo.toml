@@ -20,7 +20,11 @@ rayon = "1.10.0"
 num-complex = "0.4.6"
 hsl = "0.1.1"
 wasm-bindgen-rayon = { version = "1.3.0", optional = true }
+rustc-hash = "2.1.1"
 
 
 [features]
 parallel = ["wasm-bindgen-rayon"]
+
+[profile.dev]
+opt-level = 3
