@@ -691,7 +691,7 @@ pub fn draw_ceiling_floor_raycast(
             let floor_x_base = position.x + row_distance * ray_dir_x0;
             let floor_y_base = position.y + row_distance * ray_dir_y0;
             let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
-                .into_par_iter()
+                .into_iter()
                 .map(|x| {
                     let x_f32 = x as f32;
                     let floor_x = floor_x_base + (x_f32 * floor_step_x);
@@ -895,6 +895,9 @@ pub fn draw_sprites_wasm(
                 height,
                 height_resolution,
             );
+            if (projection.distance < 0.0) {
+                return sprite_parts_inner;
+            }
 
             let alpha = projection.distance / light_range - map_light;
             // ensure sprites are always at least a little bit visible - alpha 1 is all black
@@ -958,10 +961,11 @@ pub fn draw_sprites_wasm(
             let mut draw_end_x: i32 = (sprite_width as f32 / 2.0 + projection.screen_x as f32)
                 .min(width as f32 - 1.0) as i32;
 
+            // advance the non-visible parts
             let mut idx_start = (draw_start_x / width_spacing);
             while idx_start >= 0
                 && idx_start < width_resolution as i32
-                && (projection.distance >= zbuffer[idx_start as usize] || projection.distance < 0.0)
+                && (projection.distance >= zbuffer[idx_start as usize])
                 && draw_start_x + width_spacing < draw_end_x
             {
                 draw_start_x += width_spacing;
@@ -971,7 +975,7 @@ pub fn draw_sprites_wasm(
             let mut idx_end = (draw_end_x / width_spacing);
             while idx_end < width_resolution as i32
                 && idx_end >= 0
-                && (projection.distance >= zbuffer[idx_end as usize] || projection.distance < 0.0)
+                && (projection.distance >= zbuffer[idx_end as usize])
                 && draw_end_x - width_spacing > draw_start_x
             {
                 draw_end_x -= width_spacing;
