@@ -14,7 +14,9 @@ export class GameStore {
     await def();
     if (await threads()) {
       const { initThreadPool } = await import("../../../wasm");
-      await initThreadPool(navigator.hardwareConcurrency);
+      if (initThreadPool) {
+        await initThreadPool(navigator.hardwareConcurrency);
+      }
     }
 
     this.gameLoop = new GameLoop();

@@ -389,6 +389,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde-wasm-bindgen",
+ "smallvec",
  "wasm-bindgen",
  "wasm-bindgen-rayon",
  "web-sys",

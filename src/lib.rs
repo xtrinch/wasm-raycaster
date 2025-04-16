@@ -5,6 +5,7 @@ use helpers::{
     Position, Sprite, SpritePart, TranslationResult,
 };
 use js_sys::Math::atan2;
+use smallvec::SmallVec;
 use wasm_bindgen::prelude::*;
 
 use rayon::prelude::*;
@@ -17,16 +18,13 @@ mod line_intersection;
 use geo::{Coord, HausdorffDistance, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
-use core::array::from_fn;
 use std::ptr::write_bytes;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
-// pub use wasm_bindgen_rayon::init_thread_pool;
 
 pub fn raycast_column(
     column: i32,
@@ -43,9 +41,9 @@ pub fn raycast_column(
     sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
-) -> (f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>) {
+) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>) {
     let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
-    let mut window_sprites: Vec<[f32; 9]> = vec![];
+    let mut window_sprites: SmallVec<[[f32; 9]; 2]> = SmallVec::new();
 
     let mut default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
@@ -515,7 +513,8 @@ pub fn draw_walls_raycast(
             .push(sprite_data);
     }
 
-    let mut data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, Vec<[f32; 9]>)> = (0..width_resolution)
+    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>)> = (0
+        ..width_resolution)
         .into_par_iter()
         .map(|column| {
             let (perp_wall_dist, col_data, met_coords, window_sprites) = raycast_column(
@@ -692,7 +691,7 @@ pub fn draw_ceiling_floor_raycast(
             let floor_x_base = position.x + row_distance * ray_dir_x0;
             let floor_y_base = position.y + row_distance * ray_dir_y0;
             let data: Vec<(i32, [u8; 4])> = (0..ceiling_width_resolution)
-                .into_iter()
+                .into_par_iter()
                 .map(|x| {
                     let x_f32 = x as f32;
                     let floor_x = floor_x_base + (x_f32 * floor_step_x);
@@ -819,8 +818,8 @@ pub fn translate_coordinate_to_camera(
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
     let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
-    let sprite_floor_screen_y = (screen_floor_y + v_move_screen + height_distance / 2.0);
-    let sprite_ceiling_screen_y = (screen_ceiling_y + v_move_screen + height_distance / 2.0);
+    let sprite_floor_screen_y = screen_floor_y + v_move_screen + height_distance / 2.0;
+    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2.0;
     let full_height = sprite_floor_screen_y - sprite_ceiling_screen_y;
 
     TranslationResult {
@@ -847,14 +846,14 @@ pub fn draw_sprites_wasm(
     sprites_texture_array_length: usize,
     light_range: f32,
     map_light: f32,
-    width_resolution: usize,
+    width_resolution: u32,
     height_resolution: usize,
     found_sprites_count: u32,
 ) -> usize {
     let found_sprites_length = found_sprites_count as usize;
 
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
-    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution) };
+    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution as usize) };
     let sprite_data = unsafe { from_raw_parts(visible_sprites_array, found_sprites_length * 9) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
@@ -909,7 +908,7 @@ pub fn draw_sprites_wasm(
 
             if sprite.r#type == 7 {
                 let z_index = ((sprite.column as i32 / width_spacing) as usize)
-                    .clamp(0, width_resolution - 1);
+                    .clamp(0, width_resolution as usize - 1);
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[z_index] {
                     return sprite_parts_inner;
@@ -954,54 +953,52 @@ pub fn draw_sprites_wasm(
 
             let sprite_width = (projection.full_height * aspect_ratio as f32).abs() as i32;
 
-            let draw_start_x =
+            let mut draw_start_x =
                 (-sprite_width as f32 / 2.0 + projection.screen_x as f32).max(0.0) as i32;
-            let draw_end_x = (sprite_width as f32 / 2.0 + projection.screen_x as f32)
+            let mut draw_end_x: i32 = (sprite_width as f32 / 2.0 + projection.screen_x as f32)
                 .min(width as f32 - 1.0) as i32;
 
-            let mut sprite_parts_temp = Vec::new();
-            for stripe in (draw_start_x..draw_end_x).step_by(width_spacing as usize) {
-                if projection.distance > 0.0 && stripe >= 0 && stripe < width {
-                    let z_index =
-                        ((stripe / width_spacing) as usize).clamp(0, width_resolution - 1);
-
-                    if projection.distance < zbuffer[z_index] {
-                        if sprite_parts_temp.len() % 2 == 0 {
-                            sprite_parts_temp.push(stripe);
-                        }
-                        if stripe + width_spacing >= draw_end_x && sprite_parts_temp.len() % 2 == 1
-                        {
-                            sprite_parts_temp.push(stripe);
-                        }
-                    } else if sprite_parts_temp.len() % 2 == 1 {
-                        sprite_parts_temp.push(stripe);
-                    }
-                }
+            let mut idx_start = (draw_start_x / width_spacing);
+            while idx_start >= 0
+                && idx_start < width_resolution as i32
+                && (projection.distance >= zbuffer[idx_start as usize] || projection.distance < 0.0)
+                && draw_start_x + width_spacing < draw_end_x
+            {
+                draw_start_x += width_spacing;
+                idx_start += 1;
             }
 
-            for pair in sprite_parts_temp.chunks_exact(2) {
-                let sprite_width_f64 = sprite_width as f64;
-                let screen_x_f64 = projection.screen_x as f64;
-
-                let tex_x1 = (((pair[0] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                    * texture_width as f64)
-                    / sprite_width_f64) as i32;
-                let tex_x2 = (((pair[1] as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                    * texture_width as f64)
-                    / sprite_width_f64) as i32;
-
-                sprite_parts_inner.push(SpritePart {
-                    sprite_type: sprite.r#type,
-                    sprite_left_x: pair[0],
-                    width: pair[1] - pair[0],
-                    screen_y_ceiling: projection.screen_y_ceiling as i32,
-                    height: (projection.full_height) as i32,
-                    tex_x1,
-                    tex_x2,
-                    alpha: alpha_i,
-                    angle: angle_i,
-                });
+            let mut idx_end = (draw_end_x / width_spacing);
+            while idx_end < width_resolution as i32
+                && idx_end >= 0
+                && (projection.distance >= zbuffer[idx_end as usize] || projection.distance < 0.0)
+                && draw_end_x - width_spacing > draw_start_x
+            {
+                draw_end_x -= width_spacing;
+                idx_end -= 1;
             }
+
+            let sprite_width_f64 = sprite_width as f64;
+            let screen_x_f64 = projection.screen_x as f64;
+
+            let tex_x1 = (((draw_start_x as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                * texture_width as f64)
+                / sprite_width_f64) as i32;
+            let tex_x2 = (((draw_end_x as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
+                * texture_width as f64)
+                / sprite_width_f64) as i32;
+
+            sprite_parts_inner.push(SpritePart {
+                sprite_type: sprite.r#type,
+                sprite_left_x: draw_start_x,
+                width: draw_end_x - draw_start_x,
+                screen_y_ceiling: projection.screen_y_ceiling as i32,
+                height: (projection.full_height) as i32,
+                tex_x1,
+                tex_x2,
+                alpha: alpha_i,
+                angle: angle_i,
+            });
 
             sprite_parts_inner
         })
