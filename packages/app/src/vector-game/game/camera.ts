@@ -65,9 +65,9 @@ export class Camera {
     this.height = this.height;
 
     // note that this should be whole numbers
-    this.widthSpacing = 1;
-    this.heightSpacing = 1;
-    this.ceilingWidthSpacing = 2;
+    this.widthSpacing = 3;
+    this.heightSpacing = 2;
+    this.ceilingWidthSpacing = 3;
     this.ceilingHeightSpacing = 2;
 
     this.widthResolution = Math.ceil(this.width / this.widthSpacing);
@@ -108,8 +108,7 @@ export class Camera {
     this.spritePartsRef = new WasmInt32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
         2 * this.widthResolution) * // two times the columns to account for windows
-        5 *
-        2 // we'll expect at most two parts for each
+        5
     ); // this will be the max sprites there will ever be in here
 
     // TODO: don't think this is necessary now that we don't pass it around

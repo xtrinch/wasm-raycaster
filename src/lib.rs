@@ -609,6 +609,12 @@ pub fn draw_ceiling_floor_raycast(
 ) -> () {
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let img_slice = unsafe {
+        std::slice::from_raw_parts_mut(
+            ceiling_floor_img,
+            ceiling_width_resolution * ceiling_height_resolution * 4,
+        )
+    };
 
     // some pre-computations
     let floor_texture_width_f32 = floor_texture_width as f32;
@@ -767,6 +773,7 @@ pub fn draw_ceiling_floor_raycast(
 
                     (pixel_idx as i32, [r, g, b, 255])
                 })
+                .filter(|(pixel_idx, _)| *pixel_idx >= 0)
                 .collect();
 
             data
@@ -775,13 +782,7 @@ pub fn draw_ceiling_floor_raycast(
 
     for data in outer_data {
         for (pixel_idx, rgb_array) in data {
-            if pixel_idx >= 0 {
-                copy_to_raw_pointer(
-                    ceiling_floor_img,
-                    pixel_idx as usize,
-                    &[rgb_array[0], rgb_array[1], rgb_array[2], rgb_array[3]],
-                );
-            }
+            img_slice[pixel_idx as usize..pixel_idx as usize + 4].copy_from_slice(&rgb_array);
         }
     }
 }
@@ -895,7 +896,7 @@ pub fn draw_sprites_wasm(
                 height,
                 height_resolution,
             );
-            if (projection.distance < 0.0) {
+            if projection.distance < 0.0 {
                 return sprite_parts_inner;
             }
 
@@ -910,8 +911,8 @@ pub fn draw_sprites_wasm(
                 .unwrap_or((100, 100));
 
             if sprite.r#type == 7 {
-                let z_index = ((sprite.column as i32 / width_spacing) as usize)
-                    .clamp(0, width_resolution as usize - 1);
+                let z_index =
+                    ((sprite.column as i32) as usize).clamp(0, width_resolution as usize - 1);
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[z_index] {
                     return sprite_parts_inner;
@@ -929,12 +930,12 @@ pub fn draw_sprites_wasm(
                 fract /= sprite.width;
 
                 let texture_x: i32 = (fract * texture_width as f32) as i32;
-                let texture_x2 = (1.0
-                    + (width_spacing as f32 / width_resolution as f32) * texture_width as f32
-                    + texture_x as f32) as i32;
+                let texture_x2 = ((width_spacing as f32 / width_resolution as f32)
+                    * texture_width as f32) as i32
+                    + texture_x;
                 sprite_parts_inner.push(SpritePart {
                     sprite_type: sprite.r#type,
-                    sprite_left_x: sprite.column as i32,
+                    sprite_left_x: (sprite.column as i32 * width_spacing),
                     width: width_spacing,
                     screen_y_ceiling: projection.screen_y_ceiling as i32,
                     height: projection.full_height as i32,
