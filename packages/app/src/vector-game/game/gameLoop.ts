@@ -1,4 +1,4 @@
-import { mean } from "lodash";
+import { max, mean } from "lodash";
 import { makeAutoObservable } from "mobx";
 import { Camera } from "./camera";
 import { Controls } from "./controls";
@@ -15,7 +15,7 @@ export class GameLoop {
   public camera: Camera;
   public spriteMap: SpriteMap;
   public fps: number;
-  public lastNFps: number[];
+  public lastNFrameTimes: number[];
   public frameTime: number;
 
   constructor() {
@@ -28,30 +28,42 @@ export class GameLoop {
     this.player = this.findSpawnPoint();
     this.fps = 0;
     this.frameTime = 0;
-    this.lastNFps = [];
+    this.lastNFrameTimes = [];
     makeAutoObservable(this);
   }
 
   frame(time: number) {
     this.frameTime = (time - this.lastTime) / 1000;
 
-    const fps = Math.floor(1.0 / this.frameTime);
     if (this.frameTime > 0.01) {
       this.lastTime = time;
       this.loop();
     }
 
-    if (this.lastNFps.length >= 60) {
-      this.lastNFps.shift();
+    if (this.lastNFrameTimes.length >= 60) {
+      this.lastNFrameTimes.shift();
     }
-    this.lastNFps.push(fps);
-    this.fps = Math.floor(mean(this.lastNFps));
-
+    this.lastNFrameTimes.push(this.frameTime);
+    const avgFrameTime = this.getAverageFrameTime();
+    const fps = Math.floor(1.0 / avgFrameTime);
+    this.fps = fps;
     requestAnimationFrame(this.frame.bind(this));
   }
 
   start() {
     requestAnimationFrame(this.frame.bind(this));
+  }
+
+  getAverageFrameTime() {
+    const avgFrameTime = mean(this.lastNFrameTimes);
+    return avgFrameTime;
+  }
+
+  getMinFPS() {
+    const minFrameTime = max(this.lastNFrameTimes);
+    const minFps = Math.floor(1.0 / minFrameTime);
+
+    return minFps;
   }
 
   loop() {

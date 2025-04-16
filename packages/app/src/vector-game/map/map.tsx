@@ -13,6 +13,7 @@ const Map = () => {
   const size = gameContext.gameLoop?.map?.size;
   const playerPosition = gameContext.gameLoop?.player?.position;
   const fps = gameContext.gameLoop?.fps;
+  const minFps = gameContext.gameLoop?.getMinFPS();
 
   if (!map || !playerPosition || !size) {
     return <></>;
@@ -23,6 +24,7 @@ const Map = () => {
       style={{ width: size * 4 }}
     >
       <div className="text-white">{fps} FPS</div>
+      <div className="text-white">{minFps} min FPS</div>
       <MapPerson playerPosition={{ ...playerPosition }} size={size} />
       <MapDetail playerPosition={playerPosition} map={map} size={size} />
     </div>

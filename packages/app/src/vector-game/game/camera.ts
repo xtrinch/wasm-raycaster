@@ -108,7 +108,7 @@ export class Camera {
     this.spritePartsRef = new WasmInt32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
         2 * this.widthResolution) * // two times the columns to account for windows
-        5
+        9
     ); // this will be the max sprites there will ever be in here
 
     // TODO: don't think this is necessary now that we don't pass it around
@@ -353,6 +353,9 @@ export class Camera {
         alpha,
         angle,
       ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
+      if (!spriteType) {
+        console.log(this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9));
+      }
       const { texture } = map.getSpriteTexture(spriteType, angle);
 
       this.ctx.save();

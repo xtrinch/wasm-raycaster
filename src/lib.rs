@@ -896,9 +896,6 @@ pub fn draw_sprites_wasm(
                 height,
                 height_resolution,
             );
-            if projection.distance < 0.0 {
-                return sprite_parts_inner;
-            }
 
             let alpha = projection.distance / light_range - map_light;
             // ensure sprites are always at least a little bit visible - alpha 1 is all black
@@ -947,6 +944,9 @@ pub fn draw_sprites_wasm(
                 return sprite_parts_inner;
             }
 
+            if projection.distance < 0.0 {
+                return sprite_parts_inner;
+            }
             let aspect_ratio = texture_width as f32 / texture_height as f32;
 
             let dx = position.x - sprite.x;
@@ -1008,6 +1008,7 @@ pub fn draw_sprites_wasm(
             sprite_parts_inner
         })
         .collect();
+
     let sprite_parts_flattened: Vec<SpritePart> =
         sprite_parts_collected.into_iter().flatten().collect();
 

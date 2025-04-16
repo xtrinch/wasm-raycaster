@@ -216,6 +216,10 @@ export class GridMap {
       case SpriteType.COLUMN:
         texture = this.windowTexture;
         break;
+      default:
+        console.log("Sprite texture not found for type " + spriteType);
+        texture = this.treeTexture;
+        break;
     }
 
     return { texture };
