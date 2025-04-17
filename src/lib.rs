@@ -981,15 +981,11 @@ pub fn draw_sprites_wasm(
                 idx_end -= 1;
             }
 
-            let sprite_width_f64 = sprite_width as f64;
-            let screen_x_f64 = projection.screen_x as f64;
-
-            let tex_x1 = (((draw_start_x as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                * texture_width as f64)
-                / sprite_width_f64) as i32;
-            let tex_x2 = (((draw_end_x as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
-                * texture_width as f64)
-                / sprite_width_f64) as i32;
+            let to_remove_texture = projection.screen_x as f32 - (sprite_width as f32 / 2.0);
+            let tex_x1 = (((draw_start_x as f32 - to_remove_texture) * texture_width as f32)
+                / sprite_width as f32) as i32;
+            let tex_x2 = (((draw_end_x as f32 - to_remove_texture) * texture_width as f32)
+                / sprite_width as f32) as i32;
             let tex_width = tex_x2 - tex_x1;
 
             sprite_parts_inner.push(SpritePart {
