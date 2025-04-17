@@ -230,7 +230,7 @@ pub struct SpritePart {
     pub screen_y_ceiling: i32,
     pub height: i32,
     pub tex_x1: i32,
-    pub tex_x2: i32,
+    pub tex_width: i32,
     pub alpha: i32,
     pub angle: i32,
 }

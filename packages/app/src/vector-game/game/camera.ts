@@ -349,7 +349,7 @@ export class Camera {
         screenYCeiling,
         height,
         texX1,
-        texX2,
+        texWidth,
         alpha,
         angle,
       ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
@@ -368,7 +368,7 @@ export class Camera {
         texture.image,
         texX1, // sx
         0, // sy
-        texX2 - texX1, // sw
+        texWidth, // sw
         texture.height, // sh
         stripeLeftX, // dx
         screenYCeiling, // dy

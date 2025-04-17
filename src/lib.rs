@@ -882,6 +882,8 @@ pub fn draw_sprites_wasm(
         db.partial_cmp(&da).unwrap()
     });
 
+    let width_fraction = width_spacing as f32 / width_resolution as f32;
+
     let sprite_parts_collected: Vec<Vec<SpritePart>> = sprites
         .into_par_iter()
         .map(|sprite| {
@@ -927,9 +929,7 @@ pub fn draw_sprites_wasm(
                 fract /= sprite.width;
 
                 let texture_x: i32 = (fract * texture_width as f32) as i32;
-                let texture_x2 = ((width_spacing as f32 / width_resolution as f32)
-                    * texture_width as f32) as i32
-                    + texture_x;
+                let texture_width = (width_fraction * texture_width as f32) as i32;
                 sprite_parts_inner.push(SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: (sprite.column as i32 * width_spacing),
@@ -937,7 +937,7 @@ pub fn draw_sprites_wasm(
                     screen_y_ceiling: projection.screen_y_ceiling as i32,
                     height: projection.full_height as i32,
                     tex_x1: texture_x,
-                    tex_x2: texture_x2,
+                    tex_width: texture_width,
                     alpha: alpha_i,
                     angle: 0,
                 });
@@ -963,9 +963,8 @@ pub fn draw_sprites_wasm(
                 .min(width as f32 - 1.0) as i32;
 
             // advance the non-visible parts
-            let mut idx_start = (draw_start_x / width_spacing);
-            while idx_start >= 0
-                && idx_start < width_resolution as i32
+            let mut idx_start = draw_start_x / width_spacing;
+            while idx_start < width_resolution as i32
                 && (projection.distance >= zbuffer[idx_start as usize])
                 && draw_start_x + width_spacing < draw_end_x
             {
@@ -973,9 +972,8 @@ pub fn draw_sprites_wasm(
                 idx_start += 1;
             }
 
-            let mut idx_end = (draw_end_x / width_spacing);
-            while idx_end < width_resolution as i32
-                && idx_end >= 0
+            let mut idx_end = draw_end_x / width_spacing;
+            while idx_end >= 0
                 && (projection.distance >= zbuffer[idx_end as usize])
                 && draw_end_x - width_spacing > draw_start_x
             {
@@ -992,6 +990,7 @@ pub fn draw_sprites_wasm(
             let tex_x2 = (((draw_end_x as f64 - (-sprite_width_f64 / 2.0 + screen_x_f64))
                 * texture_width as f64)
                 / sprite_width_f64) as i32;
+            let tex_width = tex_x2 - tex_x1;
 
             sprite_parts_inner.push(SpritePart {
                 sprite_type: sprite.r#type,
@@ -1000,7 +999,7 @@ pub fn draw_sprites_wasm(
                 screen_y_ceiling: projection.screen_y_ceiling as i32,
                 height: (projection.full_height) as i32,
                 tex_x1,
-                tex_x2,
+                tex_width,
                 alpha: alpha_i,
                 angle: angle_i,
             });
@@ -1024,7 +1023,7 @@ pub fn draw_sprites_wasm(
                 sprite.screen_y_ceiling,
                 sprite.height,
                 sprite.tex_x1,
-                sprite.tex_x2,
+                sprite.tex_width,
                 sprite.alpha,
                 sprite.angle,
             ],
