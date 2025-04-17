@@ -900,18 +900,17 @@ pub fn draw_sprites_wasm(
             );
 
             let alpha = projection.distance / light_range - map_light;
+
             // ensure sprites are always at least a little bit visible - alpha 1 is all black
             let alpha_i = (100.0 - alpha * 100.0).floor().clamp(20.0, 100.0) as i32;
 
             // TODO: this is causing the first one to disappear??
-            let (texture_height, texture_width) = texture_array
-                .get(&sprite.r#type)
-                .copied()
-                .unwrap_or((100, 100));
+            let (texture_height, texture_width) =
+                texture_array.get(&sprite.r#type).copied().unwrap();
 
             if sprite.r#type == 7 {
-                let z_index =
-                    ((sprite.column as i32) as usize).clamp(0, width_resolution as usize - 1);
+                let z_index = (sprite.column as i32) as usize;
+
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[z_index] {
                     return sprite_parts_inner;
