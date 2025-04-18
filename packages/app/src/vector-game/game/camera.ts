@@ -58,7 +58,7 @@ export class Camera {
   public initialized: boolean;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
-    this.ctx = canvas.getContext("2d");
+    this.ctx = canvas.getContext("2d", { alpha: false });
     this.width = canvas.width = window.innerWidth;
     this.width = this.width;
     this.height = canvas.height = window.innerHeight;
