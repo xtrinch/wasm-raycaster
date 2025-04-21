@@ -65,10 +65,16 @@ export class Camera {
     this.height = this.height;
 
     // note that this should be whole numbers
+    // TODO: setting to height spacing > 3 does weird things
+    // TODO: width spacing 1 does not work
     this.widthSpacing = 3;
     this.heightSpacing = 2;
     this.ceilingWidthSpacing = 3;
     this.ceilingHeightSpacing = 2;
+    // this.widthSpacing = 1;
+    // this.heightSpacing = 1;
+    // this.ceilingWidthSpacing = 1;
+    // this.ceilingHeightSpacing = 1;
 
     this.widthResolution = Math.ceil(this.width / this.widthSpacing);
     this.heightResolution = Math.ceil(this.height / this.heightSpacing);
@@ -353,9 +359,6 @@ export class Camera {
         alpha,
         angle,
       ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
-      if (!spriteType) {
-        console.log(this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9));
-      }
       const { texture } = map.getSpriteTexture(spriteType, angle);
 
       this.ctx.save();

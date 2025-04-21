@@ -6,9 +6,13 @@ const Game = observer(() => {
     <div>
       <canvas
         id="display"
-        width="1"
-        height="1"
-        style={{ width: "100%", height: "100%" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          position: "absolute",
+          left: 0,
+          top: 0,
+        }}
       ></canvas>
       <Map />
     </div>

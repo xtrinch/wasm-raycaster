@@ -120,6 +120,8 @@ export class Player {
     map: GridMap,
     frameTime: number
   ) => {
+    // TODO: remove
+    // frameTime = 0.02;
     if (controls.left) this.rotate(4 * (-Math.PI / 5) * frameTime);
     if (controls.right) this.rotate(4 * (Math.PI / 5) * frameTime);
     if (controls.forward) this.walk(3 * frameTime, map);
