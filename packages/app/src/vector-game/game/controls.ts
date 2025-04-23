@@ -34,6 +34,7 @@ export class Controls {
   };
 
   constructor() {
+    // TODO; THROTTLE?
     document.addEventListener("keydown", this.onKey.bind(this), false);
     document.addEventListener("keyup", this.onKey.bind(this), false);
 
@@ -45,7 +46,7 @@ export class Controls {
     if (typeof state === "undefined") return;
     this.states[state as keyof ControlStates] =
       e.type === "keyup" ? false : true;
-    e.preventDefault && e.preventDefault();
-    e.stopPropagation && e.stopPropagation();
+    // e.preventDefault && e.preventDefault();
+    // e.stopPropagation && e.stopPropagation();
   }
 }

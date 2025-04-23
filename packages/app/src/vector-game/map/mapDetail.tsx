@@ -1,9 +1,8 @@
-import { Position } from "../game/player";
+import { memo } from "react";
 
 interface MapDetailProps {
   map: BigUint64Array;
   size: number;
-  playerPosition: Position;
 }
 
 const MapDetail = (props: MapDetailProps) => {
@@ -23,4 +22,4 @@ const MapDetail = (props: MapDetailProps) => {
   );
 };
 
-export default MapDetail;
+export default memo(MapDetail);

@@ -211,7 +211,7 @@ export class Camera {
 
     // DIVIDE BY FOCAL LENGTH WHICH IS LENGTH OF THE PLANE VECTOR
     let yHeightBeforeAdjustment = Math.abs(
-      Math.floor(this.width / 2 / player.position.planeYInitial / transformY)
+      Math.floor(this.width / 2 / player.position.plane_y_initial / transformY)
     );
     let yHeight = yHeightBeforeAdjustment * heightMultiplier; // using 'transformY' instead of the real distance prevents fisheye
     let heightDistance = yHeightBeforeAdjustment - yHeight;
@@ -1095,7 +1095,7 @@ export class Camera {
       this.widthSpacing,
       this.lightRange,
       this.range,
-      player.position.planeYInitial,
+      player.position.plane_y_initial,
       player.position.pitch,
       player.position.z,
       map.wallTexture.width
@@ -1243,7 +1243,7 @@ export class Camera {
 
       // Calculate height of line to draw on screen
       let lineHeight: number =
-        this.width / 2 / player.position.planeYInitial / perpWallDist;
+        this.width / 2 / player.position.plane_y_initial / perpWallDist;
 
       // calculate lowest and highest pixel to fill in current stripe
       let drawStartY =

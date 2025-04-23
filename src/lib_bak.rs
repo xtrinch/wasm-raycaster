@@ -3,8 +3,8 @@
 use dashmap::DashSet;
 use helpers::{
     copy_to_raw_pointer, fixed_mul, from_fixed_to_f32, get_bits, get_grid_value, has_bit_set,
-    parse_sprite_texture_array, to_fixed, to_fixed_large, Position, Sprite, SpritePart, Texture,
-    TranslationResult, FIXED_ONE, FIXED_SHIFT,
+    parse_sprite_texture_array, to_fixed, Position, Sprite, SpritePart, Texture, TranslationResult,
+    FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
@@ -852,6 +852,173 @@ pub fn draw_ceiling_floor_raycast(
         });
 }
 
+// #[wasm_bindgen]
+// pub fn draw_ceiling_floor_raycast1(
+//     position: JsValue,
+//     ceiling_floor_img: *mut u8,
+//     floor_texture: *mut u8,
+//     ceiling_texture: *mut u8,
+//     road_texture: *mut u8,
+//     ceiling_width_resolution: usize,
+//     ceiling_height_resolution: usize,
+//     ceiling_width_spacing: u8,
+//     ceiling_height_spacing: u8,
+//     height: usize,
+//     light_range: f32,
+//     map_light: f32,
+//     floor_texture_width: i32,
+//     floor_texture_height: i32,
+//     ceiling_texture_width: i32,
+//     ceiling_texture_height: i32,
+//     road_texture_width: i32,
+//     road_texture_height: i32,
+//     map_array: *mut u64,
+//     map_width: usize,
+// ) -> () {
+//     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+//     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+
+//     let road_texture_array = unsafe {
+//         from_raw_parts(
+//             road_texture,
+//             (road_texture_width * road_texture_height * 4) as usize,
+//         )
+//     };
+//     let ceiling_texture_array = unsafe {
+//         from_raw_parts(
+//             ceiling_texture,
+//             (ceiling_texture_width * ceiling_texture_height * 4) as usize,
+//         )
+//     };
+//     let floor_texture_array = unsafe {
+//         from_raw_parts(
+//             floor_texture,
+//             (floor_texture_width * floor_texture_height * 4) as usize,
+//         )
+//     };
+
+//     unsafe {
+//         // blank out the whole image buffer
+//         write_bytes(
+//             ceiling_floor_img,
+//             0,
+//             ceiling_width_resolution * ceiling_height_resolution * 4,
+//         );
+//     }
+//     let ray_dir_x0 = position.dir_x - position.plane_x;
+//     let ray_dir_y0 = position.dir_y - position.plane_y;
+//     let ray_dir_x1 = position.dir_x + position.plane_x;
+//     let ray_dir_y1 = position.dir_y + position.plane_y;
+//     let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
+//     let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
+
+//     let half_height = ceiling_height_resolution as f32 / 2.0;
+//     let scale = ceiling_height_resolution as f32 / height as f32;
+//     let scaled_pitch = position.pitch * scale;
+//     let scaled_z = position.z * scale;
+
+//     let height_resolution_ratio =
+//         ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
+//     let height_spacing_ratio = ceiling_height_spacing as f32 / ceiling_width_spacing as f32;
+//     let distance_divider =
+//         (2.0 * height_resolution_ratio) * (height_spacing_ratio) * position.plane_y_initial;
+
+//     let img_slice = unsafe {
+//         std::slice::from_raw_parts_mut(
+//             ceiling_floor_img,
+//             ceiling_width_resolution * ceiling_height_resolution * 4,
+//         )
+//     };
+
+//     let road_texture_data = Texture {
+//         data: road_texture_array,
+//         width: road_texture_width,
+//         height: road_texture_height,
+//     };
+//     let ceiling_texture_data = Texture {
+//         data: ceiling_texture_array,
+//         width: ceiling_texture_width,
+//         height: ceiling_texture_height,
+//     };
+//     let floor_texture_data = Texture {
+//         data: floor_texture_array,
+//         width: floor_texture_width,
+//         height: floor_texture_height,
+//     };
+
+//     // loop over rows in parallel
+//     img_slice
+//         .par_chunks_mut(ceiling_width_resolution * 4) // one full row of pixels (RGBA)
+//         .enumerate()
+//         .for_each(|(y, row)| {
+//             let y_f32 = y as f32;
+//             let is_floor = y_f32 > half_height + scaled_pitch;
+
+//             let p = if is_floor {
+//                 y_f32 - half_height - scaled_pitch
+//             } else {
+//                 half_height - y_f32 + scaled_pitch
+//             };
+//             let cam_z = if is_floor {
+//                 half_height + scaled_z
+//             } else {
+//                 half_height - scaled_z
+//             };
+
+//             let row_distance = cam_z / (p * distance_divider);
+//             let alpha = 1.0 - ((row_distance + 0.0) / light_range - map_light).min(0.8);
+
+//             let floor_step_x = (row_distance * ray_dir_x_dist) / ceiling_width_resolution as f32;
+//             let floor_step_y = (row_distance * ray_dir_y_dist) / ceiling_width_resolution as f32;
+
+//             let floor_x_base = position.x + row_distance * ray_dir_x0;
+//             let floor_y_base = position.y + row_distance * ray_dir_y0;
+
+//             row.par_chunks_exact_mut(4)
+//                 .enumerate()
+//                 .for_each(|(x, pixel)| {
+//                     let x_f32 = x as f32;
+//                     let x = floor_x_base + (x_f32 * floor_step_x);
+//                     let y = floor_y_base + (x_f32 * floor_step_y);
+//                     let floor_x = x.floor() as i32;
+//                     let floor_y = y.floor() as i32;
+
+//                     let value = get_grid_value(floor_x, floor_y, map_width as i32, map_data);
+
+//                     let has_set_ceiling_bit = has_bit_set(value, 1);
+//                     let has_set_floor_bit = has_set_ceiling_bit;
+//                     let has_set_road_bit = has_bit_set(value, 3);
+
+//                     let texture_data = if is_floor && has_set_road_bit {
+//                         Some(&road_texture_data)
+//                     } else if is_floor && has_set_floor_bit {
+//                         Some(&floor_texture_data)
+//                     } else if !is_floor && has_set_ceiling_bit {
+//                         Some(&ceiling_texture_data)
+//                     } else {
+//                         None
+//                     };
+//                     if texture_data.is_none() {
+//                         return;
+//                     }
+//                     let texture_data = texture_data.unwrap();
+
+//                     let cell_x = x - floor_x as f32;
+//                     let cell_y = y - floor_y as f32;
+
+//                     let tx = (texture_data.width as f32 * cell_x) as usize;
+//                     let ty = (texture_data.height as f32 * cell_y) as usize;
+//                     let tex_idx = (ty * texture_data.width as usize + tx) * 4;
+
+//                     let r = (texture_data.data[tex_idx] as f32 * alpha) as u8;
+//                     let g = (texture_data.data[tex_idx + 1] as f32 * alpha) as u8;
+//                     let b = (texture_data.data[tex_idx + 2] as f32 * alpha) as u8;
+
+//                     pixel.copy_from_slice(&[r, g, b, 255]);
+//                 });
+//         });
+// }
+
 pub fn translate_coordinate_to_camera(
     position: Position,
     point_x: f32,
@@ -876,19 +1043,18 @@ pub fn translate_coordinate_to_camera(
 
     // to control the pitch/jump
     let aspect_ratio = height as f32 / width as f32;
-    let v_move_screen =
-        (position.pitch as f32 + (position.z) / (transform_y * (aspect_ratio * 2.0))) as i32;
+    let v_move_screen = position.pitch as f32 + (position.z) / (transform_y * (aspect_ratio * 2.0));
 
     // divide by focal length (length of the plane vector)
-    let y_height_before_adjustment = (width as f32 / 2.0 / (transform_y)).abs() as i32;
-    let y_height = (y_height_before_adjustment as f32 * height_multiplier) as i32;
+    let y_height_before_adjustment = (width as f32 / 2.0 / (transform_y)).abs();
+    let y_height = y_height_before_adjustment * height_multiplier;
     let height_distance = y_height_before_adjustment - y_height;
-    let screen_ceiling_y = height / 2 - y_height / 2;
-    let screen_floor_y = height / 2 + y_height / 2;
+    let screen_ceiling_y = height as f32 / 2.0 - y_height / 2.0;
+    let screen_floor_y = height as f32 / 2.0 + y_height / 2.0;
 
-    let half_height_distance = height_distance / 2;
-    let sprite_floor_screen_y = screen_floor_y + v_move_screen + half_height_distance;
-    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + half_height_distance;
+    let half_height_distance = height_distance / 2.0;
+    let sprite_floor_screen_y = (screen_floor_y + v_move_screen + half_height_distance) as i32;
+    let sprite_ceiling_screen_y = (screen_ceiling_y + v_move_screen + half_height_distance) as i32;
     let full_height = sprite_floor_screen_y - sprite_ceiling_screen_y;
 
     TranslationResult {
@@ -950,33 +1116,27 @@ pub fn draw_sprites_wasm(
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
+    let mut sprites = Vec::new();
     // copy them since we need to sort them anyway
-    let mut sprites: Vec<Sprite> = sprite_data
-        .par_chunks(9)
-        .map(|chunk| Sprite {
-            x: chunk[0],
-            y: chunk[1],
-            angle: chunk[2] as i32,
-            height: chunk[3] as i32,
-            r#type: chunk[4] as i32,
-            column: chunk[5] as u32,
-            side: chunk[6] as u8,
-            offset: chunk[7],
-            width: chunk[8],
-            x_fixed: to_fixed_large(chunk[0]),
-            y_fixed: to_fixed_large(chunk[1]),
-        })
-        .collect();
-
-    let px = to_fixed_large(position.x);
-    let py = to_fixed_large(position.y);
+    for i in (0..found_sprites_length * 9).step_by(9) {
+        sprites.push(Sprite {
+            x: sprite_data[i],
+            y: sprite_data[i + 1],
+            angle: sprite_data[i + 2] as i32,
+            height: sprite_data[i + 3] as i32,
+            r#type: sprite_data[i + 4] as i32,
+            column: sprite_data[i + 5] as u32,
+            side: sprite_data[i + 6] as u8,
+            offset: sprite_data[i + 7],
+            width: sprite_data[i + 8],
+        });
+    }
 
     // since we should draw those in the distance first, we sort them
     sprites.sort_unstable_by(|a, b| {
-        let da = (px - a.x_fixed).pow(2) + (py - a.y_fixed).pow(2);
-        let db = (px - b.x_fixed).pow(2) + (py - b.y_fixed).pow(2);
-
-        db.cmp(&da) // sort descending (farther first)
+        let da = (position.x - a.x).powi(2) + (position.y - a.y).powi(2);
+        let db = (position.x - b.x).powi(2) + (position.y - b.y).powi(2);
+        db.partial_cmp(&da).unwrap()
     });
 
     let sprite_parts_collected: Vec<Vec<SpritePart>> = sprites
@@ -1006,9 +1166,6 @@ pub fn draw_sprites_wasm(
             let (texture_height, texture_width) = (tree_texture_height, tree_texture_width);
 
             if sprite.r#type == 7 {
-                // TODO: remove
-                let (texture_height, texture_width) = (window_texture_height, window_texture_width);
-
                 let z_index = (sprite.column as i32) as usize;
 
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
@@ -1050,7 +1207,6 @@ pub fn draw_sprites_wasm(
             let dx = position.x - sprite.x;
             let dy = position.y - sprite.y;
             let angle = atan2(dx as f64, dy as f64);
-
             // will return from -180 to 180
             let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
@@ -1123,53 +1279,91 @@ pub fn draw_sprites_wasm(
         .for_each(|(y, row)| {
             let y = y as i32;
             for sprite in sprite_parts_flattened.iter() {
+                // if y < sprite.screen_y_ceiling || y >= sprite.screen_y_ceiling + sprite.height {
+                //     continue;
+                // }
+                // let dy = y - sprite.screen_y_ceiling;
+
+                // let mut texture_data = &tree_texture_data;
+                // if sprite.sprite_type == 7 {
+                //     texture_data = &window_texture_data;
+                // }
+
+                // for dx in 0..sprite.width {
+                //     let x = sprite.sprite_left_x + dx;
+                //     if x < 0 || x >= width {
+                //         continue;
+                //     }
+                //     let idx = (x * 4) as usize;
+                //     if idx >= row.len() {
+                //         continue;
+                //     }
+
+                //     let current_texel = &row[idx..idx + 4];
+
+                //     let tex_y = dy * texture_data.height / sprite.height;
+                //     let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
+                //     let tex_idx = ((tex_y * texture_data.width + tex_x) * 4) as usize;
+
+                //     if tex_idx >= texture_data.data.len() {
+                //         continue;
+                //     }
+
+                //     let texel = &texture_data.data[tex_idx..tex_idx + 4];
+
+                //     let mut r = ((texel[0] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                //     let mut g = ((texel[1] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                //     let mut b = ((texel[2] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                //     let a = texel[3] as u16;
+
+                //     if a != 255 {
+                //         r = (((a * r as u16) + (current_texel[0] as u16 * (255 - a))) >> 8) as u8;
+                //         g = (((a * g as u16) + (current_texel[1] as u16 * (255 - a))) >> 8) as u8;
+                //         b = (((a * b as u16) + (current_texel[2] as u16 * (255 - a))) >> 8) as u8;
+                //     }
+
+                //     row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
+                // }
+                // continue;
+
                 if y < sprite.screen_y_ceiling || y >= sprite.screen_y_ceiling + sprite.height {
                     continue;
                 }
                 let dy = y - sprite.screen_y_ceiling;
+                let idx = ((sprite.sprite_left_x) * 4) as usize;
+                if idx + 4 > row.len() {
+                    continue;
+                }
+                let current_texel = &row[idx..idx + 4];
 
                 let mut texture_data = &tree_texture_data;
                 if sprite.sprite_type == 7 {
                     texture_data = &window_texture_data;
                 }
 
-                for dx in 0..sprite.width {
-                    let x = sprite.sprite_left_x + dx;
-                    if x < 0 || x >= width {
-                        continue;
-                    }
-                    let idx = (x * 4) as usize;
-                    if idx >= row.len() {
-                        continue;
-                    }
+                let tex_y = dy * texture_data.height / sprite.height;
+                let tex_idx = ((tex_y * texture_data.width + sprite.tex_x1) * 4) as usize;
 
-                    let current_texel = &row[idx..idx + 4];
-
-                    let tex_y = dy * texture_data.height / sprite.height;
-                    let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
-                    let tex_idx = ((tex_y * texture_data.width + tex_x) * 4) as usize;
-
-                    if tex_idx >= texture_data.data.len() {
-                        continue;
-                    }
-
-                    let texel = &texture_data.data[tex_idx..tex_idx + 4];
-
-                    let mut r = ((texel[0] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
-                    let mut g = ((texel[1] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
-                    let mut b = ((texel[2] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
-                    let a = texel[3] as u16;
-
-                    if a != 255 {
-                        r = (((a * r as u16) + (current_texel[0] as u16 * (255 - a))) >> 8) as u8;
-                        g = (((a * g as u16) + (current_texel[1] as u16 * (255 - a))) >> 8) as u8;
-                        b = (((a * b as u16) + (current_texel[2] as u16 * (255 - a))) >> 8) as u8;
-                    }
-
-                    if a != 0 {
-                        row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
-                    }
+                if tex_idx >= texture_data.data.len() {
+                    continue;
                 }
+                let texel = &texture_data.data[tex_idx..tex_idx + 4];
+
+                let mut r = ((texel[0] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                let mut g = ((texel[1] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                let mut b = ((texel[2] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
+                let a = (texel[3] as i32) as u16;
+                if a != 255 {
+                    // alpha blending
+                    // see https://stackoverflow.com/questions/43786855/rgb-value-of-a-pixel-combined-from-2-overlaying-pixels
+                    r = (((a * r as u16) + (current_texel[0] as u16 * (255 - a) as u16)) >> 8)
+                        as u8;
+                    g = (((a * g as u16) + (current_texel[1] as u16 * (255 - a) as u16)) >> 8)
+                        as u8;
+                    b = (((a * b as u16) + (current_texel[2] as u16 * (255 - a) as u16)) >> 8)
+                        as u8;
+                }
+                row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
             }
         });
 
@@ -1299,12 +1493,17 @@ pub fn draw_background_image(
     position: JsValue,
     ambient_light: i32,
 ) {
+    unsafe {
+        // blank out the whole image buffer
+        write_bytes(ceiling_floor_img, 0, (width * height * 4) as usize);
+    }
+
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let direction = position.dir_x.atan2(position.dir_y) + PI;
     let sky_scale = height as f64 / texture_height as f64;
-    let sky_width = (texture_width as f64 * sky_scale * 2.0) as i32;
+    let sky_width = texture_width as f64 * sky_scale * 2.0;
     let circle = 2.0 * PI;
-    let left_offset = ((direction / circle) * (sky_width as f32)) as i32;
+    let left_offset = (direction / circle) * (sky_width as f32);
 
     let bg_texture_array = unsafe {
         from_raw_parts(
@@ -1321,23 +1520,45 @@ pub fn draw_background_image(
         .par_chunks_mut(width as usize * 4)
         .enumerate()
         .for_each(|(y, row)| {
-            let screen_y_pitch = y as i32 - position.pitch;
-            let tex_y = (screen_y_pitch * texture_height / height).clamp(0, texture_height - 1);
-            let y_idx = tex_y * texture_width;
+            let screen_y = y as i32;
+            for x in 0..width {
+                let screen_x = x as f64;
+                let virtual_x = (screen_x + left_offset as f64) % sky_width;
 
-            row.par_chunks_mut(4).enumerate().for_each(|(x, pixel)| {
-                let mut virtual_x = (x as i32 + left_offset) % sky_width;
-                if virtual_x < 0 {
-                    virtual_x = virtual_x + sky_width;
+                // Wrap-around for negative values
+                let virtual_x = if virtual_x < 0.0 {
+                    virtual_x + sky_width
+                } else {
+                    virtual_x
+                };
+
+                let tex_x = (virtual_x * texture_width as f64 / sky_width) as i32;
+                let tex_y = ((screen_y + position.pitch) * texture_height / height)
+                    .clamp(0, texture_height - 1);
+
+                let tex_idx = ((tex_y * texture_width + tex_x) * 4) as usize;
+                let idx = (x * 4) as usize;
+
+                if tex_idx + 3 < bg_texture_array.len() && idx + 3 < row.len() {
+                    row[idx] = bg_texture_array[tex_idx];
+                    row[idx + 1] = bg_texture_array[tex_idx + 1];
+                    row[idx + 2] = bg_texture_array[tex_idx + 2];
+                    row[idx + 3] = bg_texture_array[tex_idx + 3];
                 }
+            }
 
-                let tex_x = virtual_x * texture_width / sky_width;
-                let tex_idx_start = ((y_idx + tex_x) * 4) as usize;
-                let tex_idx_end = tex_idx_start + 3;
+            // for x in 0..width {
+            //     let y = y as i32;
+            //     let x = x as i32;
+            //     let tex_y = y * texture_height / height;
+            //     let tex_x = x * texture_width / width;
+            //     let tex_idx = ((tex_y * texture_width + tex_x) * 4) as usize;
 
-                let tex_data = &bg_texture_array[tex_idx_start..tex_idx_end];
-                // no need to copy alpha channel we aren't using any transparency
-                pixel[0..3].copy_from_slice(tex_data);
-            });
+            //     let idx = (x * 4) as usize;
+            //     row[idx] = bg_texture_array[tex_idx];
+            //     row[idx + 1] = bg_texture_array[tex_idx + 1];
+            //     row[idx + 2] = bg_texture_array[tex_idx + 2];
+            //     row[idx + 3] = bg_texture_array[tex_idx + 3];
+            // }
         });
 }

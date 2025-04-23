@@ -1,13 +1,11 @@
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect } from "react";
+import { useContext } from "react";
 import { GameContext } from "../state/gameContext";
 import MapDetail from "./mapDetail";
 import MapPerson from "./mapPerson";
 
 const Map = () => {
   const gameContext = useContext(GameContext);
-
-  useEffect(() => {}, []);
 
   const map = gameContext.gameLoop?.map?.wallGrid;
   const size = gameContext.gameLoop?.map?.size;
@@ -26,7 +24,7 @@ const Map = () => {
       <div className="text-white">{fps} FPS</div>
       <div className="text-white">{minFps} min FPS</div>
       <MapPerson playerPosition={{ ...playerPosition }} size={size} />
-      <MapDetail playerPosition={playerPosition} map={map} size={size} />
+      <MapDetail map={map} size={size} />
     </div>
   );
 };

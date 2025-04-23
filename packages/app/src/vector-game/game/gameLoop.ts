@@ -40,13 +40,14 @@ export class GameLoop {
       this.loop();
     }
 
-    if (this.lastNFrameTimes.length >= 60) {
+    if (this.lastNFrameTimes.length >= 10) {
       this.lastNFrameTimes.shift();
     }
     this.lastNFrameTimes.push(this.frameTime);
     const avgFrameTime = this.getAverageFrameTime();
     const fps = Math.floor(1.0 / avgFrameTime);
     this.fps = fps;
+
     requestAnimationFrame(this.frame.bind(this));
   }
 
@@ -70,6 +71,7 @@ export class GameLoop {
     this.map.update(this.frameTime);
     this.player.update(this.controls.states, this.map, this.frameTime);
     this.camera.render(this.player, this.map, this.spriteMap);
+    this.camera.drawCanvas();
   }
 
   findSpawnPoint() {

@@ -183,7 +183,7 @@ pub struct Position {
     pub dir_y: f32,
     pub plane_x: f32,
     pub plane_y: f32,
-    pub pitch: f32,
+    pub pitch: i32,
     pub z: f32,
     pub plane_y_initial: f32,
 }
@@ -200,6 +200,8 @@ pub struct Coords {
 pub struct Sprite {
     pub x: f32,
     pub y: f32,
+    pub x_fixed: i32,
+    pub y_fixed: i32,
     pub angle: i32,
     pub height: i32,
     pub r#type: i32,
@@ -212,17 +214,17 @@ pub struct Sprite {
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct TranslationResult {
-    pub screen_x: i32,         // TODO: i32
-    pub screen_y_floor: f32,   // TODO: i32
-    pub screen_y_ceiling: f32, // TODO: i32
+    pub screen_x: i32,
+    pub screen_y_floor: i32,
+    pub screen_y_ceiling: i32,
     pub distance: f32,
-    pub full_height: f32,
+    pub full_height: i32,
     pub transform_x: f32,
     pub transform_y: f32,
 }
 
 #[wasm_bindgen]
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Copy)]
 pub struct SpritePart {
     pub sprite_type: i32,
     pub sprite_left_x: i32,
@@ -254,4 +256,44 @@ pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) 
 
 pub fn get_bits(value: u64, start_bit: u8) -> u32 {
     ((value >> start_bit) & 0b1111) as u32
+}
+
+pub struct Texture<'a> {
+    pub data: &'a [u8],
+    pub width: i32,
+    pub height: i32,
+}
+
+pub const FIXED_SHIFT: usize = 20;
+pub const FIXED_SHIFT_LARGE: usize = 8;
+pub const FIXED_ONE: i32 = 1 << FIXED_SHIFT;
+pub const FIXED_ONE_LARGE: i32 = 1 << FIXED_SHIFT_LARGE;
+
+#[inline(always)]
+pub fn to_fixed(f: f32) -> i32 {
+    (f * (FIXED_ONE as f32)) as i32
+}
+
+#[inline(always)]
+pub fn to_fixed_large(f: f32) -> i32 {
+    (f * (FIXED_ONE_LARGE as f32)) as i32
+}
+
+#[inline(always)]
+pub fn fixed_mul(a: i32, b: i32) -> i32 {
+    ((a as i64 * b as i64) >> FIXED_SHIFT) as i32
+}
+
+#[inline(always)]
+pub fn fixed_div(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        0
+    } else {
+        ((a as i64) << FIXED_SHIFT) as i32 / b
+    }
+}
+
+#[inline]
+pub fn from_fixed_to_f32(x: i32) -> f32 {
+    x as f32 / (1 << FIXED_SHIFT) as f32
 }
