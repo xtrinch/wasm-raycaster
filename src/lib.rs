@@ -1289,7 +1289,7 @@ pub fn walk(
 }
 
 #[wasm_bindgen]
-pub fn draw_background_image(
+pub fn draw_background_image1(
     bg_img_texture: *mut u8,
     ceiling_floor_img: *mut u8,
     texture_width: i32,
@@ -1339,5 +1339,80 @@ pub fn draw_background_image(
                 // no need to copy alpha channel we aren't using any transparency
                 pixel[0..3].copy_from_slice(tex_data);
             });
+        });
+}
+
+#[wasm_bindgen]
+pub fn draw_background_image(
+    bg_img_texture: *mut u8,
+    ceiling_floor_img: *mut u8,
+    texture_width: i32,
+    texture_height: i32,
+    width: i32,
+    height: i32,
+    position: JsValue,
+    ambient_light: i32,
+) {
+    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+    let direction = position.dir_x.atan2(position.dir_y) + PI;
+    let sky_scale = height as f64 / texture_height as f64;
+    let sky_width = (texture_width as f64 * sky_scale * 2.0) as i32;
+    let circle = 2.0 * PI;
+    let left_offset = ((direction / circle) * (sky_width as f32)) as i32;
+
+    let bg_texture_array = unsafe {
+        from_raw_parts(
+            bg_img_texture,
+            (texture_width * texture_height * 4) as usize,
+        )
+    };
+
+    let img_slice = unsafe {
+        std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
+    };
+
+    img_slice
+        .par_chunks_mut(width as usize * 4)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let screen_y_pitch = y as i32 - position.pitch;
+            let tex_y = (screen_y_pitch * texture_height / height).clamp(0, texture_height - 1);
+            let y_idx = tex_y * texture_width;
+
+            let row_pixel_count = width as usize;
+            let sky_w = sky_width as usize;
+            let tex_w = texture_width as usize;
+
+            // Determine the starting texture x based on direction offset
+            let mut start_tex_x = left_offset % sky_width;
+            if start_tex_x < 0 {
+                start_tex_x += sky_width;
+            }
+
+            // Amount of texture to read
+            let read_pixels = row_pixel_count;
+
+            // Number of pixels to read from first segment
+            let first_read = (sky_w - start_tex_x as usize).min(read_pixels);
+            let second_read = read_pixels - first_read;
+
+            // Map virtual_x to tex_x
+            let map_tex_x = |virtual_x: usize| -> usize { virtual_x * tex_w / sky_w };
+
+            // First slice
+            for i in 0..first_read {
+                let tex_x = map_tex_x(start_tex_x as usize + i);
+                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
+                let out_idx = i * 4;
+                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
+            }
+
+            // Second slice (wrapped)
+            for i in 0..second_read {
+                let tex_x = map_tex_x(i);
+                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
+                let out_idx = (first_read + i) * 4;
+                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
+            }
         });
 }

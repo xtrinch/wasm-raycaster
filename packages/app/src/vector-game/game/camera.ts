@@ -64,8 +64,8 @@ export class Camera {
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
-    this.width = canvas.width = (8 * window.innerWidth) / 8;
-    this.height = canvas.height = (8 * window.innerHeight) / 8;
+    this.width = canvas.width = (6 * window.innerWidth) / 8;
+    this.height = canvas.height = (6 * window.innerHeight) / 8;
 
     // note that this should be whole numbers
     // TODO: setting to height spacing > 3 does weird things
