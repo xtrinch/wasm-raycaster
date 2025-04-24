@@ -7,6 +7,7 @@ import {
   draw_walls_raycast,
   WasmFloat32Array,
   WasmInt32Array,
+  WasmStripeHashMapArray,
   WasmUInt64Array,
   WasmUint8Array,
 } from "../../../wasm";
@@ -61,11 +62,12 @@ export class Camera {
   public spritesTextureRef: WasmInt32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
+  public stripeHashMap: WasmStripeHashMapArray;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
-    this.width = canvas.width = (6 * window.innerWidth) / 8;
-    this.height = canvas.height = (6 * window.innerHeight) / 8;
+    this.width = canvas.width = (8 * window.innerWidth) / 8;
+    this.height = canvas.height = (8 * window.innerHeight) / 8;
 
     // note that this should be whole numbers
     // TODO: setting to height spacing > 3 does weird things
@@ -112,13 +114,12 @@ export class Camera {
     this.pixelsClampedArray = new Uint8ClampedArray(length);
     this.columnsRef = new WasmInt32Array(this.widthResolution * 8 * 8);
     this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
-    this.allSpritesRef.set(
-      new Float32Array(
-        flatten(
-          spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
-        )
+    const allSprites = new Float32Array(
+      flatten(
+        spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
       )
     );
+    this.allSpritesRef.set(allSprites);
     this.spritePartsRef = new WasmInt32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
         2 * this.widthResolution) * // two times the columns to account for windows
@@ -139,6 +140,9 @@ export class Camera {
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
+
+    this.stripeHashMap = new WasmStripeHashMapArray();
+    this.stripeHashMap.populateFromArray(allSprites); // No memory allocation needed!
 
     makeAutoObservable(this);
   }
@@ -299,7 +303,8 @@ export class Camera {
       map.doorTexture.height,
       this.visibleSpritesRef.ptr,
       this.allSpritesRef.ptr,
-      spriteMap.size
+      spriteMap.size,
+      this.stripeHashMap
     );
 
     // const tempCanvas1 = this.scaleCanvasImage(

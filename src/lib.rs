@@ -4,7 +4,7 @@ use dashmap::DashSet;
 use helpers::{
     copy_to_raw_pointer, fixed_mul, from_fixed_to_f32, get_bits, get_grid_value, has_bit_set,
     parse_sprite_texture_array, to_fixed, to_fixed_large, Position, Sprite, SpritePart, Texture,
-    TranslationResult, FIXED_ONE, FIXED_SHIFT,
+    TranslationResult, WasmStripeHashMapArray, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
@@ -497,6 +497,7 @@ pub fn draw_walls_raycast(
     found_sprites_array: *mut f32,
     all_sprites_array: *mut f32,
     all_sprites_count: usize,
+    sprites_map: &mut WasmStripeHashMapArray,
 ) -> u32 {
     let img_slice = unsafe {
         std::slice::from_raw_parts_mut(
@@ -520,7 +521,6 @@ pub fn draw_walls_raycast(
 
     let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
-    let all_sprites_data = unsafe { from_raw_parts(all_sprites_array, all_sprites_count * 5) };
     let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
@@ -529,20 +529,7 @@ pub fn draw_walls_raycast(
     };
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
 
-    let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
     let mut found_sprites_count = 0;
-
-    // map them by x & y coordinate for easy access
-    for i in (0..all_sprites_count * 5).step_by(5) {
-        let sprite_data: [_; 5] = all_sprites_data[i..i + 5].try_into().unwrap();
-
-        let key = (sprite_data[0].floor() as i32, sprite_data[1].floor() as i32);
-
-        sprites_map
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push(sprite_data);
-    }
 
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>)> = (0
         ..width_resolution)
@@ -560,7 +547,7 @@ pub fn draw_walls_raycast(
                 light_range,
                 range,
                 wall_texture_width,
-                Some(&sprites_map),
+                Some(&sprites_map.get_map()),
                 false,
                 false,
             );
@@ -579,7 +566,7 @@ pub fn draw_walls_raycast(
     for (x, y) in uniqued_met_coords {
         let (map_x, map_y) = (*x as i32, *y as i32);
 
-        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+        if let Some(sprite_list) = sprites_map.get_map().get(&(map_x, map_y)) {
             for &sprite in sprite_list {
                 let index = (found_sprites_count as usize) * 9; // Convert u32 to usize
 

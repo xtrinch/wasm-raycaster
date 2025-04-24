@@ -1,6 +1,48 @@
 use js_sys::Float32Array;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct WasmStripeHashMapArray {
+    map: HashMap<(i32, i32), Vec<[f32; 5]>>,
+}
+
+// 🦀 Rust-only implementation block
+impl WasmStripeHashMapArray {
+    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<[f32; 5]>> {
+        &self.map
+    }
+}
+
+#[wasm_bindgen]
+impl WasmStripeHashMapArray {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    /// Accepts a JS Float32Array directly!
+    #[wasm_bindgen(js_name = populateFromArray)]
+    pub fn populate_from_array(&mut self, sprite_data: &[f32]) {
+        let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
+
+        for i in (0..sprite_data.len()).step_by(5) {
+            let sprite: [f32; 5] = sprite_data[i..i + 5].try_into().unwrap();
+            let key = (sprite[0].floor() as i32, sprite[1].floor() as i32);
+            sprites_map.entry(key).or_default().push(sprite);
+        }
+
+        self.map = sprites_map;
+    }
+
+    #[wasm_bindgen]
+    pub fn count_cells(&self) -> usize {
+        self.map.len()
+    }
+}
 
 #[wasm_bindgen]
 pub struct WasmUint8Array(Vec<u8>);
@@ -156,7 +198,6 @@ pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
 }
 
 use core::slice;
-use std::collections::HashMap;
 
 pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i32, i32)> {
     let mut map = HashMap::new();
