@@ -96,6 +96,7 @@ pub fn raycast_column(
     let mut remaining_range = range;
     let mut wall_width = 1.0;
     let mut wall_offset = 0.0;
+    let initial_bit_offset = 16;
 
     while hit == 0 && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
@@ -103,42 +104,7 @@ pub fn raycast_column(
         // if wall bit is set
         if has_bit_set(value, 0) {
             hit_type = 1 as i8;
-            let initial_bit_offset = 16;
 
-            let bit_widths = [
-                get_bits(value, initial_bit_offset + 8),
-                get_bits(value, initial_bit_offset + 24),
-                get_bits(value, initial_bit_offset + 40),
-            ];
-
-            let is_doors = [
-                has_bit_set(value, 5),
-                has_bit_set(value, 4),
-                has_bit_set(value, 4),
-            ];
-
-            let is_windows = [has_bit_set(value, 8), has_bit_set(value, 9), false];
-
-            let bit_offsets = [
-                get_bits(value, initial_bit_offset),
-                get_bits(value, initial_bit_offset + 16),
-                get_bits(value, initial_bit_offset + 32),
-            ];
-            let bit_thicknesses = [
-                get_bits(value, initial_bit_offset + 4),
-                get_bits(value, initial_bit_offset + 20),
-                get_bits(value, initial_bit_offset + 36),
-            ];
-            let bit_offset_secondaries = [
-                get_bits(value, initial_bit_offset + 12),
-                get_bits(value, initial_bit_offset + 28),
-                get_bits(value, initial_bit_offset + 44),
-            ];
-            let has_set_north_bits = [
-                has_bit_set(value, 6),
-                has_bit_set(value, 7),
-                has_bit_set(value, 2),
-            ];
             let mut coord_delta_dist_x = MAX;
             let mut coord_delta_dist_y = MAX;
             let mut distance = MAX;
@@ -147,13 +113,58 @@ pub fn raycast_column(
 
             // we support two lines per coordinate
             for i in 0..3 {
+                // get bit width first so we can skip all the rest
+                let mut bit_width = 0;
+                match i {
+                    0 => {
+                        bit_width = get_bits(value, initial_bit_offset + 8);
+                    }
+                    1 => {
+                        bit_width = get_bits(value, initial_bit_offset + 24);
+                    }
+                    2 => {
+                        bit_width = get_bits(value, initial_bit_offset + 40);
+                    }
+                    _ => (),
+                };
                 // no shenanigans if the thickness is 0, we'll allow width to be 0 for e.g. windows
-                if bit_widths[i] == 0 {
+                if bit_width == 0 {
                     continue;
                 }
-                let is_east = !has_set_north_bits[i];
-                let is_door = is_doors[i];
-                let is_window = is_windows[i];
+                let mut bit_offset = 0;
+                let mut bit_thickness = 0;
+                let mut bit_offset_secondary = 0;
+                let mut is_door = false;
+                let mut has_set_north_bit = false;
+                let mut is_window = false;
+                match i {
+                    0 => {
+                        bit_offset = get_bits(value, initial_bit_offset);
+                        bit_thickness = get_bits(value, initial_bit_offset + 4);
+                        bit_offset_secondary = get_bits(value, initial_bit_offset + 12);
+                        is_door = has_bit_set(value, 5);
+                        has_set_north_bit = has_bit_set(value, 6);
+                        is_window = has_bit_set(value, 8);
+                    }
+                    1 => {
+                        bit_offset = get_bits(value, initial_bit_offset + 16);
+                        bit_thickness = get_bits(value, initial_bit_offset + 20);
+                        bit_offset_secondary = get_bits(value, initial_bit_offset + 28);
+                        is_door = has_bit_set(value, 4);
+                        has_set_north_bit = has_bit_set(value, 7);
+                        is_window = has_bit_set(value, 9);
+                    }
+                    2 => {
+                        bit_offset = get_bits(value, initial_bit_offset + 32);
+                        bit_thickness = get_bits(value, initial_bit_offset + 36);
+                        bit_offset_secondary = get_bits(value, initial_bit_offset + 44);
+                        is_door = has_bit_set(value, 4);
+                        has_set_north_bit = has_bit_set(value, 2);
+                        is_window = false;
+                    }
+                    _ => (),
+                };
+                let is_east = !has_set_north_bit;
 
                 let mut local_delta_dist_x = 0.0;
                 let mut local_delta_dist_y = 0.0;
@@ -164,10 +175,10 @@ pub fn raycast_column(
                 let distance_offset: f32;
 
                 // TODO: this could be integer math if we went to 16?
-                let offset1: f32 = (bit_offsets[i] % 11) as f32 / 10.0;
-                let thickness: f32 = (bit_thicknesses[i] % 11) as f32 / 10.0;
-                let offset_secondary: f32 = (bit_offset_secondaries[i] % 11) as f32 / 10.0;
-                let depth: f32 = (bit_widths[i] % 11) as f32 / 10.0;
+                let offset1: f32 = (bit_offset % 11) as f32 / 10.0;
+                let thickness: f32 = (bit_thickness % 11) as f32 / 10.0;
+                let offset_secondary: f32 = (bit_offset_secondary % 11) as f32 / 10.0;
+                let depth: f32 = (bit_width % 11) as f32 / 10.0;
 
                 let ray_dirs: [f32; 2];
                 let sides: [i32; 2];
@@ -197,14 +208,14 @@ pub fn raycast_column(
                 // find the intersection of a line segment and an infinite line
                 if is_east {
                     new_map_start_x = map_x as f32 + offset;
-                    new_map_end_x = map_x as f32 + offset;
+                    new_map_end_x = new_map_start_x;
                     new_map_start_y = map_y as f32 + offset_secondary;
-                    new_map_end_y = map_y as f32 + offset_secondary + depth;
+                    new_map_end_y = new_map_start_y + depth;
                 } else {
                     new_map_start_y = map_y as f32 + offset;
-                    new_map_end_y = map_y as f32 + offset;
+                    new_map_end_y = new_map_start_y;
                     new_map_start_x = map_x as f32 + offset_secondary;
-                    new_map_end_x = map_x as f32 + offset_secondary + depth;
+                    new_map_end_x = new_map_start_x + depth;
                 }
 
                 // the segment of line at the offset of the wall
@@ -229,30 +240,26 @@ pub fn raycast_column(
 
                 if is_east {
                     new_map_between_start_x = map_x as f32 + offset1;
-                    new_map_between_end_x = map_x as f32 + offset1 + thickness;
+                    new_map_between_end_x = new_map_between_start_x + thickness;
                     new_map_between_start_y = map_y as f32 + segment_map_adder;
-                    new_map_between_end_y = map_y as f32 + segment_map_adder;
+                    new_map_between_end_y = new_map_between_start_y;
                 } else {
                     new_map_between_start_y = map_y as f32 + offset1;
-                    new_map_between_end_y = map_y as f32 + offset1 + thickness;
+                    new_map_between_end_y = new_map_between_start_y + thickness;
                     new_map_between_start_x = map_x as f32 + segment_map_adder;
-                    new_map_between_end_x = map_x as f32 + segment_map_adder;
+                    new_map_between_end_x = new_map_between_start_x;
                 }
 
                 // the segment of line between the offsets of the wall
                 let segment_between = LineInterval::line_segment(Line {
-                    start: (
-                        new_map_between_start_x as f32,
-                        new_map_between_start_y as f32,
-                    )
-                        .into(),
-                    end: (new_map_between_end_x as f32, new_map_between_end_y as f32).into(),
+                    start: (new_map_between_start_x, new_map_between_start_y).into(),
+                    end: (new_map_between_end_x, new_map_between_end_y).into(),
                 });
 
                 // ray between player position and point on the ray direction
                 let line = LineInterval::ray(Line {
-                    start: (position.x as f32, position.y as f32).into(),
-                    end: (position.x + ray_dir_x as f32, position.y + ray_dir_y as f32).into(),
+                    start: (position.x, position.y).into(),
+                    end: (position.x + ray_dir_x, position.y + ray_dir_y).into(),
                 });
 
                 // check main segment line
@@ -263,10 +270,11 @@ pub fn raycast_column(
                 if let Some(coord) = intersection {
                     local_intersection_coord = coord;
                     local_hit = 1;
-                    // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
 
-                    local_delta_dist_x += delta_dist_x * (1.0 - (distance_offset));
-                    local_delta_dist_y += delta_dist_y * (1.0 - (distance_offset));
+                    // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
+                    let amount_to_move_back = 1.0 - (distance_offset);
+                    local_delta_dist_x += delta_dist_x * amount_to_move_back;
+                    local_delta_dist_y += delta_dist_y * amount_to_move_back;
 
                     local_side = sides[0];
 

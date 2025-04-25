@@ -1,21 +1,12 @@
-import { observer } from "mobx-react";
+import Canvas from "./canvas";
 import Map from "./map/map";
 
-const Game = observer(() => {
+const Game = () => {
   return (
     <div>
-      <canvas
-        id="display"
-        style={{
-          width: "100%",
-          height: "100%",
-          position: "absolute",
-          left: 0,
-          top: 0,
-        }}
-      ></canvas>
+      <Canvas />
       <Map />
     </div>
   );
-});
+};
 export default Game;

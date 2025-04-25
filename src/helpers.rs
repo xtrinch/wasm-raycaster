@@ -280,6 +280,7 @@ pub fn has_bit_set(value: u64, bit: u8) -> bool {
     (value & (1 << bit)) != 0
 }
 
+#[inline(always)]
 pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) -> u64 {
     if map_x < 0 || map_y < 0 || map_x >= map_width || map_y >= map_width {
         return 0;
