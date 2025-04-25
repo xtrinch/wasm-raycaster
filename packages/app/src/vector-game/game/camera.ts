@@ -285,7 +285,6 @@ export class Camera {
       this.ceilingFloorPixelsRef.ptr,
       this.wallTextureRef.ptr,
       this.doorTextureRef.ptr,
-      this.columnsRef.ptr,
       this.zBufferRef.ptr,
       player.position,
       this.mapRef.ptr,

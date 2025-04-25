@@ -1,10 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
-use dashmap::DashSet;
 use helpers::{
-    copy_to_raw_pointer, fixed_mul, from_fixed_to_f32, get_bits, get_grid_value, has_bit_set,
-    parse_sprite_texture_array, to_fixed, to_fixed_large, Position, Sprite, SpritePart, Texture,
-    TranslationResult, WasmStripeHashMapArray, FIXED_ONE, FIXED_SHIFT,
+    fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
+    to_fixed_large, Position, Sprite, SpritePart, Texture, TranslationResult,
+    WasmStripeHashMapArray, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
@@ -48,8 +47,8 @@ pub fn raycast_column(
     let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
     let mut window_sprites: SmallVec<[[f32; 9]; 2]> = SmallVec::new();
 
-    let mut default_sprites_map = HashMap::new();
-    let sprites_map = sprites_map.unwrap_or_else(|| &mut default_sprites_map);
+    let default_sprites_map = HashMap::new();
+    let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
@@ -123,7 +122,7 @@ pub fn raycast_column(
 
             let bit_offsets = [
                 get_bits(value, initial_bit_offset),
-                get_bits(value, initial_bit_offset + 16 as u8),
+                get_bits(value, initial_bit_offset + 16),
                 get_bits(value, initial_bit_offset + 32),
             ];
             let bit_thicknesses = [
@@ -165,6 +164,7 @@ pub fn raycast_column(
                 let offset: f32;
                 let distance_offset: f32;
 
+                // TODO: this could be integer math if we went to 16?
                 let offset1: f32 = (bit_offsets[i] % 11) as f32 / 10.0;
                 let thickness: f32 = (bit_thicknesses[i] % 11) as f32 / 10.0;
                 let offset_secondary: f32 = (bit_offset_secondaries[i] % 11) as f32 / 10.0;
@@ -313,7 +313,7 @@ pub fn raycast_column(
                     let local_distance = local_intersection_coord
                         .hausdorff_distance(&[Coord::from([position.x, position.y])]);
                     if local_distance < distance {
-                        // we'll only use this data f we're stopping at a window or it's not a window
+                        // we'll only use this data if we're stopping at a window or it's not a window
                         if !is_window || stop_at_window {
                             distance = local_distance;
                             coord_delta_dist_x = local_delta_dist_x;
@@ -364,8 +364,9 @@ pub fn raycast_column(
             hit = 1;
         }
 
-        // only add coord if sprites exist in it
-        if !skip_sprites_and_writes {
+        // only add coord if sprites exist in it;
+        // TODO: check more smartly
+        if !skip_sprites_and_writes && column % 5 == 0 {
             if let Some(_) = sprites_map.get(&(map_x, map_y)) {
                 let _ = met_coords.try_insert((map_x, map_y), 0);
             }
@@ -410,14 +411,11 @@ pub fn raycast_column(
     let line_height = width as f32 / 2.0 / perp_wall_dist;
     let aspect_ratio = height as f32 / width as f32;
 
-    let draw_start_y = -line_height / 2.0
-        + height as f32 / 2.0
+    let middle_y = height as f32 / 2.0
         + position.pitch as f32
         + position.z / (perp_wall_dist * (2.0 * aspect_ratio));
-    let draw_end_y = line_height / 2.0
-        + height as f32 / 2.0
-        + position.pitch as f32
-        + position.z / (perp_wall_dist * (2.0 * aspect_ratio));
+    let draw_start_y = -line_height / 2.0 + middle_y;
+    let draw_end_y = line_height / 2.0 + middle_y;
 
     wall_x -= wall_x.floor();
 
@@ -478,7 +476,6 @@ pub fn draw_walls_raycast(
     ceiling_floor_img: *mut u8,
     wall_texture: *mut u8,
     door_texture: *mut u8,
-    columns_array: *mut i32, // TODO: should these be pointers to arrays??
     zbuffer_array: *mut f32,
     position: JsValue,
     map_array: *mut u64, // 2D array representing the grid map
@@ -884,8 +881,6 @@ pub fn translate_coordinate_to_camera(
         screen_y_ceiling: sprite_ceiling_screen_y.min(height_resolution),
         distance: transform_y,
         full_height,
-        transform_x,
-        transform_y,
     }
 }
 

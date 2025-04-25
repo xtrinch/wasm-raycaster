@@ -260,8 +260,6 @@ pub struct TranslationResult {
     pub screen_y_ceiling: i32,
     pub distance: f32,
     pub full_height: i32,
-    pub transform_x: f32,
-    pub transform_y: f32,
 }
 
 #[wasm_bindgen]
@@ -278,6 +276,7 @@ pub struct SpritePart {
     pub angle: i32,
 }
 
+#[inline(always)]
 pub fn has_bit_set(value: u64, bit: u8) -> bool {
     (value & (1 << bit)) != 0
 }
@@ -295,6 +294,7 @@ pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) 
     return map_data[map_index];
 }
 
+#[inline(always)]
 pub fn get_bits(value: u64, start_bit: u8) -> u32 {
     ((value >> start_bit) & 0b1111) as u32
 }
