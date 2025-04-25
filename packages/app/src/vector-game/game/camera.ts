@@ -27,14 +27,6 @@ export class Camera {
   public ctx: CanvasRenderingContext2D;
   public width: number;
   public height: number;
-  public widthResolution: number; // how many columns we draw
-  public heightResolution: number; // how many scanlines we draw
-  public ceilingWidthResolution: number; // how many columns we draw
-  public ceilingHeightResolution: number; // how many scanlines we draw
-  public widthSpacing: number;
-  public heightSpacing: number;
-  public ceilingWidthSpacing: number;
-  public ceilingHeightSpacing: number;
   public range: number;
   public lightRange: number;
   public scale: number;
@@ -69,27 +61,6 @@ export class Camera {
     this.width = canvas.width = (8 * window.innerWidth) / 8;
     this.height = canvas.height = (8 * window.innerHeight) / 8;
 
-    // note that this should be whole numbers
-    // TODO: setting to height spacing > 3 does weird things
-    // TODO: width spacing 1 does not work
-    // this.widthSpacing = 3;
-    // this.heightSpacing = 2;
-    // this.ceilingWidthSpacing = 3;
-    // this.ceilingHeightSpacing = 2;
-    this.widthSpacing = 1;
-    this.heightSpacing = 1;
-    this.ceilingWidthSpacing = 1;
-    this.ceilingHeightSpacing = 1;
-
-    this.widthResolution = Math.ceil(this.width / this.widthSpacing);
-    this.heightResolution = Math.ceil(this.height / this.heightSpacing);
-    this.ceilingWidthResolution = Math.ceil(
-      this.width / this.ceilingWidthSpacing
-    );
-    this.ceilingHeightResolution = Math.ceil(
-      this.height / this.ceilingHeightSpacing
-    );
-
     this.range = 40;
     this.lightRange = 15;
     this.scale = (this.width + this.height) / 1200;
@@ -107,12 +78,12 @@ export class Camera {
     this.initializeTexture(this.map.skybox, "skyTextureRef");
     this.initializeTexture(this.map.treeTexture, "treeTextureRef");
 
-    let length = this.ceilingWidthResolution * this.ceilingHeightResolution * 4;
+    let length = this.width * this.height * 4;
 
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.pixelsClampedArray = new Uint8ClampedArray(length);
-    this.columnsRef = new WasmInt32Array(this.widthResolution * 8 * 8);
+    this.columnsRef = new WasmInt32Array(this.width * 8 * 8);
     this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
     const allSprites = new Float32Array(
       flatten(
@@ -122,17 +93,17 @@ export class Camera {
     this.allSpritesRef.set(allSprites);
     this.spritePartsRef = new WasmInt32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
-        2 * this.widthResolution) * // two times the columns to account for windows
+        2 * this.width) * // two times the columns to account for windows
         9
     ); // this will be the max sprites there will ever be in here
 
     // TODO: don't think this is necessary now that we don't pass it around
     this.visibleSpritesRef = new WasmFloat32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
-        2 * this.widthResolution) * // two times the columns to account for windows
+        2 * this.width) * // two times the columns to account for windows
         9
     );
-    this.zBufferRef = new WasmFloat32Array(this.widthResolution);
+    this.zBufferRef = new WasmFloat32Array(this.width);
 
     this.spritesTextureRef = new WasmInt32Array(
       Object.values(SpriteType).length * 3
@@ -226,8 +197,8 @@ export class Camera {
   drawCanvas() {
     this.scaleCanvasImage(
       this.ceilingFloorPixelsRef.buffer,
-      this.ceilingWidthResolution,
-      this.ceilingHeightResolution
+      this.width,
+      this.height
     );
   }
 
@@ -236,8 +207,8 @@ export class Camera {
     // Create an ImageData object
     const img01 = new ImageData(
       this.pixelsClampedArray,
-      this.ceilingWidthResolution,
-      this.ceilingHeightResolution
+      this.width,
+      this.height
     );
 
     // Draw ImageData onto the temporary canvas
@@ -251,10 +222,10 @@ export class Camera {
       this.floorTextureRef.ptr,
       this.ceilingTextureRef.ptr,
       this.roadTextureRef.ptr,
-      this.ceilingWidthResolution,
-      this.ceilingHeightResolution,
-      this.ceilingWidthSpacing,
-      this.ceilingHeightSpacing,
+      this.width,
+      this.height,
+      1,
+      1,
       this.height,
       this.lightRange,
       map.light,
@@ -270,8 +241,8 @@ export class Camera {
 
     // const tempCanvas1 = this.scaleCanvasImage(
     //   this.ceilingFloorPixelsRef.buffer,
-    //   this.ceilingWidthResolution,
-    //   this.ceilingHeightResolution
+    //   this.width,
+    //   this.height
     // );
     // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
   }
@@ -289,11 +260,11 @@ export class Camera {
       player.position,
       this.mapRef.ptr,
       map.size, // Width of original 2D array
-      this.widthResolution,
-      this.heightResolution,
+      this.width,
+      this.height,
       this.height,
       this.width,
-      this.widthSpacing,
+      1,
       this.lightRange,
       this.range,
       map.wallTexture.width,
@@ -308,13 +279,13 @@ export class Camera {
 
     // const tempCanvas1 = this.scaleCanvasImage(
     //   this.ceilingFloorPixelsRef.buffer,
-    //   this.ceilingWidthResolution,
-    //   this.ceilingHeightResolution
+    //   this.width,
+    //   this.height
     // );
     // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
 
     return foundSpritesCount;
-    let width = Math.ceil(this.widthSpacing);
+    let width = Math.ceil(this.width);
     for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
       let [
         tex_x,
@@ -374,7 +345,7 @@ export class Camera {
       this.ceilingFloorPixelsRef.ptr,
       this.width,
       this.height,
-      this.widthSpacing,
+      1,
       this.visibleSpritesRef.ptr,
       this.spritePartsRef.ptr,
       this.zBufferRef.ptr,
@@ -382,8 +353,8 @@ export class Camera {
       Object.values(SpriteType).length * 3,
       this.lightRange,
       map.light,
-      this.widthResolution,
-      this.heightResolution,
+      this.width,
+      this.height,
       foundSpritesCount,
       this.windowTextureRef.ptr,
       this.map.windowTexture.width,
@@ -395,8 +366,8 @@ export class Camera {
 
     // const tempCanvas1 = this.scaleCanvasImage(
     //   this.ceilingFloorPixelsRef.buffer,
-    //   this.ceilingWidthResolution,
-    //   this.ceilingHeightResolution
+    //   this.width,
+    //   this.height
     // );
     // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
 

@@ -1017,10 +1017,10 @@ pub fn draw_sprites_wasm(
                 let texture_x: i32 = (fract * texture_width as f32) as i32;
                 return Some(SpritePart {
                     sprite_type: sprite.r#type,
-                    sprite_left_x: (sprite.column as i32),
+                    sprite_left_x: (sprite.column),
                     width: 1,
-                    screen_y_ceiling: projection.screen_y_ceiling as i32,
-                    height: projection.full_height as i32,
+                    screen_y_ceiling: projection.screen_y_ceiling,
+                    height: projection.full_height,
                     tex_x1: texture_x,
                     tex_width: 1,
                     alpha: alpha_i,
@@ -1074,7 +1074,7 @@ pub fn draw_sprites_wasm(
 
             Some(SpritePart {
                 sprite_type: sprite.r#type,
-                sprite_left_x: draw_start_x,
+                sprite_left_x: draw_start_x as u32,
                 width: draw_end_x - draw_start_x,
                 screen_y_ceiling: projection.screen_y_ceiling as i32,
                 height: (projection.full_height) as i32,
@@ -1117,7 +1117,7 @@ pub fn draw_sprites_wasm(
                 }
 
                 for dx in 0..sprite.width {
-                    let x = sprite.sprite_left_x + dx;
+                    let x = sprite.sprite_left_x as i32 + dx;
                     if x < 0 || x >= width {
                         continue;
                     }

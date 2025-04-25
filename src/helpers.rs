@@ -253,7 +253,6 @@ pub struct Sprite {
 }
 
 #[wasm_bindgen]
-#[derive(Debug)]
 pub struct TranslationResult {
     pub screen_x: i32,
     pub screen_y_ceiling: i32,
@@ -265,7 +264,7 @@ pub struct TranslationResult {
 #[derive(Serialize, Clone, Copy)]
 pub struct SpritePart {
     pub sprite_type: i32,
-    pub sprite_left_x: i32,
+    pub sprite_left_x: u32,
     pub width: i32,
     pub screen_y_ceiling: i32,
     pub height: i32,

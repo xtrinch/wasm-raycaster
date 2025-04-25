@@ -81,10 +81,10 @@ export class Player {
       distance,
       this.camera.mapRef.ptr,
       map.size,
-      this.camera.widthResolution,
+      this.camera.width,
       this.camera.width,
       this.camera.height,
-      this.camera.widthSpacing,
+      1,
       this.camera.lightRange,
       this.camera.range,
       map.wallTexture.width
