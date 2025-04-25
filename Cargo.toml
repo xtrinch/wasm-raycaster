@@ -29,4 +29,8 @@ dashmap = "6.1.0"
 parallel = ["wasm-bindgen-rayon"]
 
 [profile.dev]
-opt-level = 3
+#opt-level = 3
+#debug = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O4', '-g']
