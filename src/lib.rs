@@ -42,9 +42,9 @@ pub fn raycast_column(
     sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
-) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>) {
+) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>) {
     let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
-    let mut window_sprites: SmallVec<[[f32; 9]; 2]> = SmallVec::new();
+    let mut window_sprites: SmallVec<[[f32; 10]; 2]> = SmallVec::new();
 
     let default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
@@ -97,6 +97,8 @@ pub fn raycast_column(
     let mut wall_width = 1.0;
     let mut wall_offset = 0.0;
     let initial_bit_offset = 16;
+
+    let aspect_ratio = height as f32 / width as f32;
 
     while hit == 0 && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
@@ -348,6 +350,7 @@ pub fn raycast_column(
                                     local_side as f32,
                                     local_offset,
                                     local_width,
+                                    local_distance,
                                 ];
 
                                 window_sprites.push(window_data);
@@ -416,7 +419,6 @@ pub fn raycast_column(
     perp_wall_dist = perp_wall_dist * position.plane_y_initial;
     // scale the height according to width so they're square!
     let line_height = width as f32 / 2.0 / perp_wall_dist;
-    let aspect_ratio = height as f32 / width as f32;
 
     let middle_y = height as f32 / 2.0
         + position.pitch as f32
@@ -484,7 +486,6 @@ pub fn draw_walls_raycast(
     wall_texture: *mut u8,
     door_texture: *mut u8,
     zbuffer_array: *mut f32,
-    position: JsValue,
     map_array: *mut u64, // 2D array representing the grid map
     map_width: usize,    // Needed to index into 1D map
     width_resolution: i32,
@@ -502,6 +503,15 @@ pub fn draw_walls_raycast(
     all_sprites_array: *mut f32,
     all_sprites_count: usize,
     sprites_map: &mut WasmStripeHashMapArray,
+    x: f32,
+    y: f32,
+    dir_x: f32,
+    dir_y: f32,
+    plane_x: f32,
+    plane_y: f32,
+    pitch: i32,
+    z: f32,
+    plane_y_initial: f32,
 ) -> u32 {
     let img_slice = unsafe {
         std::slice::from_raw_parts_mut(
@@ -523,19 +533,29 @@ pub fn draw_walls_raycast(
         )
     };
 
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
     let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
-            (all_sprites_count + (2 * width_resolution) as usize) * 9,
+            (all_sprites_count + (2 * width_resolution) as usize) * 10,
         )
     };
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
 
     let mut found_sprites_count = 0;
 
-    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>)> = (0
+    let position = Position {
+        x,
+        y,
+        dir_x,
+        dir_y,
+        plane_x,
+        plane_y,
+        pitch,
+        z,
+        plane_y_initial,
+    };
+    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0
         ..width_resolution)
         .into_par_iter()
         .map(|column| {
@@ -571,7 +591,7 @@ pub fn draw_walls_raycast(
 
         if let Some(sprite_list) = sprites_map.get_map().get(&(map_x, map_y)) {
             for &sprite in sprite_list {
-                let index = (found_sprites_count as usize) * 9; // Convert u32 to usize
+                let index = (found_sprites_count as usize) * 10; // Convert u32 to usize
 
                 (found_sprites)[index..index + 5].copy_from_slice(&sprite);
                 found_sprites_count += 1;
@@ -579,20 +599,20 @@ pub fn draw_walls_raycast(
         }
     }
 
-    let all_window_sprites: Vec<&[f32; 9]> = data
+    let all_window_sprites: Vec<&[f32; 10]> = data
         .iter()
         .flat_map(|(_, _, _, window_sprites)| window_sprites)
         .collect();
 
     // Compute start position and length
-    let start_index = found_sprites_count as usize * 9;
-    let total_len = all_window_sprites.len() * 9;
+    let start_index = found_sprites_count as usize * 10;
+    let total_len = all_window_sprites.len() * 10;
 
     // Get a mutable slice to just the part we want to fill
     let target_slice = &mut found_sprites[start_index..start_index + total_len];
 
     // SAFELY split into mutable chunks of 9
-    let chunks: Vec<&mut [f32]> = target_slice.chunks_mut(9).collect();
+    let chunks: Vec<&mut [f32]> = target_slice.chunks_mut(10).collect();
 
     // Zip input and output together and write in parallel
     chunks
@@ -623,15 +643,20 @@ pub fn draw_walls_raycast(
         height: wall_texture_height,
     };
 
+    let col_datas: Vec<&[i32; 7]> = data
+        .par_iter()
+        .map(|(_, col_data, _, _)| col_data)
+        .collect();
+
     img_slice
         .par_chunks_mut((width_resolution * 4) as usize)
         .enumerate()
         .for_each(|(screen_y, row)| {
             let screen_y = screen_y as i32;
 
-            for (_, col_data, _, _) in data.iter() {
+            for col_data in col_datas.iter() {
                 let [tex_x, left, draw_start_y, wall_height, global_alpha, hit, col_type] =
-                    *col_data;
+                    **col_data;
 
                 if hit == 0 || screen_y < draw_start_y || screen_y >= draw_start_y + wall_height {
                     continue;
@@ -681,7 +706,6 @@ pub fn draw_walls_raycast(
 
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
-    position: JsValue,
     ceiling_floor_img: *mut u8,
     floor_texture: *mut u8,
     ceiling_texture: *mut u8,
@@ -701,8 +725,27 @@ pub fn draw_ceiling_floor_raycast(
     road_texture_height: i32,
     map_array: *mut u64,
     map_width: usize,
+    x: f32,
+    y: f32,
+    dir_x: f32,
+    dir_y: f32,
+    plane_x: f32,
+    plane_y: f32,
+    pitch: i32,
+    z: f32,
+    plane_y_initial: f32,
 ) {
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
+    let position = Position {
+        x,
+        y,
+        dir_x,
+        dir_y,
+        plane_x,
+        plane_y,
+        pitch,
+        z,
+        plane_y_initial,
+    };
     let map_data = unsafe { from_raw_parts(map_array, map_width * map_width) };
 
     let road_texture_array = unsafe {
@@ -890,7 +933,6 @@ pub fn translate_coordinate_to_camera(
 
 #[wasm_bindgen]
 pub fn draw_sprites_wasm(
-    position_js: JsValue,
     ceiling_floor_img: *mut u8,
     width: i32,
     height: i32,
@@ -911,6 +953,15 @@ pub fn draw_sprites_wasm(
     tree_texture: *mut u8,
     tree_texture_width: i32,
     tree_texture_height: i32,
+    x: f32,
+    y: f32,
+    dir_x: f32,
+    dir_y: f32,
+    plane_x: f32,
+    plane_y: f32,
+    pitch: i32,
+    z: f32,
+    plane_y_initial: f32,
 ) -> usize {
     let window_texture_array = unsafe {
         from_raw_parts(
@@ -928,39 +979,58 @@ pub fn draw_sprites_wasm(
         std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
     };
 
-    let found_sprites_length = found_sprites_count as usize;
-
-    let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
+    let position = Position {
+        x,
+        y,
+        dir_x,
+        dir_y,
+        plane_x,
+        plane_y,
+        pitch,
+        z,
+        plane_y_initial,
+    };
     let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution as usize) };
-    let sprite_data = unsafe { from_raw_parts(visible_sprites_array, found_sprites_length * 9) };
+    let sprite_data =
+        unsafe { from_raw_parts(visible_sprites_array, found_sprites_count as usize * 10) };
     let texture_array =
         parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
-
-    // copy them since we need to sort them anyway
-    let mut sprites: Vec<Sprite> = sprite_data
-        .par_chunks(9)
-        .map(|chunk| Sprite {
-            x: chunk[0],
-            y: chunk[1],
-            angle: chunk[2] as i32,
-            height: chunk[3] as i32,
-            r#type: chunk[4] as i32,
-            column: chunk[5] as u32,
-            side: chunk[6] as u8,
-            offset: chunk[7],
-            width: chunk[8],
-            x_fixed: to_fixed_large(chunk[0]),
-            y_fixed: to_fixed_large(chunk[1]),
-        })
-        .collect();
 
     let px = to_fixed_large(position.x);
     let py = to_fixed_large(position.y);
 
+    // copy them since we need to sort them anyway
+    let mut sprites: Vec<Sprite> = sprite_data
+        .par_chunks(10)
+        .map(|chunk| {
+            let sprite_type = chunk[4] as i32;
+            let x = chunk[0];
+            let x_fixed = to_fixed_large(x);
+            let y = chunk[1];
+            let y_fixed = to_fixed_large(y);
+            let distance_fixed = (px - x_fixed).pow(2) + (py - y_fixed).pow(2);
+            Sprite {
+                x,
+                y,
+                angle: chunk[2] as i32,
+                height: chunk[3] as i32,
+                r#type: sprite_type,
+                column: chunk[5] as u32,
+                side: chunk[6] as u8,
+                offset: chunk[7],
+                width: chunk[8],
+                distance: chunk[9],
+                distance_fixed,
+                x_fixed,
+                y_fixed,
+            }
+        })
+        .collect();
+
     // since we should draw those in the distance first, we sort them
     sprites.sort_unstable_by(|a, b| {
-        let da = (px - a.x_fixed).pow(2) + (py - a.y_fixed).pow(2);
-        let db = (px - b.x_fixed).pow(2) + (py - b.y_fixed).pow(2);
+        let da = a.distance_fixed;
+        let db = b.distance_fixed;
 
         db.cmp(&da) // sort descending (farther first)
     });
@@ -1161,6 +1231,82 @@ pub fn draw_sprites_wasm(
     0
 }
 
+#[wasm_bindgen]
+pub fn draw_background_image(
+    bg_img_texture: *mut u8,
+    ceiling_floor_img: *mut u8,
+    texture_width: i32,
+    texture_height: i32,
+    width: i32,
+    height: i32,
+    ambient_light: i32,
+    dir_x: f32,
+    dir_y: f32,
+    pitch: i32,
+) {
+    let direction = dir_x.atan2(dir_y) + PI;
+    let sky_scale = height as f64 / texture_height as f64;
+    let sky_width = (texture_width as f64 * sky_scale * 2.0) as i32;
+    let circle = 2.0 * PI;
+    let left_offset = ((direction / circle) * (sky_width as f32)) as i32;
+
+    let bg_texture_array = unsafe {
+        from_raw_parts(
+            bg_img_texture,
+            (texture_width * texture_height * 4) as usize,
+        )
+    };
+
+    let img_slice = unsafe {
+        std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
+    };
+
+    img_slice
+        .par_chunks_mut(width as usize * 4)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let screen_y_pitch = y as i32 - pitch;
+            let tex_y = (screen_y_pitch * texture_height / height).clamp(0, texture_height - 1);
+            let y_idx = tex_y * texture_width;
+
+            let row_pixel_count = width as usize;
+            let sky_w = sky_width as usize;
+            let tex_w = texture_width as usize;
+
+            // Determine the starting texture x based on direction offset
+            let mut start_tex_x = left_offset % sky_width;
+            if start_tex_x < 0 {
+                start_tex_x += sky_width;
+            }
+
+            // Amount of texture to read
+            let read_pixels = row_pixel_count;
+
+            // Number of pixels to read from first segment
+            let first_read = (sky_w - start_tex_x as usize).min(read_pixels);
+            let second_read = read_pixels - first_read;
+
+            // Map virtual_x to tex_x
+            let map_tex_x = |virtual_x: usize| -> usize { virtual_x * tex_w / sky_w };
+
+            // First slice
+            for i in 0..first_read {
+                let tex_x = map_tex_x(start_tex_x as usize + i);
+                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
+                let out_idx = i * 4;
+                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
+            }
+
+            // Second slice (wrapped)
+            for i in 0..second_read {
+                let tex_x = map_tex_x(i);
+                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
+                let out_idx = (first_read + i) * 4;
+                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
+            }
+        });
+}
+
 // move if no wall in front of you
 #[wasm_bindgen]
 pub fn walk(
@@ -1271,130 +1417,24 @@ pub fn walk(
 }
 
 #[wasm_bindgen]
-pub fn draw_background_image1(
-    bg_img_texture: *mut u8,
-    ceiling_floor_img: *mut u8,
-    texture_width: i32,
-    texture_height: i32,
-    width: i32,
-    height: i32,
-    position: JsValue,
-    ambient_light: i32,
-) {
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let direction = position.dir_x.atan2(position.dir_y) + PI;
-    let sky_scale = height as f64 / texture_height as f64;
-    let sky_width = (texture_width as f64 * sky_scale * 2.0) as i32;
-    let circle = 2.0 * PI;
-    let left_offset = ((direction / circle) * (sky_width as f32)) as i32;
+pub fn rotate_view(
+    frame_time: f32,
+    multiplier: i32,
+    dir_x: f32,
+    dir_y: f32,
+    plane_x: f32,
+    plane_y: f32,
+) -> JsValue {
+    let rot_speed = 4.0 * (PI / 5.0) * frame_time * multiplier as f32;
 
-    let bg_texture_array = unsafe {
-        from_raw_parts(
-            bg_img_texture,
-            (texture_width * texture_height * 4) as usize,
-        )
-    };
+    let cos_r = rot_speed.cos();
+    let sin_r = rot_speed.sin();
 
-    let img_slice = unsafe {
-        std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
-    };
+    let new_dir_x = dir_x * cos_r - dir_y * sin_r;
+    let new_dir_y = dir_x * sin_r + dir_y * cos_r;
 
-    img_slice
-        .par_chunks_mut(width as usize * 4)
-        .enumerate()
-        .for_each(|(y, row)| {
-            let screen_y_pitch = y as i32 - position.pitch;
-            let tex_y = (screen_y_pitch * texture_height / height).clamp(0, texture_height - 1);
-            let y_idx = tex_y * texture_width;
+    let new_plane_x = plane_x * cos_r - plane_y * sin_r;
+    let new_plane_y = plane_x * sin_r + plane_y * cos_r;
 
-            row.par_chunks_mut(4).enumerate().for_each(|(x, pixel)| {
-                let mut virtual_x = (x as i32 + left_offset) % sky_width;
-                if virtual_x < 0 {
-                    virtual_x = virtual_x + sky_width;
-                }
-
-                let tex_x = virtual_x * texture_width / sky_width;
-                let tex_idx_start = ((y_idx + tex_x) * 4) as usize;
-                let tex_idx_end = tex_idx_start + 3;
-
-                let tex_data = &bg_texture_array[tex_idx_start..tex_idx_end];
-                // no need to copy alpha channel we aren't using any transparency
-                pixel[0..3].copy_from_slice(tex_data);
-            });
-        });
-}
-
-#[wasm_bindgen]
-pub fn draw_background_image(
-    bg_img_texture: *mut u8,
-    ceiling_floor_img: *mut u8,
-    texture_width: i32,
-    texture_height: i32,
-    width: i32,
-    height: i32,
-    position: JsValue,
-    ambient_light: i32,
-) {
-    let position: Position = serde_wasm_bindgen::from_value(position).unwrap();
-    let direction = position.dir_x.atan2(position.dir_y) + PI;
-    let sky_scale = height as f64 / texture_height as f64;
-    let sky_width = (texture_width as f64 * sky_scale * 2.0) as i32;
-    let circle = 2.0 * PI;
-    let left_offset = ((direction / circle) * (sky_width as f32)) as i32;
-
-    let bg_texture_array = unsafe {
-        from_raw_parts(
-            bg_img_texture,
-            (texture_width * texture_height * 4) as usize,
-        )
-    };
-
-    let img_slice = unsafe {
-        std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
-    };
-
-    img_slice
-        .par_chunks_mut(width as usize * 4)
-        .enumerate()
-        .for_each(|(y, row)| {
-            let screen_y_pitch = y as i32 - position.pitch;
-            let tex_y = (screen_y_pitch * texture_height / height).clamp(0, texture_height - 1);
-            let y_idx = tex_y * texture_width;
-
-            let row_pixel_count = width as usize;
-            let sky_w = sky_width as usize;
-            let tex_w = texture_width as usize;
-
-            // Determine the starting texture x based on direction offset
-            let mut start_tex_x = left_offset % sky_width;
-            if start_tex_x < 0 {
-                start_tex_x += sky_width;
-            }
-
-            // Amount of texture to read
-            let read_pixels = row_pixel_count;
-
-            // Number of pixels to read from first segment
-            let first_read = (sky_w - start_tex_x as usize).min(read_pixels);
-            let second_read = read_pixels - first_read;
-
-            // Map virtual_x to tex_x
-            let map_tex_x = |virtual_x: usize| -> usize { virtual_x * tex_w / sky_w };
-
-            // First slice
-            for i in 0..first_read {
-                let tex_x = map_tex_x(start_tex_x as usize + i);
-                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
-                let out_idx = i * 4;
-                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
-            }
-
-            // Second slice (wrapped)
-            for i in 0..second_read {
-                let tex_x = map_tex_x(i);
-                let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
-                let out_idx = (first_read + i) * 4;
-                row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
-            }
-        });
+    serde_wasm_bindgen::to_value(&vec![new_dir_x, new_dir_y, new_plane_x, new_plane_y]).unwrap()
 }

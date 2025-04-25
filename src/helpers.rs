@@ -250,6 +250,8 @@ pub struct Sprite {
     pub side: u8,
     pub offset: f32,
     pub width: f32,
+    pub distance: f32,
+    pub distance_fixed: i32,
 }
 
 #[wasm_bindgen]

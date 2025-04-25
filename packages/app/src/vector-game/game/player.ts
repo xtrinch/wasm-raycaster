@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { walk } from "../../../wasm";
+import { rotate_view, walk } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
@@ -54,24 +54,19 @@ export class Player {
     makeAutoObservable(this);
   }
 
-  public rotate = (angle: number) => {
-    const rotSpeed = angle;
-
-    let olddir_x = this.position.dir_x;
-    this.position.dir_x =
-      this.position.dir_x * Math.cos(-rotSpeed) -
-      this.position.dir_y * Math.sin(-rotSpeed);
-    this.position.dir_y =
-      olddir_x * Math.sin(-rotSpeed) +
-      this.position.dir_y * Math.cos(-rotSpeed);
-
-    let oldplane_x = this.position.plane_x;
-    this.position.plane_x =
-      this.position.plane_x * Math.cos(-rotSpeed) -
-      this.position.plane_y * Math.sin(-rotSpeed);
-    this.position.plane_y =
-      oldplane_x * Math.sin(-rotSpeed) +
-      this.position.plane_y * Math.cos(-rotSpeed);
+  public rotate = (frameTime: number, multiplier: number) => {
+    const [dir_x, dir_y, plane_x, plane_y] = rotate_view(
+      frameTime,
+      multiplier,
+      this.position.dir_x,
+      this.position.dir_y,
+      this.position.plane_x,
+      this.position.plane_y
+    );
+    this.position.dir_x = dir_x;
+    this.position.dir_y = dir_y;
+    this.position.plane_x = plane_x;
+    this.position.plane_y = plane_y;
   };
 
   // move if no wall in front of you
@@ -96,7 +91,6 @@ export class Player {
   public jumpUp = (frameTime: number) => {
     this.position.z += 400 * frameTime;
     if (this.position.z > 300) this.position.z = 300;
-    // if (this.position.z > 9000) this.position.z = 9000;
   };
 
   public jumpDown = (frameTime: number) => {
@@ -121,14 +115,17 @@ export class Player {
     map: GridMap,
     frameTime: number
   ) => {
-    if (controls.left) this.rotate(4 * (-Math.PI / 5) * frameTime);
-    if (controls.right) this.rotate(4 * (Math.PI / 5) * frameTime);
+    if (controls.left) this.rotate(frameTime, 1);
+    else if (controls.right) this.rotate(frameTime, -1);
+
     if (controls.forward) this.walk(3 * frameTime, map);
-    if (controls.backward) this.walk(-3 * frameTime, map);
+    else if (controls.backward) this.walk(-3 * frameTime, map);
+
     if (controls.jumpDown) this.jumpDown(frameTime);
-    if (controls.jumpUp) this.jumpUp(frameTime);
+    else if (controls.jumpUp) this.jumpUp(frameTime);
+
     if (controls.lookDown) this.lookDown(frameTime);
-    if (controls.lookUp) this.lookUp(frameTime);
+    else if (controls.lookUp) this.lookUp(frameTime);
 
     if (this.position.pitch > 0)
       this.position.pitch = Math.floor(

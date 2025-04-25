@@ -60,6 +60,8 @@ export class Camera {
     this.ctx = canvas.getContext("2d", { alpha: false });
     this.width = canvas.width = (8 * window.innerWidth) / 8;
     this.height = canvas.height = (8 * window.innerHeight) / 8;
+    this.width = this.width + 4 - (this.width % 4);
+    this.height = this.height + 4 - (this.height % 4);
 
     this.range = 40;
     this.lightRange = 15;
@@ -149,39 +151,14 @@ export class Camera {
       return;
     }
 
-    // this.ctx.save();
-    // this.ctx.fillStyle = "#000000";
-    // this.ctx.fillRect(0, 0, this.width, this.height);
-    // this.ctx.restore();
-    this.drawSky(player, map.skybox, map.light);
-    this.drawColumns(player, map, spriteMap);
+    this.drawSky(player, map.light);
+    this.drawCeilingFloorRaycastWasm(player, map);
+    const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
+    this.drawSpritesWasm(player, map, foundSpritesCount);
     this.drawWeapon(player.weapon, player.paces);
   }
 
-  drawSky(player: Player, sky: Bitmap, ambient: number) {
-    // const direction =
-    //   Math.atan2(player.position.dir_x, player.position.dir_y) + Math.PI;
-
-    // let width = sky.width * (this.height / sky.height) * 2;
-    // let CIRCLE = Math.PI * 2;
-    // let left = (direction / CIRCLE) * -width;
-
-    // this.ctx.save();
-    // // this.ctx.drawImage(sky.image, left, y, width, this.height);
-    // if (left < width - this.width) {
-    //   // this.ctx.drawImage(sky.image, left + width, y, width, this.height);
-    // }
-    // if (ambient > 0) {
-    //   this.ctx.fillStyle = "#ffffff";
-    //   this.ctx.globalAlpha = ambient * 0.1;
-    //   // this.ctx.fillRect(0, this.height * 0.5, this.width, this.height * 0.5);
-    // }
-    // this.ctx.restore();
-
-    // this.ceilingFloorPixelsRef.set(
-    //   new Uint8Array(this.ctx.getImageData(0, 0, this.width, this.height).data)
-    // );
-
+  drawSky(player: Player, ambient: number) {
     draw_background_image(
       this.skyTextureRef.ptr,
       this.ceilingFloorPixelsRef.ptr,
@@ -189,20 +166,18 @@ export class Camera {
       this.map.skybox.height,
       this.width,
       this.height,
-      player.position,
-      ambient
+      ambient,
+      player.position.dir_x,
+      player.position.dir_y,
+      player.position.pitch
     );
   }
 
   drawCanvas() {
-    this.scaleCanvasImage(
-      this.ceilingFloorPixelsRef.buffer,
-      this.width,
-      this.height
-    );
+    this.scaleCanvasImage(this.ceilingFloorPixelsRef.buffer);
   }
 
-  scaleCanvasImage(buf: Uint8Array, width: number, height: number): void {
+  scaleCanvasImage(buf: Uint8Array): void {
     this.pixelsClampedArray.set(buf);
     // Create an ImageData object
     const img01 = new ImageData(
@@ -211,13 +186,11 @@ export class Camera {
       this.height
     );
 
-    // Draw ImageData onto the temporary canvas
     this.ctx.putImageData(img01, 0, 0);
   }
 
   drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
     draw_ceiling_floor_raycast(
-      player.position,
       this.ceilingFloorPixelsRef.ptr,
       this.floorTextureRef.ptr,
       this.ceilingTextureRef.ptr,
@@ -236,15 +209,17 @@ export class Camera {
       map.roadTexture.width,
       map.roadTexture.height,
       this.mapRef.ptr, // 1D array instead of 2D
-      map.size // Width of original 2D array
+      map.size, // Width of original 2D array
+      player.position.x,
+      player.position.y,
+      player.position.dir_x,
+      player.position.dir_y,
+      player.position.plane_x,
+      player.position.plane_y,
+      player.position.pitch,
+      player.position.z,
+      player.position.plane_y_initial
     );
-
-    // const tempCanvas1 = this.scaleCanvasImage(
-    //   this.ceilingFloorPixelsRef.buffer,
-    //   this.width,
-    //   this.height
-    // );
-    // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
   }
 
   drawWallsRaycastWasm(
@@ -257,7 +232,6 @@ export class Camera {
       this.wallTextureRef.ptr,
       this.doorTextureRef.ptr,
       this.zBufferRef.ptr,
-      player.position,
       this.mapRef.ptr,
       map.size, // Width of original 2D array
       this.width,
@@ -274,63 +248,17 @@ export class Camera {
       this.visibleSpritesRef.ptr,
       this.allSpritesRef.ptr,
       spriteMap.size,
-      this.stripeHashMap
+      this.stripeHashMap,
+      player.position.x,
+      player.position.y,
+      player.position.dir_x,
+      player.position.dir_y,
+      player.position.plane_x,
+      player.position.plane_y,
+      player.position.pitch,
+      player.position.z,
+      player.position.plane_y_initial
     );
-
-    // const tempCanvas1 = this.scaleCanvasImage(
-    //   this.ceilingFloorPixelsRef.buffer,
-    //   this.width,
-    //   this.height
-    // );
-    // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
-
-    return foundSpritesCount;
-    let width = Math.ceil(this.width);
-    for (let idx = 0; idx < this.columnsRef.buffer.length / 8; idx += 8) {
-      let [
-        tex_x,
-        left,
-        draw_start_y,
-        wall_height,
-        global_alpha,
-        hit,
-        hit_type,
-      ] = this.columnsRef.buffer.slice(idx, idx + 7);
-
-      if (hit) {
-        let texture: Bitmap;
-        switch (hit_type) {
-          case 1:
-            texture = map.wallTexture;
-            break;
-          case 2:
-            texture = map.doorTexture;
-            break;
-          case 3:
-            texture = map.windowTexture;
-            break;
-        }
-        this.ctx.drawImage(
-          texture.image,
-          tex_x, // sx
-          0, // sy
-          1, // sw
-          texture.height, // sh
-          left, // dx
-          draw_start_y, // dy - yes we go into minus here, it'll be ignored anyway
-          width, // dw
-          wall_height // dh
-        );
-
-        this.ctx.save();
-        this.ctx.globalAlpha = global_alpha / 100;
-
-        // black overlay to simulate darkness
-        this.ctx.fillRect(left, draw_start_y, width, wall_height);
-        this.ctx.restore();
-        // this.ctx.globalAlpha = 1;
-      }
-    }
 
     return foundSpritesCount;
   }
@@ -340,8 +268,7 @@ export class Camera {
     map: GridMap,
     foundSpritesCount: number
   ): void {
-    const stripePartCount = draw_sprites_wasm(
-      player.position,
+    draw_sprites_wasm(
       this.ceilingFloorPixelsRef.ptr,
       this.width,
       this.height,
@@ -361,69 +288,17 @@ export class Camera {
       this.map.windowTexture.height,
       this.treeTextureRef.ptr,
       this.map.treeTexture.width,
-      this.map.treeTexture.height
+      this.map.treeTexture.height,
+      player.position.x,
+      player.position.y,
+      player.position.dir_x,
+      player.position.dir_y,
+      player.position.plane_x,
+      player.position.plane_y,
+      player.position.pitch,
+      player.position.z,
+      player.position.plane_y_initial
     );
-
-    // const tempCanvas1 = this.scaleCanvasImage(
-    //   this.ceilingFloorPixelsRef.buffer,
-    //   this.width,
-    //   this.height
-    // );
-    // this.ctx.drawImage(tempCanvas1, 0, 0, this.width, this.height);
-
-    return;
-    for (let stripeIdx = 0; stripeIdx < stripePartCount; stripeIdx++) {
-      const arrayIdx = stripeIdx * 9;
-      const [
-        spriteType,
-        stripeLeftX,
-        width,
-        screenYCeiling,
-        height,
-        texX1,
-        texWidth,
-        alpha,
-        angle,
-      ] = this.spritePartsRef.buffer.slice(arrayIdx, arrayIdx + 9);
-      const { texture } = map.getSpriteTexture(spriteType, angle);
-
-      this.ctx.save();
-      // TODO: this is slow, fix
-      if (spriteType !== SpriteType.COLUMN) {
-        this.ctx.filter = `brightness(${alpha}%)`; // min 20% brightness
-        // this can be used for sprites but not for windows (there we should use a black overlay)
-      }
-      this.ctx.drawImage(
-        texture.image,
-        texX1, // sx
-        0, // sy
-        texWidth || 1, // sw
-        texture.height, // sh
-        stripeLeftX, // dx
-        screenYCeiling, // dy
-        width, // dw
-        height // dh
-      );
-
-      if (spriteType === SpriteType.COLUMN) {
-        this.ctx.globalAlpha = 1 - alpha / 100;
-
-        // black overlay to simulate darkness
-        this.ctx.fillRect(stripeLeftX, screenYCeiling, width, height);
-      }
-      this.ctx.restore();
-    }
-  }
-
-  // draws columns left to right
-  drawColumns(player: Player, map: GridMap, spriteMap: SpriteMap) {
-    // this.ctx.save();
-
-    this.drawCeilingFloorRaycastWasm(player, map);
-    const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
-    this.drawSpritesWasm(player, map, foundSpritesCount);
-
-    // this.ctx.restore();
   }
 
   drawWeapon(weapon: Bitmap, paces: number): void {

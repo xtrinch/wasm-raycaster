@@ -19,7 +19,6 @@ export class GameLoop {
   public frameTime: number;
 
   constructor() {
-    // this.map = new GridMap(32);
     this.map = new GridMap(12);
     this.spriteMap = new SpriteMap();
     this.display = document.getElementById("display") as HTMLCanvasElement;
@@ -68,7 +67,7 @@ export class GameLoop {
   }
 
   loop() {
-    this.map.update(this.frameTime);
+    // this.map.update(this.frameTime);
     this.player.update(this.controls.states, this.map, this.frameTime);
     this.camera.render(this.player, this.map, this.spriteMap);
     this.camera.drawCanvas();

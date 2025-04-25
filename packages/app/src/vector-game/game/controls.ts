@@ -42,11 +42,14 @@ export class Controls {
   }
 
   onKey(e: KeyboardEvent) {
+    if (e.repeat) {
+      return;
+    }
     let state: string = this.codes[e.keyCode];
     if (typeof state === "undefined") return;
     this.states[state as keyof ControlStates] =
       e.type === "keyup" ? false : true;
-    // e.preventDefault && e.preventDefault();
-    // e.stopPropagation && e.stopPropagation();
+    e.preventDefault && e.preventDefault();
+    e.stopPropagation && e.stopPropagation();
   }
 }
