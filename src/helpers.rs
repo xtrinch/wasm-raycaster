@@ -256,7 +256,6 @@ pub struct Sprite {
 #[derive(Debug)]
 pub struct TranslationResult {
     pub screen_x: i32,
-    pub screen_y_floor: i32,
     pub screen_y_ceiling: i32,
     pub distance: f32,
     pub full_height: i32,

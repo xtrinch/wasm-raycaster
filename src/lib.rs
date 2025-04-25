@@ -723,10 +723,10 @@ pub fn draw_ceiling_floor_raycast(
     let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
     let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
-    let half_height = ceiling_height_resolution / 2;
+    let half_height = (ceiling_height_resolution / 2) as i32;
     let scale = ceiling_height_resolution as f32 / height as f32;
-    let scaled_pitch = (position.pitch as f32 * scale) as usize;
-    let scaled_z = (position.z * scale) as usize;
+    let scaled_pitch = (position.pitch as f32 * scale) as i32;
+    let scaled_z = (position.z * scale) as i32;
 
     let height_resolution_ratio =
         ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
@@ -760,6 +760,7 @@ pub fn draw_ceiling_floor_raycast(
         .par_chunks_mut(ceiling_width_resolution * 4)
         .enumerate()
         .for_each(|(y, row)| {
+            let y = y as i32;
             let is_floor = y > half_height + scaled_pitch;
 
             let p = if is_floor {
@@ -868,19 +869,14 @@ pub fn translate_coordinate_to_camera(
     let y_height = (y_height_before_adjustment as f32 * height_multiplier) as i32;
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = half_height - y_height / 2;
-    let screen_floor_y = half_height + y_height / 2;
 
-    let half_height_distance = height_distance / 2;
-    let sprite_floor_screen_y = screen_floor_y + v_move_screen + half_height_distance;
-    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + half_height_distance;
-    let full_height = sprite_floor_screen_y - sprite_ceiling_screen_y;
+    let sprite_ceiling_screen_y = screen_ceiling_y + v_move_screen + height_distance / 2;
 
     TranslationResult {
         screen_x,
-        screen_y_floor: sprite_floor_screen_y.max(0),
         screen_y_ceiling: sprite_ceiling_screen_y.min(height),
         distance: transform_y,
-        full_height,
+        full_height: y_height,
     }
 }
 
