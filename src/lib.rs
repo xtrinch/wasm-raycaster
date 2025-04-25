@@ -961,11 +961,9 @@ pub fn draw_sprites_wasm(
     let aspect_ratio = height as f32 / width as f32;
     let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
 
-    let sprite_parts_collected: Vec<Vec<SpritePart>> = sprites
+    let sprite_parts_collected: Vec<Option<SpritePart>> = sprites
         .into_par_iter()
         .map(|sprite| {
-            let mut sprite_parts_inner: Vec<SpritePart> = Vec::new();
-
             let projection = translate_coordinate_to_camera(
                 position,
                 sprite.x,
@@ -992,26 +990,24 @@ pub fn draw_sprites_wasm(
                 // TODO: remove
                 let (texture_height, texture_width) = (window_texture_height, window_texture_width);
 
-                let z_index = (sprite.column as i32) as usize;
-
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
-                if projection.distance > zbuffer[z_index] {
-                    return sprite_parts_inner;
+                if projection.distance > zbuffer[sprite.column as usize] {
+                    return None;
                 }
                 // switch which side we were raycasting from to take the fract part to know where the texture was hit
                 let mut fract: f32;
                 // TODO: maybe not keep all of this in memory and just pass the fract around?
                 if sprite.side == 1 {
-                    fract = sprite.x.abs().fract();
+                    fract = sprite.x.fract();
                 } else {
-                    fract = sprite.y.abs().fract();
+                    fract = sprite.y.fract();
                 }
                 // since we'd like the texture to match the width
                 fract -= sprite.offset;
                 fract /= sprite.width;
 
                 let texture_x: i32 = (fract * texture_width as f32) as i32;
-                sprite_parts_inner.push(SpritePart {
+                return Some(SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: (sprite.column as i32),
                     width: 1,
@@ -1022,13 +1018,12 @@ pub fn draw_sprites_wasm(
                     alpha: alpha_i,
                     angle: 0,
                 });
-                return sprite_parts_inner;
             }
 
             if projection.distance < 0.0 {
-                return sprite_parts_inner;
+                return None;
             }
-            let aspect_ratio = texture_width as f32 / texture_height as f32;
+            let texture_aspect_ratio = texture_width as f32 / texture_height as f32;
 
             let dx = position.x - sprite.x;
             let dy = position.y - sprite.y;
@@ -1037,12 +1032,11 @@ pub fn draw_sprites_wasm(
             // will return from -180 to 180
             let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
-            let sprite_width = (projection.full_height as f32 * aspect_ratio as f32).abs() as i32;
+            let sprite_width =
+                (projection.full_height as f32 * texture_aspect_ratio as f32).abs() as i32;
 
-            let mut draw_start_x =
-                (-sprite_width as f32 / 2.0 + projection.screen_x as f32).max(0.0) as i32;
-            let mut draw_end_x: i32 = (sprite_width as f32 / 2.0 + projection.screen_x as f32)
-                .min(width as f32 - 1.0) as i32;
+            let mut draw_start_x = (-sprite_width / 2 + projection.screen_x).max(0);
+            let mut draw_end_x = (sprite_width / 2 + projection.screen_x).min(width - 1);
 
             // advance the non-visible parts
             let mut idx_start = draw_start_x;
@@ -1070,7 +1064,7 @@ pub fn draw_sprites_wasm(
                 / sprite_width as f32) as i32;
             let tex_width = tex_x2 - tex_x1;
 
-            sprite_parts_inner.push(SpritePart {
+            Some(SpritePart {
                 sprite_type: sprite.r#type,
                 sprite_left_x: draw_start_x,
                 width: draw_end_x - draw_start_x,
@@ -1080,9 +1074,7 @@ pub fn draw_sprites_wasm(
                 tex_width,
                 alpha: alpha_i,
                 angle: angle_i,
-            });
-
-            sprite_parts_inner
+            })
         })
         .collect();
 
@@ -1126,8 +1118,6 @@ pub fn draw_sprites_wasm(
                         continue;
                     }
 
-                    let current_texel = &row[idx..idx + 4];
-
                     let tex_y = dy * texture_data.height / sprite.height;
                     let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
                     let tex_idx = ((tex_y * texture_data.width + tex_x) * 4) as usize;
@@ -1138,20 +1128,24 @@ pub fn draw_sprites_wasm(
 
                     let texel = &texture_data.data[tex_idx..tex_idx + 4];
 
+                    let a = texel[3] as u16;
+                    if a == 0 {
+                        continue;
+                    }
                     let mut r = ((texel[0] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
                     let mut g = ((texel[1] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
                     let mut b = ((texel[2] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
-                    let a = texel[3] as u16;
 
+                    // alpha blending
                     if a != 255 {
+                        let current_texel = &row[idx..idx + 4];
+
                         r = (((a * r as u16) + (current_texel[0] as u16 * (255 - a))) >> 8) as u8;
                         g = (((a * g as u16) + (current_texel[1] as u16 * (255 - a))) >> 8) as u8;
                         b = (((a * b as u16) + (current_texel[2] as u16 * (255 - a))) >> 8) as u8;
                     }
 
-                    if a != 0 {
-                        row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
-                    }
+                    row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
                 }
             }
         });
