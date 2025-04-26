@@ -293,10 +293,9 @@ pub struct TranslationResult {
     pub full_height: i32,
 }
 
-#[wasm_bindgen]
 #[derive(Serialize, Clone, Copy)]
-pub struct SpritePart {
-    pub sprite_type: i32,
+pub struct SpritePart<'a> {
+    pub sprite_type: i32, // TODO: u8?
     pub sprite_left_x: u32,
     pub width: i32,
     pub screen_y_ceiling: i32,
@@ -305,6 +304,9 @@ pub struct SpritePart {
     pub tex_width: i32,
     pub alpha: i32,
     pub angle: i32,
+    pub full_texture_height: i32,
+    pub full_texture_width: i32,
+    pub full_texture_data: &'a Vec<u8>,
 }
 
 #[inline(always)]

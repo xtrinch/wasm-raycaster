@@ -968,13 +968,9 @@ pub fn draw_sprites_wasm(
         return 0;
     };
 
-    let tree_texture_array = unsafe {
-        from_raw_parts(
-            tree_texture,
-            (tree_texture_width * tree_texture_height * 4) as usize,
-        )
+    let Some(tree_texture_array) = sprites_texture_map.get_map().get(&(1, 0)) else {
+        return 0;
     };
-    let tree_texture_array = sprites_texture_map.get_map().get(&(1, 0)).unwrap();
 
     let img_slice = unsafe {
         std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
@@ -1060,15 +1056,13 @@ pub fn draw_sprites_wasm(
             let alpha_i = (FIXED_ONE - to_fixed(alpha)).clamp(FIXED_ONE / 8, FIXED_ONE) as i32;
 
             // TODO: this is causing the first one to disappear??
-            let (texture_height, texture_width) =
-                texture_array.get(&sprite.r#type).copied().unwrap();
-            // TODO: remove
-            let (texture_height, texture_width) = (tree_texture_height, tree_texture_width);
+            let (texture_height, texture_width) = *texture_array.get(&sprite.r#type).unwrap();
+            let texture_data = sprites_texture_map
+                .get_map()
+                .get(&(sprite.r#type, 0))
+                .unwrap();
 
             if sprite.r#type == 7 {
-                // TODO: remove
-                let (texture_height, texture_width) = (window_texture_height, window_texture_width);
-
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[sprite.column as usize] {
                     return None;
@@ -1096,6 +1090,9 @@ pub fn draw_sprites_wasm(
                     tex_width: 1,
                     alpha: alpha_i,
                     angle: 0,
+                    full_texture_height: texture_height,
+                    full_texture_width: texture_width,
+                    full_texture_data: texture_data,
                 });
             }
 
@@ -1150,23 +1147,15 @@ pub fn draw_sprites_wasm(
                 tex_width,
                 alpha: alpha_i,
                 angle: angle_i,
+                full_texture_height: texture_height,
+                full_texture_width: texture_width,
+                full_texture_data: texture_data,
             })
         })
         .collect();
 
     let sprite_parts_flattened: Vec<SpritePart> =
         sprite_parts_collected.into_iter().flatten().collect();
-
-    let tree_texture_data = Texture {
-        data: tree_texture_array,
-        width: tree_texture_width,
-        height: tree_texture_height,
-    };
-    let window_texture_data = Texture {
-        data: window_texture_array,
-        width: window_texture_width,
-        height: window_texture_height,
-    };
 
     img_slice
         .par_chunks_mut(4 * width as usize) // One row at a time
@@ -1179,30 +1168,13 @@ pub fn draw_sprites_wasm(
                 }
                 let dy = y - sprite.screen_y_ceiling;
 
-                let mut texture_data = &tree_texture_data;
-                if sprite.sprite_type == 7 {
-                    texture_data = &window_texture_data;
-                }
-
+                let tex_y = dy * sprite.full_texture_height / sprite.height;
+                let y_tex_idx = tex_y * sprite.full_texture_width;
                 for dx in 0..sprite.width {
-                    let x = sprite.sprite_left_x as i32 + dx;
-                    if x < 0 || x >= width {
-                        continue;
-                    }
-                    let idx = (x * 4) as usize;
-                    if idx >= row.len() {
-                        continue;
-                    }
-
-                    let tex_y = dy * texture_data.height / sprite.height;
                     let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
-                    let tex_idx = ((tex_y * texture_data.width + tex_x) * 4) as usize;
+                    let tex_idx = ((y_tex_idx + tex_x) * 4) as usize;
 
-                    if tex_idx >= texture_data.data.len() {
-                        continue;
-                    }
-
-                    let texel = &texture_data.data[tex_idx..tex_idx + 4];
+                    let texel = &sprite.full_texture_data[tex_idx..tex_idx + 4];
 
                     let a = texel[3] as u16;
                     if a == 0 {
@@ -1212,13 +1184,19 @@ pub fn draw_sprites_wasm(
                     let mut g = ((texel[1] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
                     let mut b = ((texel[2] as i32 * sprite.alpha) >> FIXED_SHIFT) as u8;
 
+                    let x = sprite.sprite_left_x as i32 + dx;
+                    let idx = (x * 4) as usize;
+
                     // alpha blending
                     if a != 255 {
                         let current_texel = &row[idx..idx + 4];
-
-                        r = (((a * r as u16) + (current_texel[0] as u16 * (255 - a))) >> 8) as u8;
-                        g = (((a * g as u16) + (current_texel[1] as u16 * (255 - a))) >> 8) as u8;
-                        b = (((a * b as u16) + (current_texel[2] as u16 * (255 - a))) >> 8) as u8;
+                        let inverted_alpha = 255 - a;
+                        r = (((a * r as u16) + (current_texel[0] as u16 * inverted_alpha)) >> 8)
+                            as u8;
+                        g = (((a * g as u16) + (current_texel[1] as u16 * inverted_alpha)) >> 8)
+                            as u8;
+                        b = (((a * b as u16) + (current_texel[2] as u16 * inverted_alpha)) >> 8)
+                            as u8;
                     }
 
                     row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
