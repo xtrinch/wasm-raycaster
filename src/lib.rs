@@ -578,7 +578,7 @@ pub fn draw_walls_raycast(
         .collect();
 
     let uniqued_met_coords: Vec<&(i32, i32)> = data
-        .par_iter()
+        .iter()
         .flat_map(|(_, _, met_coords, _)| met_coords)
         .collect::<HashSet<_>>()
         .into_iter()
@@ -610,12 +610,12 @@ pub fn draw_walls_raycast(
     let target_slice = &mut found_sprites[start_index..start_index + total_len];
 
     // SAFELY split into mutable chunks of 9
-    let chunks: Vec<&mut [f32]> = target_slice.chunks_mut(10).collect();
+    let mut chunks: Vec<&mut [f32]> = target_slice.chunks_mut(10).collect();
 
     // Zip input and output together and write in parallel
     chunks
-        .into_par_iter()
-        .zip(all_window_sprites.par_iter())
+        .iter_mut()
+        .zip(all_window_sprites.iter())
         .for_each(|(out_chunk, &sprite)| {
             out_chunk.copy_from_slice(sprite);
         });
@@ -624,8 +624,8 @@ pub fn draw_walls_raycast(
     found_sprites_count += all_window_sprites.len() as u32;
 
     zbuffer
-        .par_iter_mut()
-        .zip(data.par_iter())
+        .iter_mut()
+        .zip(data.iter())
         .for_each(|(zb, (perp_wall_dist, _, _, _))| {
             *zb = *perp_wall_dist;
         });
