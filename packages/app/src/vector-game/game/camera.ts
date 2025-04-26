@@ -186,10 +186,7 @@ export class Camera {
       !this.roadTextureRef ||
       !this.doorTextureRef ||
       !this.skyTextureRef
-      //  ||
-      // !this.windowTextureRef
     ) {
-      console.log("returning...");
       return;
     }
 
