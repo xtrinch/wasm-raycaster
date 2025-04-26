@@ -3,7 +3,7 @@
 use helpers::{
     fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
     to_fixed_large, Position, Sprite, SpritePart, Texture, TranslationResult,
-    WasmStripeHashMapArray, FIXED_ONE, FIXED_SHIFT,
+    WasmStripeHashMapArray, WasmStripeTextureHashMapArray, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
@@ -962,19 +962,20 @@ pub fn draw_sprites_wasm(
     pitch: i32,
     z: f32,
     plane_y_initial: f32,
+    sprites_texture_map: &WasmStripeTextureHashMapArray,
 ) -> usize {
-    let window_texture_array = unsafe {
-        from_raw_parts(
-            window_texture,
-            (window_texture_width * window_texture_height * 4) as usize,
-        )
+    let Some(window_texture_array) = sprites_texture_map.get_map().get(&(7, 0)) else {
+        return 0;
     };
+
     let tree_texture_array = unsafe {
         from_raw_parts(
             tree_texture,
             (tree_texture_width * tree_texture_height * 4) as usize,
         )
     };
+    let tree_texture_array = sprites_texture_map.get_map().get(&(1, 0)).unwrap();
+
     let img_slice = unsafe {
         std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
     };

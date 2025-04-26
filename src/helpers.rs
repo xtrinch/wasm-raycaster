@@ -4,6 +4,37 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
+pub struct WasmStripeTextureHashMapArray {
+    map: HashMap<(i32, i32), Vec<u8>>,
+}
+
+impl WasmStripeTextureHashMapArray {
+    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<u8>> {
+        &self.map
+    }
+}
+
+#[wasm_bindgen]
+impl WasmStripeTextureHashMapArray {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = populateFromArray)]
+    pub fn populate_from_array(&mut self, key0: i32, angle: i32, sprite_data: &[u8]) {
+        self.map.insert((key0, angle), sprite_data.to_vec());
+    }
+
+    #[wasm_bindgen]
+    pub fn count_cells(&self) -> usize {
+        self.map.len()
+    }
+}
+
+#[wasm_bindgen]
 pub struct WasmStripeHashMapArray {
     map: HashMap<(i32, i32), Vec<[f32; 5]>>,
 }

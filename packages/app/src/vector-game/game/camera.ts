@@ -1,4 +1,4 @@
-import { flatten } from "lodash";
+import { flatten, isNumber } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
   draw_background_image,
@@ -8,6 +8,7 @@ import {
   WasmFloat32Array,
   WasmInt32Array,
   WasmStripeHashMapArray,
+  WasmStripeTextureHashMapArray,
   WasmUInt64Array,
   WasmUint8Array,
 } from "../../../wasm";
@@ -54,7 +55,8 @@ export class Camera {
   public spritesTextureRef: WasmInt32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
-  public stripeHashMap: WasmStripeHashMapArray;
+  public spriteHashMap: WasmStripeHashMapArray; // sprites per coordinate
+  public spriteTextureHashMap: WasmStripeTextureHashMapArray;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
@@ -114,10 +116,22 @@ export class Camera {
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
 
-    this.stripeHashMap = new WasmStripeHashMapArray();
-    this.stripeHashMap.populateFromArray(allSprites); // No memory allocation needed!
+    this.spriteHashMap = new WasmStripeHashMapArray();
+    this.spriteHashMap.populateFromArray(allSprites); // No memory allocation needed!
+
+    this.spriteTextureHashMap = new WasmStripeTextureHashMapArray();
+    this.populateSpriteTextureHashMap();
 
     makeAutoObservable(this);
+  }
+
+  populateSpriteTextureHashMap() {
+    Object.values(SpriteType)
+      .filter(isNumber as any)
+      .map((val: number) => {
+        let texture = this.map.getSpriteTexture(val).texture;
+        this.initializeSpriteTexture(texture, val);
+      });
   }
 
   async initializeTexture(texture: Bitmap, refKey: string) {
@@ -139,15 +153,43 @@ export class Camera {
     };
   }
 
+  async initializeSpriteTexture(texture: Bitmap, refKey: number) {
+    const img = texture.image;
+    const canvas = document.createElement("canvas") as HTMLCanvasElement;
+    const tmpContext = canvas.getContext("2d");
+    canvas.width = texture.width * 2;
+    canvas.height = texture.height * 2;
+    // texture.image.onload = () => {};
+    texture.image.onload = () => {
+      console.log("on load?");
+      tmpContext.drawImage(img, 0, 0, texture.width, texture.height);
+      const data = tmpContext.getImageData(
+        0,
+        0,
+        texture.width,
+        texture.height
+      )?.data;
+
+      this.spriteTextureHashMap.populateFromArray(
+        refKey,
+        0,
+        data as any as Uint8Array
+      );
+      console.log("on end?");
+    };
+  }
+
   render(player: Player, map: GridMap, spriteMap: SpriteMap) {
     if (
       !this.ceilingTextureRef ||
       !this.floorTextureRef ||
       !this.roadTextureRef ||
       !this.doorTextureRef ||
-      !this.skyTextureRef ||
-      !this.windowTextureRef
+      !this.skyTextureRef
+      //  ||
+      // !this.windowTextureRef
     ) {
+      console.log("returning...");
       return;
     }
 
@@ -248,7 +290,7 @@ export class Camera {
       this.visibleSpritesRef.ptr,
       this.allSpritesRef.ptr,
       spriteMap.size,
-      this.stripeHashMap,
+      this.spriteHashMap,
       player.position.x,
       player.position.y,
       player.position.dir_x,
@@ -283,10 +325,10 @@ export class Camera {
       this.width,
       this.height,
       foundSpritesCount,
-      this.windowTextureRef.ptr,
+      this.windowTextureRef?.ptr,
       this.map.windowTexture.width,
       this.map.windowTexture.height,
-      this.treeTextureRef.ptr,
+      this.treeTextureRef?.ptr,
       this.map.treeTexture.width,
       this.map.treeTexture.height,
       player.position.x,
@@ -297,7 +339,8 @@ export class Camera {
       player.position.plane_y,
       player.position.pitch,
       player.position.z,
-      player.position.plane_y_initial
+      player.position.plane_y_initial,
+      this.spriteTextureHashMap
     );
   }
 
