@@ -934,23 +934,13 @@ pub fn draw_sprites_wasm(
     ceiling_floor_img: *mut u8,
     width: i32,
     height: i32,
-    width_spacing: i32,
     visible_sprites_array: *mut f32,
-    sprite_parts_array: *mut i32,
     zbuffer_array: *mut f32,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
     light_range: f32,
     map_light: f32,
-    width_resolution: u32,
-    height_resolution: usize,
     found_sprites_count: u32,
-    window_texture: *mut u8,
-    window_texture_width: i32,
-    window_texture_height: i32,
-    tree_texture: *mut u8,
-    tree_texture_width: i32,
-    tree_texture_height: i32,
     x: f32,
     y: f32,
     dir_x: f32,
@@ -962,14 +952,6 @@ pub fn draw_sprites_wasm(
     plane_y_initial: f32,
     sprites_texture_map: &WasmStripeTextureHashMapArray,
 ) -> usize {
-    let Some(window_texture_array) = sprites_texture_map.get_map().get(&(7, 0)) else {
-        return 0;
-    };
-
-    let Some(tree_texture_array) = sprites_texture_map.get_map().get(&(1, 0)) else {
-        return 0;
-    };
-
     let img_slice = unsafe {
         std::slice::from_raw_parts_mut(ceiling_floor_img, width as usize * height as usize * 4)
     };
@@ -985,7 +967,7 @@ pub fn draw_sprites_wasm(
         z,
         plane_y_initial,
     };
-    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width_resolution as usize) };
+    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width as usize) };
     let sprite_data =
         unsafe { from_raw_parts(visible_sprites_array, found_sprites_count as usize * 10) };
     let texture_array =
@@ -1113,7 +1095,7 @@ pub fn draw_sprites_wasm(
 
             // advance the non-visible parts
             let mut idx_start = draw_start_x;
-            while idx_start < width_resolution as i32
+            while idx_start < width as i32
                 && (projection.distance >= zbuffer[idx_start as usize])
                 && draw_start_x + 1 < draw_end_x
             {

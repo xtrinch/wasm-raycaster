@@ -172,9 +172,7 @@ export class Camera {
     const tmpContext = canvas.getContext("2d");
     canvas.width = texture.width * 2;
     canvas.height = texture.height * 2;
-    // texture.image.onload = () => {};
     texture.image.onload = () => {
-      console.log("on load?");
       tmpContext.drawImage(img, 0, 0, texture.width, texture.height);
       const data = tmpContext.getImageData(
         0,
@@ -225,26 +223,17 @@ export class Camera {
     // );
     draw_background_image_prescaled(
       this.backgroundRef,
-      // this.skyTextureRef.ptr,
       this.ceilingFloorPixelsRef.ptr,
       this.width,
       this.height,
       player.position.dir_x,
       player.position.dir_y,
       player.position.pitch
-      // this.map.skybox.width,
-      // this.map.skybox.height,
-      // ambient,
     );
   }
 
   drawCanvas() {
-    this.scaleCanvasImage(this.ceilingFloorPixelsRef.buffer);
-  }
-
-  scaleCanvasImage(buf: Uint8Array): void {
-    this.pixelsClampedArray.set(buf);
-    // Create an ImageData object
+    this.pixelsClampedArray.set(this.ceilingFloorPixelsRef.buffer);
     const img01 = new ImageData(
       this.pixelsClampedArray,
       this.width,
@@ -333,23 +322,13 @@ export class Camera {
       this.ceilingFloorPixelsRef.ptr,
       this.width,
       this.height,
-      1,
       this.visibleSpritesRef.ptr,
-      this.spritePartsRef.ptr,
       this.zBufferRef.ptr,
       this.spritesTextureRef.ptr,
       Object.values(SpriteType).length * 3,
       this.lightRange,
       map.light,
-      this.width,
-      this.height,
       foundSpritesCount,
-      this.windowTextureRef?.ptr,
-      this.map.windowTexture.width,
-      this.map.windowTexture.height,
-      this.treeTextureRef?.ptr,
-      this.map.treeTexture.width,
-      this.map.treeTexture.height,
       player.position.x,
       player.position.y,
       player.position.dir_x,
