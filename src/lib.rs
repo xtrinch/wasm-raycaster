@@ -674,25 +674,6 @@ pub fn draw_walls_raycast(
                 let g = ((texel[1] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
                 let b = ((texel[2] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
 
-                // use std::simd::num::SimdInt;
-                // use std::simd::num::SimdUint;
-                // use std::simd::Simd;
-
-                // let texel = Simd::<u8, 4>::from_array([
-                //     texture.data[tex_idx],
-                //     texture.data[tex_idx + 1],
-                //     texture.data[tex_idx + 2],
-                //     0, // padding to fill 4 lanes
-                // ]);
-                // // Cast to i32 for fixed-point math
-                // let texel_i32 = texel.cast::<i32>();
-
-                // let alpha_vec = Simd::splat(global_alpha);
-                // let shifted = (texel_i32 * alpha_vec) >> Simd::splat(FIXED_SHIFT as i32);
-
-                // // Convert back to u8
-                // let result: Simd<u8, 4> = shifted.cast();
-
                 let idx = (left * 4) as usize;
                 row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
                 // row[idx..idx + 4].copy_from_slice(&[result[0], result[1], result[2], 255]);
@@ -710,8 +691,6 @@ pub fn draw_ceiling_floor_raycast(
     road_texture: *mut u8,
     ceiling_width_resolution: usize,
     ceiling_height_resolution: usize,
-    ceiling_width_spacing: u8,
-    ceiling_height_spacing: u8,
     height: usize,
     light_range: i32,
     map_light: i32,
@@ -1341,7 +1320,6 @@ pub fn walk(
     width_resolution: usize,
     width: i32,
     height: i32,
-    width_spacing: f32,
     light_range: f32,
     range: i32,
     wall_texture_width: i32,

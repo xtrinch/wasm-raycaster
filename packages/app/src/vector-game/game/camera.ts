@@ -81,6 +81,7 @@ export class Camera {
     this.initializeTexture(this.map.roadTexture, "roadTextureRef");
     this.initializeTexture(this.map.doorTexture, "doorTextureRef");
     this.initializeTexture(this.map.wallTexture, "wallTextureRef");
+    // pre-scale background image to fit the browser window
     this.initializeTexture(this.map.skybox, "skyTextureRef", () => {
       this.backgroundRef = new BackgroundImageWasm(
         this.skyTextureRef.ptr,
@@ -251,8 +252,6 @@ export class Camera {
       this.roadTextureRef.ptr,
       this.width,
       this.height,
-      1,
-      1,
       this.height,
       this.lightRange,
       map.light,

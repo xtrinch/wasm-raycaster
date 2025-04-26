@@ -79,7 +79,6 @@ export class Player {
       this.camera.width,
       this.camera.width,
       this.camera.height,
-      1,
       this.camera.lightRange,
       this.camera.range,
       map.wallTexture.width
