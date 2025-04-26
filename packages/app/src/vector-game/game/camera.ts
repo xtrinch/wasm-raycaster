@@ -1,7 +1,8 @@
 import { flatten, isNumber } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
-  draw_background_image,
+  BackgroundImageWasm,
+  draw_background_image_prescaled,
   draw_ceiling_floor_raycast,
   draw_sprites_wasm,
   draw_walls_raycast,
@@ -57,6 +58,7 @@ export class Camera {
   public initialized: boolean;
   public spriteHashMap: WasmStripeHashMapArray; // sprites per coordinate
   public spriteTextureHashMap: WasmStripeTextureHashMapArray;
+  public backgroundRef: BackgroundImageWasm;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
@@ -79,7 +81,15 @@ export class Camera {
     this.initializeTexture(this.map.roadTexture, "roadTextureRef");
     this.initializeTexture(this.map.doorTexture, "doorTextureRef");
     this.initializeTexture(this.map.wallTexture, "wallTextureRef");
-    this.initializeTexture(this.map.skybox, "skyTextureRef");
+    this.initializeTexture(this.map.skybox, "skyTextureRef", () => {
+      this.backgroundRef = new BackgroundImageWasm(
+        this.skyTextureRef.ptr,
+        this.map.skybox.width,
+        this.map.skybox.height,
+        this.width,
+        this.height
+      );
+    });
     this.initializeTexture(this.map.treeTexture, "treeTextureRef");
 
     let length = this.width * this.height * 4;
@@ -134,7 +144,7 @@ export class Camera {
       });
   }
 
-  async initializeTexture(texture: Bitmap, refKey: string) {
+  async initializeTexture(texture: Bitmap, refKey: string, func?: Function) {
     const img = texture.image;
     const canvas = document.createElement("canvas") as HTMLCanvasElement;
     const tmpContext = canvas.getContext("2d");
@@ -150,6 +160,9 @@ export class Camera {
       )?.data;
       this[refKey] = new WasmUint8Array(texture.width * texture.height * 4);
       (this[refKey] as WasmUint8Array).set(data as any as Uint8Array);
+      if (func) {
+        func();
+      }
     };
   }
 
@@ -175,7 +188,6 @@ export class Camera {
         0,
         data as any as Uint8Array
       );
-      console.log("on end?");
     };
   }
 
@@ -185,7 +197,8 @@ export class Camera {
       !this.floorTextureRef ||
       !this.roadTextureRef ||
       !this.doorTextureRef ||
-      !this.skyTextureRef
+      !this.skyTextureRef ||
+      !this.backgroundRef
     ) {
       return;
     }
@@ -198,17 +211,30 @@ export class Camera {
   }
 
   drawSky(player: Player, ambient: number) {
-    draw_background_image(
-      this.skyTextureRef.ptr,
+    // draw_background_image(
+    //   this.skyTextureRef.ptr,
+    //   this.ceilingFloorPixelsRef.ptr,
+    //   this.map.skybox.width,
+    //   this.map.skybox.height,
+    //   this.width,
+    //   this.height,
+    //   ambient,
+    //   player.position.dir_x,
+    //   player.position.dir_y,
+    //   player.position.pitch
+    // );
+    draw_background_image_prescaled(
+      this.backgroundRef,
+      // this.skyTextureRef.ptr,
       this.ceilingFloorPixelsRef.ptr,
-      this.map.skybox.width,
-      this.map.skybox.height,
       this.width,
       this.height,
-      ambient,
       player.position.dir_x,
       player.position.dir_y,
       player.position.pitch
+      // this.map.skybox.width,
+      // this.map.skybox.height,
+      // ambient,
     );
   }
 

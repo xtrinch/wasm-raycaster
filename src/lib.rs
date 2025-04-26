@@ -2,7 +2,7 @@
 #![feature(portable_simd)]
 use helpers::{
     fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
-    to_fixed_large, Position, Sprite, SpritePart, Texture, TranslationResult,
+    to_fixed_large, BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TranslationResult,
     WasmStripeHashMapArray, WasmStripeTextureHashMapArray, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
@@ -1277,6 +1277,76 @@ pub fn draw_background_image(
                 let tex_idx = ((y_idx + tex_x as i32) * 4) as usize;
                 let out_idx = (first_read + i) * 4;
                 row[out_idx..out_idx + 3].copy_from_slice(&bg_texture_array[tex_idx..tex_idx + 3]);
+            }
+        });
+}
+
+#[wasm_bindgen]
+pub fn draw_background_image_prescaled(
+    background: &BackgroundImageWasm,
+    ceiling_floor_img: *mut u8,
+    screen_width: i32,
+    screen_height: i32,
+    dir_x: f32,
+    dir_y: f32,
+    pitch: i32,
+) {
+    let direction = dir_x.atan2(dir_y) + PI;
+
+    let pre_scaled = &background.get_data();
+    let sky_width = background.get_width();
+
+    let img_slice = unsafe {
+        from_raw_parts_mut(
+            ceiling_floor_img,
+            (screen_width * screen_height * 4) as usize,
+        )
+    };
+
+    let circle = 2.0 * std::f32::consts::PI;
+    let mut left_offset = ((direction / circle) * (sky_width as f32)) as i32;
+    if left_offset < 0 {
+        left_offset += sky_width;
+    }
+
+    let pre_scaled_len = pre_scaled.len();
+
+    img_slice
+        .par_chunks_mut((screen_width * 4) as usize)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let screen_y_pitch = y as i32 - pitch;
+            if screen_y_pitch < 0 || screen_y_pitch >= screen_height {
+                return;
+            }
+
+            let row_start = (screen_y_pitch * sky_width * 4) as usize;
+
+            let sky_w_bytes = (sky_width * 4) as usize;
+            let screen_w_bytes = (screen_width * 4) as usize;
+
+            let start = ((left_offset * 4) as usize) % sky_w_bytes;
+
+            if start + screen_w_bytes <= sky_w_bytes {
+                let idx_start = row_start + start;
+                let idx_end = row_start + start + screen_w_bytes;
+                if idx_end < pre_scaled_len {
+                    row.copy_from_slice(&pre_scaled[idx_start..idx_end]);
+                }
+            } else {
+                let first_part = sky_w_bytes - start;
+
+                let idx_start1 = row_start + start;
+                let idx_end1 = row_start + sky_w_bytes;
+                if idx_end1 < pre_scaled_len {
+                    row[..first_part].copy_from_slice(&pre_scaled[idx_start1..idx_end1]);
+                }
+
+                let idx_start2 = row_start;
+                let idx_end2 = row_start + (screen_w_bytes - first_part);
+                if idx_end2 < pre_scaled_len {
+                    row[first_part..].copy_from_slice(&pre_scaled[idx_start2..idx_end2]);
+                }
             }
         });
 }

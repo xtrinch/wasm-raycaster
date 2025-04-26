@@ -1,6 +1,6 @@
 use js_sys::Float32Array;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -371,4 +371,65 @@ pub fn fixed_div(a: i32, b: i32) -> i32 {
 #[inline]
 pub fn from_fixed_to_f32(x: i32) -> f32 {
     x as f32 / (1 << FIXED_SHIFT) as f32
+}
+
+#[wasm_bindgen]
+pub struct BackgroundImageWasm {
+    data: Vec<u8>,
+    width: i32,
+    height: i32,
+}
+
+// 🦀 Rust-only implementation block
+impl BackgroundImageWasm {
+    pub fn get_data(&self) -> &Vec<u8> {
+        &self.data
+    }
+
+    pub fn get_width(&self) -> i32 {
+        self.width
+    }
+}
+
+#[wasm_bindgen]
+impl BackgroundImageWasm {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        bg_img_texture: *const u8,
+        texture_width: i32,
+        texture_height: i32,
+        screen_width: i32,
+        screen_height: i32,
+    ) -> BackgroundImageWasm {
+        let src = unsafe {
+            from_raw_parts(
+                bg_img_texture,
+                (texture_width * texture_height * 4) as usize,
+            )
+        };
+
+        let sky_scale = screen_height as f64 / texture_height as f64;
+        let sky_width = (texture_width as f64 * sky_scale * 2.0).round() as i32;
+
+        let mut data = vec![0u8; (sky_width * screen_height * 4) as usize];
+
+        for y in 0..screen_height {
+            let src_y = (y * texture_height / screen_height).clamp(0, texture_height - 1);
+            for x in 0..sky_width {
+                let src_x = ((x * texture_width) / sky_width) % texture_width;
+
+                let src_idx = ((src_y * texture_width + src_x) * 4) as usize;
+                let dst_idx = ((y * sky_width + x) * 4) as usize;
+
+                data[dst_idx..dst_idx + 3].copy_from_slice(&src[src_idx..src_idx + 3]);
+                data[dst_idx + 3] = 255;
+            }
+        }
+
+        BackgroundImageWasm {
+            data,
+            width: sky_width,
+            height: screen_height,
+        }
+    }
 }
