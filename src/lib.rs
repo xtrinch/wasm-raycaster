@@ -1110,8 +1110,7 @@ pub fn draw_sprites_wasm(
             // will return from -180 to 180
             let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
-            let sprite_width =
-                (projection.full_height as f32 * texture_aspect_ratio as f32).abs() as i32;
+            let sprite_width = (projection.full_height as f32 * texture_aspect_ratio as f32) as i32;
 
             let mut draw_start_x = (-sprite_width / 2 + projection.screen_x).max(0);
             let mut draw_end_x = (sprite_width / 2 + projection.screen_x).min(width - 1);
@@ -1135,11 +1134,9 @@ pub fn draw_sprites_wasm(
                 idx_end -= 1;
             }
 
-            let to_remove_texture = projection.screen_x as f32 - (sprite_width as f32 / 2.0);
-            let tex_x1 = (((draw_start_x as f32 - to_remove_texture) * texture_width as f32)
-                / sprite_width as f32) as i32;
-            let tex_x2 = (((draw_end_x as f32 - to_remove_texture) * texture_width as f32)
-                / sprite_width as f32) as i32;
+            let to_remove_texture = projection.screen_x - (sprite_width / 2);
+            let tex_x1 = ((draw_start_x - to_remove_texture) * texture_width) / sprite_width;
+            let tex_x2 = ((draw_end_x - to_remove_texture) * texture_width) / sprite_width;
             let tex_width = tex_x2 - tex_x1;
 
             Some(SpritePart {
