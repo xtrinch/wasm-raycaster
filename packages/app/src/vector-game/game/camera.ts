@@ -275,9 +275,6 @@ export class Camera {
       map.size, // Width of original 2D array
       this.width,
       this.height,
-      this.height,
-      this.width,
-      1,
       this.lightRange,
       this.range,
       map.wallTexture.width,
@@ -285,7 +282,6 @@ export class Camera {
       map.doorTexture.width,
       map.doorTexture.height,
       this.visibleSpritesRef.ptr,
-      this.allSpritesRef.ptr,
       spriteMap.size,
       this.spriteHashMap,
       player.position.x,

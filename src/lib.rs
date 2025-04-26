@@ -5,6 +5,7 @@ use helpers::{
     to_fixed_large, Position, Sprite, SpritePart, Texture, TranslationResult,
     WasmStripeHashMapArray, WasmStripeTextureHashMapArray, FIXED_ONE, FIXED_SHIFT,
 };
+use js_sys::Float32Array;
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
 use wasm_bindgen::prelude::*;
@@ -16,7 +17,7 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod helpers;
 mod line_intersection;
-use geo::{Coord, HausdorffDistance, Line};
+use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
 use std::f32::consts::PI;
@@ -99,6 +100,7 @@ pub fn raycast_column(
     let initial_bit_offset = 16;
 
     let aspect_ratio = height as f32 / width as f32;
+    let position_coord = Coord::from([position.x, position.y]);
 
     while hit == 0 && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
@@ -137,15 +139,16 @@ pub fn raycast_column(
                 let mut bit_thickness = 0;
                 let mut bit_offset_secondary = 0;
                 let mut is_door = false;
-                let mut has_set_north_bit = false;
                 let mut is_window = false;
+                let mut is_east = false;
+
                 match i {
                     0 => {
                         bit_offset = get_bits(value, initial_bit_offset);
                         bit_thickness = get_bits(value, initial_bit_offset + 4);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 12);
                         is_door = has_bit_set(value, 5);
-                        has_set_north_bit = has_bit_set(value, 6);
+                        is_east = !has_bit_set(value, 6);
                         is_window = has_bit_set(value, 8);
                     }
                     1 => {
@@ -153,7 +156,7 @@ pub fn raycast_column(
                         bit_thickness = get_bits(value, initial_bit_offset + 20);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 28);
                         is_door = has_bit_set(value, 4);
-                        has_set_north_bit = has_bit_set(value, 7);
+                        is_east = !has_bit_set(value, 7);
                         is_window = has_bit_set(value, 9);
                     }
                     2 => {
@@ -161,12 +164,11 @@ pub fn raycast_column(
                         bit_thickness = get_bits(value, initial_bit_offset + 36);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 44);
                         is_door = has_bit_set(value, 4);
-                        has_set_north_bit = has_bit_set(value, 2);
+                        is_east = !has_bit_set(value, 2);
                         is_window = false;
                     }
                     _ => (),
                 };
-                let is_east = !has_set_north_bit;
 
                 let mut local_delta_dist_x = 0.0;
                 let mut local_delta_dist_y = 0.0;
@@ -319,8 +321,8 @@ pub fn raycast_column(
                 }
                 if local_hit == 1 {
                     // take the shortest of the two paths
-                    let local_distance = local_intersection_coord
-                        .hausdorff_distance(&[Coord::from([position.x, position.y])]);
+                    let local_distance =
+                        Euclidean.distance(local_intersection_coord, position_coord);
                     if local_distance < distance {
                         // we'll only use this data if we're stopping at a window or it's not a window
                         if !is_window || stop_at_window {
@@ -490,9 +492,6 @@ pub fn draw_walls_raycast(
     map_width: usize,    // Needed to index into 1D map
     width_resolution: i32,
     height_resolution: i32,
-    height: i32,
-    width: i32,
-    width_spacing: f32,
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
@@ -500,7 +499,6 @@ pub fn draw_walls_raycast(
     door_texture_width: i32,
     door_texture_height: i32,
     found_sprites_array: *mut f32,
-    all_sprites_array: *mut f32,
     all_sprites_count: usize,
     sprites_map: &mut WasmStripeHashMapArray,
     x: f32,
@@ -1297,7 +1295,7 @@ pub fn walk(
     light_range: f32,
     range: i32,
     wall_texture_width: i32,
-) -> JsValue {
+) -> Float32Array {
     let position: Position = serde_wasm_bindgen::from_value(position_js).unwrap();
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
@@ -1334,7 +1332,8 @@ pub fn walk(
         x += position.dir_x * distance;
         y += position.dir_y * distance;
 
-        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
+        let result = vec![x, y];
+        return Float32Array::from(result.as_slice());
     }
 
     // since we can't move in both direction, check just y
@@ -1360,7 +1359,8 @@ pub fn walk(
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
 
-        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
+        let result = vec![x, y];
+        return Float32Array::from(result.as_slice());
     }
 
     // if we weren't able to move x, check if we can move y
@@ -1386,10 +1386,12 @@ pub fn walk(
     if perp_wall_dist_y > 0.2 {
         y += position.dir_y * distance;
 
-        return serde_wasm_bindgen::to_value(&vec![x, y]).unwrap();
+        let result = vec![x, y];
+        return Float32Array::from(result.as_slice());
     }
 
-    serde_wasm_bindgen::to_value(&vec![x, y]).unwrap()
+    let result = vec![x, y];
+    Float32Array::from(result.as_slice())
 }
 
 #[wasm_bindgen]
@@ -1400,7 +1402,7 @@ pub fn rotate_view(
     dir_y: f32,
     plane_x: f32,
     plane_y: f32,
-) -> JsValue {
+) -> Float32Array {
     let rot_speed = 4.0 * (PI / 5.0) * frame_time * multiplier as f32;
 
     let cos_r = rot_speed.cos();
@@ -1412,5 +1414,6 @@ pub fn rotate_view(
     let new_plane_x = plane_x * cos_r - plane_y * sin_r;
     let new_plane_y = plane_x * sin_r + plane_y * cos_r;
 
-    serde_wasm_bindgen::to_value(&vec![new_dir_x, new_dir_y, new_plane_x, new_plane_y]).unwrap()
+    let result = vec![new_dir_x, new_dir_y, new_plane_x, new_plane_y];
+    Float32Array::from(result.as_slice())
 }
