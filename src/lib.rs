@@ -776,6 +776,8 @@ pub fn draw_ceiling_floor_raycast(
     let scale = ceiling_height_resolution as f32 / height as f32;
     let scaled_pitch = (position.pitch as f32 * scale) as i32;
     let scaled_z = (position.z * scale) as i32;
+    let floor_cam_z = half_height + scaled_z;
+    let ceiling_cam_z = half_height - scaled_z;
 
     let height_resolution_ratio =
         ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
@@ -817,11 +819,7 @@ pub fn draw_ceiling_floor_raycast(
             } else {
                 half_height - y + scaled_pitch
             };
-            let cam_z = if is_floor {
-                half_height + scaled_z
-            } else {
-                half_height - scaled_z
-            };
+            let cam_z = if is_floor { floor_cam_z } else { ceiling_cam_z };
 
             let row_distance = cam_z as f32 / (p as f32 * distance_divider);
 
@@ -842,7 +840,7 @@ pub fn draw_ceiling_floor_raycast(
             let base_x = to_fixed(position.x + row_distance * ray_dir_x0);
             let base_y = to_fixed(position.y + row_distance * ray_dir_y0);
 
-            for (x, pixel) in row.chunks_exact_mut(4).enumerate() {
+            row.chunks_exact_mut(4).enumerate().for_each(|(x, pixel)| {
                 let step = x as i32;
 
                 let world_x = base_x + fixed_mul(floor_step_x, step << FIXED_SHIFT);
@@ -880,7 +878,7 @@ pub fn draw_ceiling_floor_raycast(
 
                     pixel.copy_from_slice(&[r as u8, g as u8, b as u8, 255]);
                 }
-            }
+            });
         });
 }
 
