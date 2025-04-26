@@ -873,10 +873,10 @@ pub fn draw_ceiling_floor_raycast(
                     let ty = (tex.height as usize * frac_y) >> FIXED_SHIFT;
 
                     let tex_idx = (ty * tex.width as usize + tx) * 4;
-
-                    let r = (tex.data[tex_idx] as u16 * alpha as u16) >> 8;
-                    let g = (tex.data[tex_idx + 1] as u16 * alpha as u16) >> 8;
-                    let b = (tex.data[tex_idx + 2] as u16 * alpha as u16) >> 8;
+                    let texel = &tex.data[tex_idx..tex_idx + 3];
+                    let r = (texel[0] as u16 * alpha as u16) >> 8;
+                    let g = (texel[1] as u16 * alpha as u16) >> 8;
+                    let b = (texel[2] as u16 * alpha as u16) >> 8;
 
                     pixel.copy_from_slice(&[r as u8, g as u8, b as u8, 255]);
                 }
