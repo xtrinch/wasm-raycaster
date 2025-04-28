@@ -185,7 +185,7 @@ pub fn raycast_column(
     let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
 
     // x-coordinate in camera space
-    let camera_x = (2.0 * (column as f32) / (width_resolution as f32)) - 1.0;
+    let camera_x = (2.0 * (column as f32) / (width as f32)) - 1.0;
 
     let ray_dir_x = position.dir_x + position.plane_x * camera_x;
     let ray_dir_y = position.dir_y + position.plane_y * camera_x;
@@ -579,7 +579,7 @@ pub fn raycast_column(
     };
 
     // Calculate globalAlpha based on light range and distance
-    let mut global_alpha = perp_wall_dist / light_range;
+    let mut global_alpha = perp_wall_dist / light_range as f32;
     if global_alpha > 0.8 {
         global_alpha = 0.8; // Ensure minimum visibility
     }
