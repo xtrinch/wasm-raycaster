@@ -121,7 +121,7 @@ pub fn render(
         map_width,
         width,
         height,
-        light_range as f32,
+        light_range,
         range.into(),
         wall_texture_width,
         wall_texture_height,
@@ -169,11 +169,10 @@ pub fn raycast_column(
     position: Position,
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
-    width_resolution: i32,
-    height: i32,
     width: i32,
-    light_range: f32,
-    range: i32,
+    height: i32,
+    light_range: i32,
+    range: i8,
     wall_texture_width: i32,
     sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
     skip_sprites_and_writes: bool,
@@ -617,16 +616,16 @@ pub fn raycast_column(
 
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
-    ceiling_floor_img: *mut u8,
+    render_img: *mut u8,
     wall_texture: *mut u8,
     door_texture: *mut u8,
     zbuffer_array: *mut f32,
     map_array: *mut u64, // 2D array representing the grid map
     map_width: usize,    // Needed to index into 1D map
-    width_resolution: i32,
-    height_resolution: i32,
-    light_range: f32,
-    range: i32,
+    width: i32,
+    height: i32,
+    light_range: i32,
+    range: i8,
     wall_texture_width: i32,
     wall_texture_height: i32,
     door_texture_width: i32,
@@ -644,12 +643,8 @@ pub fn draw_walls_raycast(
     z: i32,
     plane_y_initial: f32,
 ) -> u32 {
-    let img_slice = unsafe {
-        std::slice::from_raw_parts_mut(
-            ceiling_floor_img,
-            (width_resolution * height_resolution * 4) as usize,
-        )
-    };
+    let img_slice =
+        unsafe { std::slice::from_raw_parts_mut(render_img, (width * height * 4) as usize) };
 
     let wall_texture_array = unsafe {
         from_raw_parts(
@@ -668,10 +663,10 @@ pub fn draw_walls_raycast(
     let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
-            (all_sprites_count + (2 * width_resolution) as usize) * 10,
+            (all_sprites_count + (2 * width) as usize) * 10,
         )
     };
-    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width_resolution as usize) };
+    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
 
     let mut found_sprites_count = 0;
 
@@ -686,8 +681,7 @@ pub fn draw_walls_raycast(
         z,
         plane_y_initial,
     };
-    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0
-        ..width_resolution)
+    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
             let (perp_wall_dist, col_data, met_coords, window_sprites) = raycast_column(
@@ -695,9 +689,8 @@ pub fn draw_walls_raycast(
                 position,
                 map_data,
                 map_width,
-                width_resolution,
-                height_resolution,
-                width_resolution,
+                width,
+                height,
                 light_range,
                 range,
                 wall_texture_width,
@@ -780,7 +773,7 @@ pub fn draw_walls_raycast(
         .collect();
 
     img_slice
-        .par_chunks_mut((width_resolution * 4) as usize)
+        .par_chunks_mut((width * 4) as usize)
         .enumerate()
         .for_each(|(screen_y, row)| {
             let screen_y = screen_y as i32;
@@ -1420,11 +1413,10 @@ pub fn walk(
         raycast_position,
         map_data,
         map_width as usize,
-        width as i32,
-        height,
         width,
-        light_range as f32,
-        range.into(),
+        height,
+        light_range,
+        range,
         wall_texture_width,
         None,
         true,
@@ -1453,11 +1445,10 @@ pub fn walk(
         raycast_position_x,
         map_data,
         map_width as usize,
-        width as i32,
-        height,
         width,
-        light_range as f32,
-        range.into(),
+        height,
+        light_range,
+        range,
         wall_texture_width,
         None,
         true,
@@ -1480,11 +1471,10 @@ pub fn walk(
         raycast_position_y,
         map_data,
         map_width as usize,
-        width as i32,
-        height,
         width,
-        light_range as f32,
-        range.into(),
+        height,
+        light_range,
+        range,
         wall_texture_width,
         None,
         true,
