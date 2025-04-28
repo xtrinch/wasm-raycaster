@@ -1012,11 +1012,26 @@ pub fn draw_sprites_wasm(
             // ensure sprites are always at least a little bit visible - alpha 1 is all black
             let alpha_i = (FIXED_ONE - to_fixed(alpha)).clamp(FIXED_ONE / 8, FIXED_ONE) as i32;
 
-            // TODO: this is causing the first one to disappear??
-            let (texture_height, texture_width) = *texture_array.get(&sprite.r#type).unwrap();
+            let dx = position.x - sprite.x;
+            let dy = position.y - sprite.y;
+            let angle = atan2(dx as f64, dy as f64);
+
+            // will return from -180 to 180
+            let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
+
+            let mut angle_index = (angle_i) / 45; // Default to 1 if the result is 0
+
+            let (texture_height, texture_width, angles) =
+                *texture_array.get(&sprite.r#type).unwrap();
+
+            // if there's no textures for other angles
+            if angles <= angle_index {
+                angle_index = 0;
+            }
+            // angle_index = 0;
             let texture_data = sprites_texture_map
                 .get_map()
-                .get(&(sprite.r#type, 0))
+                .get(&(sprite.r#type, angle_index))
                 .unwrap();
 
             if sprite.r#type == 7 {
@@ -1057,13 +1072,6 @@ pub fn draw_sprites_wasm(
                 return None;
             }
             let texture_aspect_ratio = texture_width as f32 / texture_height as f32;
-
-            let dx = position.x - sprite.x;
-            let dy = position.y - sprite.y;
-            let angle = atan2(dx as f64, dy as f64);
-
-            // will return from -180 to 180
-            let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
 
             let sprite_width = (projection.full_height as f32 * texture_aspect_ratio as f32) as i32;
 

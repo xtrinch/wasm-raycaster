@@ -1,4 +1,4 @@
-import { flatten, isNumber } from "lodash";
+import { flatten, isNumber, range } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
   BackgroundImageWasm,
@@ -121,7 +121,7 @@ export class Camera {
     this.zBufferRef = new WasmFloat32Array(this.width);
 
     this.spritesTextureRef = new WasmInt32Array(
-      Object.values(SpriteType).length * 3
+      Object.values(SpriteType).length * 4
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUInt64Array(map.size * map.size);
@@ -140,8 +140,11 @@ export class Camera {
     Object.values(SpriteType)
       .filter(isNumber as any)
       .map((val: number) => {
-        let texture = this.map.getSpriteTexture(val).texture;
-        this.initializeSpriteTexture(texture, val);
+        let { angles } = this.map.getSpriteData(val);
+        for (let angle of range(0, angles)) {
+          let texture = this.map.getSpriteTexture(val, angle).texture;
+          this.initializeSpriteTexture(texture, val, angle);
+        }
       });
   }
 
@@ -167,7 +170,11 @@ export class Camera {
     };
   }
 
-  async initializeSpriteTexture(texture: Bitmap, refKey: number) {
+  async initializeSpriteTexture(
+    texture: Bitmap,
+    refKey: number,
+    angle: number
+  ) {
     const img = texture.image;
     const canvas = document.createElement("canvas") as HTMLCanvasElement;
     const tmpContext = canvas.getContext("2d");
@@ -184,7 +191,7 @@ export class Camera {
 
       this.spriteTextureHashMap.populateFromArray(
         refKey,
-        0,
+        angle,
         data as any as Uint8Array
       );
     };
@@ -324,7 +331,7 @@ export class Camera {
       this.visibleSpritesRef.ptr,
       this.zBufferRef.ptr,
       this.spritesTextureRef.ptr,
-      Object.values(SpriteType).length * 3,
+      Object.values(SpriteType).length * 4,
       this.lightRange,
       map.light,
       foundSpritesCount,

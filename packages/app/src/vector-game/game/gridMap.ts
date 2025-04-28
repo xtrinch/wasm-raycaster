@@ -159,29 +159,36 @@ export class GridMap {
       SpriteType.LADY,
       this.getSpriteTexture(SpriteType.LADY).texture.height,
       this.getSpriteTexture(SpriteType.LADY).texture.width,
+      this.getSpriteData(SpriteType.LADY).angles,
       SpriteType.BUSH1,
       this.getSpriteTexture(SpriteType.BUSH1).texture.height,
       this.getSpriteTexture(SpriteType.BUSH1).texture.width,
+      this.getSpriteData(SpriteType.BUSH1).angles,
       SpriteType.TREE_CONE,
       this.getSpriteTexture(SpriteType.TREE_CONE).texture.height,
       this.getSpriteTexture(SpriteType.TREE_CONE).texture.width,
+      this.getSpriteData(SpriteType.TREE_CONE).angles,
       SpriteType.TREE_COLUMNAR,
       this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.height,
       this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.width,
+      this.getSpriteData(SpriteType.TREE_COLUMNAR).angles,
       SpriteType.PILLAR,
       this.getSpriteTexture(SpriteType.PILLAR).texture.height,
       this.getSpriteTexture(SpriteType.PILLAR).texture.width,
+      this.getSpriteData(SpriteType.PILLAR).angles,
       SpriteType.TREE_VASE,
       this.getSpriteTexture(SpriteType.TREE_VASE).texture.height,
       this.getSpriteTexture(SpriteType.TREE_VASE).texture.width,
+      this.getSpriteData(SpriteType.TREE_VASE).angles,
       SpriteType.COLUMN,
       this.getSpriteTexture(SpriteType.COLUMN).texture.height,
       this.getSpriteTexture(SpriteType.COLUMN).texture.width,
+      this.getSpriteData(SpriteType.COLUMN).angles,
     ]);
   }
 
   // TODO: map in rust?
-  mapAngleToValue = (angle) => {
+  mapAngleToValue = (angle: number) => {
     let index = Math.round(angle / 45); // Default to 1 if the result is 0
     if (index === 8) {
       index = 0;
@@ -190,8 +197,10 @@ export class GridMap {
     return index;
   };
 
-  public getSpriteTexture = (spriteType: SpriteType, angle: number = 0) => {
-    const angleVal = this.mapAngleToValue(angle);
+  public getSpriteTexture = (
+    spriteType: SpriteType,
+    angleVal: number = 0
+  ): { texture: Bitmap } => {
     let texture: Bitmap;
 
     switch (spriteType) {
@@ -223,5 +232,32 @@ export class GridMap {
     }
 
     return { texture };
+  };
+
+  public getSpriteData = (spriteType: SpriteType): { angles: number } => {
+    let angles = 1;
+
+    switch (spriteType) {
+      case SpriteType.LADY:
+        angles = 8;
+        break;
+      case SpriteType.TREE_CONE:
+        break;
+      case SpriteType.TREE_VASE:
+        break;
+      case SpriteType.TREE_COLUMNAR:
+        break;
+      case SpriteType.PILLAR:
+        break;
+      case SpriteType.BUSH1:
+        break;
+      case SpriteType.COLUMN:
+        break;
+      default:
+        console.log("Sprite texture not found for type " + spriteType);
+        break;
+    }
+
+    return { angles };
   };
 }
