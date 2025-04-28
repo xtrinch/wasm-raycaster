@@ -6,6 +6,7 @@ import {
   draw_ceiling_floor_raycast,
   draw_sprites_wasm,
   draw_walls_raycast,
+  render,
   WasmFloat32Array,
   WasmInt32Array,
   WasmStripeHashMapArray,
@@ -51,7 +52,6 @@ export class Camera {
   public wallTextureRef: WasmUint8Array;
   public visibleSpritesRef: WasmFloat32Array;
   public spritePartsRef: WasmInt32Array;
-  public allSpritesRef: WasmFloat32Array;
   public zBufferRef: WasmFloat32Array;
   public spritesTextureRef: WasmInt32Array;
   public mapRef: WasmUInt64Array;
@@ -99,13 +99,7 @@ export class Camera {
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.pixelsClampedArray = new Uint8ClampedArray(length);
     this.columnsRef = new WasmInt32Array(this.width * 8 * 8);
-    this.allSpritesRef = new WasmFloat32Array(spriteMap.size * 5); // this will be the max sprites there will ever be in here
-    const allSprites = new Float32Array(
-      flatten(
-        spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
-      )
-    );
-    this.allSpritesRef.set(allSprites);
+
     this.spritePartsRef = new WasmInt32Array(
       (spriteMap.size + // this will be the max sprites there will ever be in here
         2 * this.width) * // two times the columns to account for windows
@@ -127,8 +121,13 @@ export class Camera {
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
 
+    const allSprites = new Float32Array(
+      flatten(
+        spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
+      )
+    );
     this.spriteHashMap = new WasmStripeHashMapArray();
-    this.spriteHashMap.populateFromArray(allSprites); // No memory allocation needed!
+    this.spriteHashMap.populateFromArray(allSprites);
 
     this.spriteTextureHashMap = new WasmStripeTextureHashMapArray();
     this.populateSpriteTextureHashMap();
@@ -209,10 +208,54 @@ export class Camera {
       return;
     }
 
-    this.drawSky(player, map.light);
-    this.drawCeilingFloorRaycastWasm(player, map);
-    const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
-    this.drawSpritesWasm(player, map, foundSpritesCount);
+    // this.drawSky(player, map.light);
+    // this.drawCeilingFloorRaycastWasm(player, map);
+    // const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
+    // this.drawSpritesWasm(player, map, foundSpritesCount);
+
+    render(
+      player.position.x,
+      player.position.y,
+      player.position.dir_x,
+      player.position.dir_y,
+      player.position.plane_x,
+      player.position.plane_y,
+      player.position.pitch,
+      player.position.z,
+      player.position.plane_y_initial,
+      this.ceilingFloorPixelsRef.ptr,
+      this.zBufferRef.ptr,
+      this.mapRef.ptr,
+      this.map.size,
+      this.width,
+      this.height,
+      this.lightRange,
+      this.range,
+      this.map.light,
+      this.backgroundRef,
+      this.spriteHashMap,
+      this.spriteTextureHashMap,
+      this.visibleSpritesRef.ptr,
+      spriteMap.size,
+      this.spritesTextureRef.ptr,
+      Object.values(SpriteType).length * 4,
+      this.wallTextureRef.ptr,
+      map.wallTexture.width,
+      map.wallTexture.height,
+      this.doorTextureRef.ptr,
+      map.doorTexture.width,
+      map.doorTexture.height,
+      this.roadTextureRef.ptr,
+      map.roadTexture.width,
+      map.roadTexture.height,
+      this.floorTextureRef.ptr,
+      map.floorTexture.width,
+      map.floorTexture.height,
+      this.ceilingTextureRef.ptr,
+      map.ceilingTexture.width,
+      map.ceilingTexture.height
+    );
+
     this.drawWeapon(player.weapon, player.paces);
   }
 

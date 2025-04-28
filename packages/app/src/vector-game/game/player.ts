@@ -72,11 +72,18 @@ export class Player {
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
     const [x, y] = walk(
-      this.position,
+      this.position.x,
+      this.position.y,
+      this.position.dir_x,
+      this.position.dir_y,
+      this.position.plane_x,
+      this.position.plane_y,
+      this.position.pitch,
+      this.position.z,
+      this.position.plane_y_initial,
       distance,
       this.camera.mapRef.ptr,
       map.size,
-      this.camera.width,
       this.camera.width,
       this.camera.height,
       this.camera.lightRange,
