@@ -104,9 +104,10 @@ pub fn raycast_column(
 
     while hit == 0 && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
+        let num_walls = get_bits(value, 12); // since the upper two are reserves we can afford this
 
         // if wall bit is set
-        if has_bit_set(value, 0) {
+        if num_walls > 0 {
             hit_type = 1 as i8;
 
             let mut coord_delta_dist_x = MAX;
@@ -116,7 +117,7 @@ pub fn raycast_column(
             let mut local_offset: f32 = 1.0;
 
             // we support two lines per coordinate
-            for i in 0..3 {
+            for i in 0..num_walls {
                 // get bit width first so we can skip all the rest
                 let mut bit_width = 0;
                 match i {
@@ -131,10 +132,7 @@ pub fn raycast_column(
                     }
                     _ => (),
                 };
-                // no shenanigans if the thickness is 0, we'll allow width to be 0 for e.g. windows
-                if bit_width == 0 {
-                    continue;
-                }
+
                 let mut bit_offset = 0;
                 let mut bit_thickness = 0;
                 let mut bit_offset_secondary = 0;
@@ -424,7 +422,7 @@ pub fn raycast_column(
 
     let middle_y = height as f32 / 2.0
         + position.pitch as f32
-        + position.z / (perp_wall_dist * (2.0 * aspect_ratio));
+        + position.z as f32 / (perp_wall_dist * (2.0 * aspect_ratio));
     let draw_start_y = -line_height / 2.0 + middle_y;
     let draw_end_y = line_height / 2.0 + middle_y;
 
@@ -508,7 +506,7 @@ pub fn draw_walls_raycast(
     plane_x: f32,
     plane_y: f32,
     pitch: i32,
-    z: f32,
+    z: i32,
     plane_y_initial: f32,
 ) -> u32 {
     let img_slice = unsafe {
@@ -689,8 +687,7 @@ pub fn draw_ceiling_floor_raycast(
     floor_texture: *mut u8,
     ceiling_texture: *mut u8,
     road_texture: *mut u8,
-    ceiling_width_resolution: usize,
-    ceiling_height_resolution: usize,
+    width: usize,
     height: usize,
     light_range: i32,
     map_light: i32,
@@ -709,7 +706,7 @@ pub fn draw_ceiling_floor_raycast(
     plane_x: f32,
     plane_y: f32,
     pitch: i32,
-    z: f32,
+    z: i32,
     plane_y_initial: f32,
 ) {
     let position = Position {
@@ -751,23 +748,23 @@ pub fn draw_ceiling_floor_raycast(
     let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
     let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
 
-    let half_height = (ceiling_height_resolution / 2) as i32;
-    let scale = ceiling_height_resolution as f32 / height as f32;
-    let scaled_pitch = (position.pitch as f32 * scale) as i32;
-    let scaled_z = (position.z * scale) as i32;
-    let floor_cam_z = half_height + scaled_z;
-    let ceiling_cam_z = half_height - scaled_z;
+    let half_screen_height = (height / 2) as i32;
+    let mut floor_cam_z = half_screen_height + position.z as i32;
+    let ceiling_cam_z = half_screen_height - position.z as i32;
+    let middle_view_y = half_screen_height + position.pitch;
 
-    let height_resolution_ratio =
-        ceiling_height_resolution as f32 / ceiling_width_resolution as f32;
+    // if we're above the ceiling
+    let mut is_above_ceiling = false;
+    if ceiling_cam_z < 0 {
+        is_above_ceiling = true;
+        // move the floor up so it appears as a ceiling from the top
+        // floor_cam_z -= height as i32;
+    }
+
+    let height_resolution_ratio = height as f32 / width as f32;
     let distance_divider = (2.0 * height_resolution_ratio) * position.plane_y_initial;
 
-    let img_slice = unsafe {
-        from_raw_parts_mut(
-            ceiling_floor_img,
-            ceiling_width_resolution * ceiling_height_resolution * 4,
-        )
-    };
+    let img_slice = unsafe { from_raw_parts_mut(ceiling_floor_img, width * height * 4) };
 
     let road_texture_data = Texture {
         data: road_texture_array,
@@ -787,21 +784,25 @@ pub fn draw_ceiling_floor_raycast(
     let map_light_fixed = map_light << FIXED_SHIFT;
 
     img_slice
-        .par_chunks_mut(ceiling_width_resolution * 4)
+        .par_chunks_mut(width * 4)
         .enumerate()
         .for_each(|(y, row)| {
             let y = y as i32;
-            let is_floor = y > half_height + scaled_pitch;
 
+            // if we're drawing the bottom half of the screen
+            let is_floor = y > middle_view_y;
+
+            if !is_floor && is_above_ceiling {
+                return;
+            }
             let p = if is_floor {
-                y - half_height - scaled_pitch
+                -(middle_view_y) + y
             } else {
-                half_height - y + scaled_pitch
+                middle_view_y - y
             };
             let cam_z = if is_floor { floor_cam_z } else { ceiling_cam_z };
 
             let row_distance = cam_z as f32 / (p as f32 * distance_divider);
-
             let row_distance_fixed = to_fixed(row_distance);
 
             let alpha_fixed =
@@ -811,10 +812,8 @@ pub fn draw_ceiling_floor_raycast(
             // let alpha_f32 = 1.0 - (row_distance / light_range as f32 - map_light as f32);
             // let alpha = (alpha_f32 * 256.0) as u8;
 
-            let floor_step_x =
-                to_fixed(row_distance * ray_dir_x_dist / ceiling_width_resolution as f32);
-            let floor_step_y =
-                to_fixed(row_distance * ray_dir_y_dist / ceiling_width_resolution as f32);
+            let floor_step_x = to_fixed(row_distance * ray_dir_x_dist / width as f32);
+            let floor_step_y = to_fixed(row_distance * ray_dir_y_dist / width as f32);
 
             let base_x = to_fixed(position.x + row_distance * ray_dir_x0);
             let base_y = to_fixed(position.y + row_distance * ray_dir_y0);
@@ -888,7 +887,7 @@ pub fn translate_coordinate_to_camera(
 
     // to control the pitch/jump
     let v_move_screen =
-        (position.pitch as f32 + (position.z) / (transform_y * (aspect_ratio * 2.0))) as i32;
+        (position.pitch as f32 + (position.z as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
 
     // divide by focal length (length of the plane vector)
     let y_height_before_adjustment = (half_width as f32 / (transform_y)) as i32;
@@ -925,7 +924,7 @@ pub fn draw_sprites_wasm(
     plane_x: f32,
     plane_y: f32,
     pitch: i32,
-    z: f32,
+    z: i32,
     plane_y_initial: f32,
     sprites_texture_map: &WasmStripeTextureHashMapArray,
 ) -> usize {
@@ -1034,6 +1033,7 @@ pub fn draw_sprites_wasm(
                 .get(&(sprite.r#type, angle_index))
                 .unwrap();
 
+            // windows
             if sprite.r#type == 7 {
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[sprite.column as usize] {

@@ -256,7 +256,7 @@ pub struct Position {
     pub plane_x: f32,
     pub plane_y: f32,
     pub pitch: i32,
-    pub z: f32,
+    pub z: i32, // TODO: i32?
     pub plane_y_initial: f32,
 }
 
@@ -329,8 +329,8 @@ pub fn get_grid_value(map_x: i32, map_y: i32, map_width: i32, map_data: &[u64]) 
 }
 
 #[inline(always)]
-pub fn get_bits(value: u64, start_bit: u8) -> u32 {
-    ((value >> start_bit) & 0b1111) as u32
+pub fn get_bits(value: u64, start_bit: u8) -> u8 {
+    ((value >> start_bit) & 0b1111) as u8
 }
 
 pub struct Texture<'a> {

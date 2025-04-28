@@ -259,7 +259,6 @@ export class Camera {
       this.roadTextureRef.ptr,
       this.width,
       this.height,
-      this.height,
       this.lightRange,
       map.light,
       map.floorTexture.width,
