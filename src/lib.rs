@@ -591,16 +591,15 @@ pub fn raycast_column(
         global_alpha = 0.85; // Ensure minimum visibility
     }
 
-    let left = column;
-    let wall_height = (draw_end_y - draw_start_y) as i32;
+    let wall_height = draw_end_y - draw_start_y;
 
     let alpha_i = (FIXED_ONE - to_fixed(global_alpha)) as i32;
 
     let col_data = [
         tex_x,
-        left,
+        column,
         draw_start_y as i32,
-        wall_height,
+        wall_height as i32,
         alpha_i,
         hit as i32,
         hit_type as i32,
