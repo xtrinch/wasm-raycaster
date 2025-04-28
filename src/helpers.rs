@@ -230,7 +230,7 @@ pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
 
 use core::slice;
 
-pub fn parse_sprite_texture_array(ptr: *mut i32, len: usize) -> HashMap<i32, (i32, i32, i32)> {
+pub fn parse_sprite_texture_array(ptr: *const i32, len: usize) -> HashMap<i32, (i32, i32, i32)> {
     let mut map = HashMap::new();
 
     // Convert raw pointer to a safe slice
