@@ -90,6 +90,8 @@ pub fn render(
     let door_texture_meta = sprites_texture_meta_map.get_map().get(&5).unwrap();
     let door_texture = sprites_texture_map.get_map().get(&(5, 0)).unwrap();
 
+    let mut found_sprites: Vec<Sprite> = vec![];
+
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
         &position,
@@ -129,6 +131,7 @@ pub fn render(
         visible_sprites_array,
         all_sprites_count,
         sprites_map,
+        &found_sprites,
     );
     draw_sprites_wasm(
         &position,
@@ -604,6 +607,7 @@ pub fn draw_walls_raycast(
     found_sprites_array: *mut f32,
     all_sprites_count: usize,
     sprites_map: &WasmStripePerCoordMap,
+    found_sprites: &Vec<Sprite>,
 ) -> u32 {
     let found_sprites = unsafe {
         from_raw_parts_mut(
@@ -900,9 +904,11 @@ pub fn translate_coordinate_to_camera(
     let v_move_screen =
         (position.pitch as f32 + (position.z as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
 
-    // divide by focal length (length of the plane vector)
     let y_height_before_adjustment = (half_width as f32 / (transform_y)) as i32;
+    // since each sprite has a certain height (e.g. 1.1 of the 1 normal height), we multiply by that
     let y_height = (y_height_before_adjustment as f32 * height_multiplier) as i32;
+
+    // how much of a difference there is between height 1 and height of the sprite
     let height_distance = y_height_before_adjustment - y_height;
     let screen_ceiling_y = half_height - y_height / 2;
 
