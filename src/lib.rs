@@ -730,7 +730,9 @@ pub fn draw_walls_raycast(
                 let tex_y = dy * texture.height / wall_height;
                 let tex_idx = ((tex_y * wall_texture_width + tex_x) * 4) as usize;
 
-                let texel = &texture.data[tex_idx..tex_idx + 3];
+                // let texel = &texture.data[tex_idx..tex_idx + 3];
+                let texel = unsafe { texture.data.get_unchecked(tex_idx..tex_idx + 3) };
+
                 let r = ((texel[0] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
                 let g = ((texel[1] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
                 let b = ((texel[2] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
@@ -868,7 +870,9 @@ pub fn draw_ceiling_floor_raycast(
                     let ty = (tex.height as usize * frac_y) >> FIXED_SHIFT;
 
                     let tex_idx = (ty * tex.width as usize + tx) * 4;
-                    let texel = &tex.data[tex_idx..tex_idx + 3];
+                    // let texel = &tex.data[tex_idx..tex_idx + 3];
+                    let texel = unsafe { tex.data.get_unchecked(tex_idx..tex_idx + 3) };
+
                     let r = (texel[0] as u16 * alpha as u16) >> 8;
                     let g = (texel[1] as u16 * alpha as u16) >> 8;
                     let b = (texel[2] as u16 * alpha as u16) >> 8;
@@ -1132,7 +1136,9 @@ pub fn draw_sprites_wasm(
                     let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
                     let tex_idx = ((y_tex_idx + tex_x) * 4) as usize;
 
-                    let texel = &sprite.full_texture_data[tex_idx..tex_idx + 4];
+                    // let texel = &sprite.full_texture_data[tex_idx..tex_idx + 4];
+                    let texel =
+                        unsafe { sprite.full_texture_data.get_unchecked(tex_idx..tex_idx + 4) };
 
                     let a = texel[3] as u16;
                     if a == 0 {
@@ -1147,7 +1153,9 @@ pub fn draw_sprites_wasm(
 
                     // alpha blending
                     if a != 255 {
-                        let current_texel = &row[idx..idx + 4];
+                        let current_texel = unsafe { row.get_unchecked(idx..idx + 4) };
+
+                        // let current_texel = &row[idx..idx + 4];
                         let inverted_alpha = 255 - a;
                         r = (((a * r as u16) + (current_texel[0] as u16 * inverted_alpha)) >> 8)
                             as u8;
