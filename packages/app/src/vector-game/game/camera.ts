@@ -2,10 +2,6 @@ import { flatten, isNumber, range } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
   BackgroundImageWasm,
-  draw_background_image_prescaled,
-  draw_ceiling_floor_raycast,
-  draw_sprites_wasm,
-  draw_walls_raycast,
   render,
   WasmFloat32Array,
   WasmInt32Array,
@@ -259,29 +255,29 @@ export class Camera {
     this.drawWeapon(player.weapon, player.paces);
   }
 
-  drawSky(player: Player, ambient: number) {
-    // draw_background_image(
-    //   this.skyTextureRef.ptr,
-    //   this.ceilingFloorPixelsRef.ptr,
-    //   this.map.skybox.width,
-    //   this.map.skybox.height,
-    //   this.width,
-    //   this.height,
-    //   ambient,
-    //   player.position.dir_x,
-    //   player.position.dir_y,
-    //   player.position.pitch
-    // );
-    draw_background_image_prescaled(
-      this.backgroundRef,
-      this.ceilingFloorPixelsRef.ptr,
-      this.width,
-      this.height,
-      player.position.dir_x,
-      player.position.dir_y,
-      player.position.pitch
-    );
-  }
+  // drawSky(player: Player, ambient: number) {
+  //   // draw_background_image(
+  //   //   this.skyTextureRef.ptr,
+  //   //   this.ceilingFloorPixelsRef.ptr,
+  //   //   this.map.skybox.width,
+  //   //   this.map.skybox.height,
+  //   //   this.width,
+  //   //   this.height,
+  //   //   ambient,
+  //   //   player.position.dir_x,
+  //   //   player.position.dir_y,
+  //   //   player.position.pitch
+  //   // );
+  //   draw_background_image_prescaled(
+  //     this.backgroundRef,
+  //     this.ceilingFloorPixelsRef.ptr,
+  //     this.width,
+  //     this.height,
+  //     player.position.dir_x,
+  //     player.position.dir_y,
+  //     player.position.pitch
+  //   );
+  // }
 
   drawCanvas() {
     this.pixelsClampedArray.set(this.ceilingFloorPixelsRef.buffer);
@@ -294,101 +290,101 @@ export class Camera {
     this.ctx.putImageData(img01, 0, 0);
   }
 
-  drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
-    draw_ceiling_floor_raycast(
-      this.ceilingFloorPixelsRef.ptr,
-      this.floorTextureRef.ptr,
-      this.ceilingTextureRef.ptr,
-      this.roadTextureRef.ptr,
-      this.width,
-      this.height,
-      this.lightRange,
-      map.light,
-      map.floorTexture.width,
-      map.floorTexture.height,
-      map.ceilingTexture.width,
-      map.ceilingTexture.height,
-      map.roadTexture.width,
-      map.roadTexture.height,
-      this.mapRef.ptr, // 1D array instead of 2D
-      map.size, // Width of original 2D array
-      player.position.x,
-      player.position.y,
-      player.position.dir_x,
-      player.position.dir_y,
-      player.position.plane_x,
-      player.position.plane_y,
-      player.position.pitch,
-      player.position.z,
-      player.position.plane_y_initial
-    );
-  }
+  // drawCeilingFloorRaycastWasm(player: Player, map: GridMap) {
+  //   draw_ceiling_floor_raycast(
+  //     this.ceilingFloorPixelsRef.ptr,
+  //     this.floorTextureRef.ptr,
+  //     this.ceilingTextureRef.ptr,
+  //     this.roadTextureRef.ptr,
+  //     this.width,
+  //     this.height,
+  //     this.lightRange,
+  //     map.light,
+  //     map.floorTexture.width,
+  //     map.floorTexture.height,
+  //     map.ceilingTexture.width,
+  //     map.ceilingTexture.height,
+  //     map.roadTexture.width,
+  //     map.roadTexture.height,
+  //     this.mapRef.ptr, // 1D array instead of 2D
+  //     map.size, // Width of original 2D array
+  //     player.position.x,
+  //     player.position.y,
+  //     player.position.dir_x,
+  //     player.position.dir_y,
+  //     player.position.plane_x,
+  //     player.position.plane_y,
+  //     player.position.pitch,
+  //     player.position.z,
+  //     player.position.plane_y_initial
+  //   );
+  // }
 
-  drawWallsRaycastWasm(
-    player: Player,
-    map: GridMap,
-    spriteMap: SpriteMap
-  ): number {
-    let foundSpritesCount = draw_walls_raycast(
-      this.ceilingFloorPixelsRef.ptr,
-      this.wallTextureRef.ptr,
-      this.doorTextureRef.ptr,
-      this.zBufferRef.ptr,
-      this.mapRef.ptr,
-      map.size, // Width of original 2D array
-      this.width,
-      this.height,
-      this.lightRange,
-      this.range,
-      map.wallTexture.width,
-      map.wallTexture.height,
-      map.doorTexture.width,
-      map.doorTexture.height,
-      this.visibleSpritesRef.ptr,
-      spriteMap.size,
-      this.spriteHashMap,
-      player.position.x,
-      player.position.y,
-      player.position.dir_x,
-      player.position.dir_y,
-      player.position.plane_x,
-      player.position.plane_y,
-      player.position.pitch,
-      player.position.z,
-      player.position.plane_y_initial
-    );
+  // drawWallsRaycastWasm(
+  //   player: Player,
+  //   map: GridMap,
+  //   spriteMap: SpriteMap
+  // ): number {
+  //   let foundSpritesCount = draw_walls_raycast(
+  //     this.ceilingFloorPixelsRef.ptr,
+  //     this.wallTextureRef.ptr,
+  //     this.doorTextureRef.ptr,
+  //     this.zBufferRef.ptr,
+  //     this.mapRef.ptr,
+  //     map.size, // Width of original 2D array
+  //     this.width,
+  //     this.height,
+  //     this.lightRange,
+  //     this.range,
+  //     map.wallTexture.width,
+  //     map.wallTexture.height,
+  //     map.doorTexture.width,
+  //     map.doorTexture.height,
+  //     this.visibleSpritesRef.ptr,
+  //     spriteMap.size,
+  //     this.spriteHashMap,
+  //     player.position.x,
+  //     player.position.y,
+  //     player.position.dir_x,
+  //     player.position.dir_y,
+  //     player.position.plane_x,
+  //     player.position.plane_y,
+  //     player.position.pitch,
+  //     player.position.z,
+  //     player.position.plane_y_initial
+  //   );
 
-    return foundSpritesCount;
-  }
+  //   return foundSpritesCount;
+  // }
 
-  drawSpritesWasm(
-    player: Player,
-    map: GridMap,
-    foundSpritesCount: number
-  ): void {
-    draw_sprites_wasm(
-      this.ceilingFloorPixelsRef.ptr,
-      this.width,
-      this.height,
-      this.visibleSpritesRef.ptr,
-      this.zBufferRef.ptr,
-      this.spritesTextureRef.ptr,
-      Object.values(SpriteType).length * 4,
-      this.lightRange,
-      map.light,
-      foundSpritesCount,
-      player.position.x,
-      player.position.y,
-      player.position.dir_x,
-      player.position.dir_y,
-      player.position.plane_x,
-      player.position.plane_y,
-      player.position.pitch,
-      player.position.z,
-      player.position.plane_y_initial,
-      this.spriteTextureHashMap
-    );
-  }
+  // drawSpritesWasm(
+  //   player: Player,
+  //   map: GridMap,
+  //   foundSpritesCount: number
+  // ): void {
+  //   draw_sprites_wasm(
+  //     this.ceilingFloorPixelsRef.ptr,
+  //     this.width,
+  //     this.height,
+  //     this.visibleSpritesRef.ptr,
+  //     this.zBufferRef.ptr,
+  //     this.spritesTextureRef.ptr,
+  //     Object.values(SpriteType).length * 4,
+  //     this.lightRange,
+  //     map.light,
+  //     foundSpritesCount,
+  //     player.position.x,
+  //     player.position.y,
+  //     player.position.dir_x,
+  //     player.position.dir_y,
+  //     player.position.plane_x,
+  //     player.position.plane_y,
+  //     player.position.pitch,
+  //     player.position.z,
+  //     player.position.plane_y_initial,
+  //     this.spriteTextureHashMap
+  //   );
+  // }
 
   drawWeapon(weapon: Bitmap, paces: number): void {
     let bobX = Math.cos(paces * 2) * this.scale * 6;

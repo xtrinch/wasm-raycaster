@@ -25,10 +25,10 @@ use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
-use std::ptr::write_bytes;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
+// TODO: pre-initialize most of this data except position
 #[wasm_bindgen]
 pub fn render(
     x: f32,
@@ -56,7 +56,7 @@ pub fn render(
     all_sprites_count: usize,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
-    wall_texture: *const u8,
+    wall_texture: *const u8, // TODO: just build a Struct from jS
     wall_texture_width: i32,
     wall_texture_height: i32,
     door_texture: *const u8,
@@ -84,9 +84,17 @@ pub fn render(
         plane_y_initial,
     };
 
-    draw_background_image_prescaled(background, render_img, width, height, dir_x, dir_y, pitch);
+    let img_slice =
+        unsafe { std::slice::from_raw_parts_mut(render_img, width as usize * height as usize * 4) };
+
+    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+
+    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
+
+    draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
-        render_img,
+        &position,
+        img_slice,
         floor_texture,
         ceiling_texture,
         road_texture,
@@ -100,29 +108,21 @@ pub fn render(
         ceiling_texture_height,
         road_texture_width,
         road_texture_height,
-        map_array,
+        map_data,
         map_width,
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
     );
     let found_sprites_count = draw_walls_raycast(
-        render_img,
+        &position,
+        img_slice,
         wall_texture,
         door_texture,
-        zbuffer_array,
-        map_array,
+        zbuffer,
+        map_data,
         map_width,
         width,
         height,
         light_range,
-        range.into(),
+        range,
         wall_texture_width,
         wall_texture_height,
         door_texture_width,
@@ -130,43 +130,26 @@ pub fn render(
         visible_sprites_array,
         all_sprites_count,
         sprites_map,
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
     );
     draw_sprites_wasm(
-        render_img,
+        &position,
+        img_slice,
         width,
         height,
         visible_sprites_array,
-        zbuffer_array,
+        zbuffer,
         sprites_texture_array,
         sprites_texture_array_length,
         light_range,
         map_light,
         found_sprites_count,
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
         sprites_texture_map,
     );
 }
 
 pub fn raycast_column(
     column: i32,
-    position: Position,
+    position: &Position,
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
     width: i32,
@@ -252,19 +235,6 @@ pub fn raycast_column(
             for i in 0..num_walls {
                 // get bit width first so we can skip all the rest
                 let mut bit_width = 0;
-                match i {
-                    0 => {
-                        bit_width = get_bits(value, initial_bit_offset + 8);
-                    }
-                    1 => {
-                        bit_width = get_bits(value, initial_bit_offset + 24);
-                    }
-                    2 => {
-                        bit_width = get_bits(value, initial_bit_offset + 40);
-                    }
-                    _ => (),
-                };
-
                 let mut local_width: f32 = 1.0;
                 let mut local_offset: f32 = 1.0;
                 let mut bit_offset = 0;
@@ -276,6 +246,7 @@ pub fn raycast_column(
 
                 match i {
                     0 => {
+                        bit_width = get_bits(value, initial_bit_offset + 8);
                         bit_offset = get_bits(value, initial_bit_offset);
                         bit_thickness = get_bits(value, initial_bit_offset + 4);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 12);
@@ -284,6 +255,7 @@ pub fn raycast_column(
                         is_window = has_bit_set(value, 8);
                     }
                     1 => {
+                        bit_width = get_bits(value, initial_bit_offset + 24);
                         bit_offset = get_bits(value, initial_bit_offset + 16);
                         bit_thickness = get_bits(value, initial_bit_offset + 20);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 28);
@@ -292,6 +264,7 @@ pub fn raycast_column(
                         is_window = has_bit_set(value, 9);
                     }
                     2 => {
+                        bit_width = get_bits(value, initial_bit_offset + 40);
                         bit_offset = get_bits(value, initial_bit_offset + 32);
                         bit_thickness = get_bits(value, initial_bit_offset + 36);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 44);
@@ -598,8 +571,8 @@ pub fn raycast_column(
     let col_data = [
         tex_x,
         column,
-        draw_start_y as i32,
-        wall_height as i32,
+        draw_start_y,
+        wall_height,
         alpha_i,
         hit as i32,
         hit_type as i32,
@@ -615,12 +588,13 @@ pub fn raycast_column(
 
 #[wasm_bindgen]
 pub fn draw_walls_raycast(
-    render_img: *mut u8,
+    position: &Position,
+    img_slice: &mut [u8],
     wall_texture: *const u8,
     door_texture: *const u8,
-    zbuffer_array: *mut f32,
-    map_array: *const u64, // 2D array representing the grid map
-    map_width: usize,      // Needed to index into 1D map
+    zbuffer: &mut [f32],
+    map_data: &[u64],
+    map_width: usize, // Needed to index into 1D map
     width: i32,
     height: i32,
     light_range: i32,
@@ -632,19 +606,7 @@ pub fn draw_walls_raycast(
     found_sprites_array: *mut f32,
     all_sprites_count: usize,
     sprites_map: &WasmStripeHashMapArray,
-    x: f32,
-    y: f32,
-    dir_x: f32,
-    dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-    pitch: i32,
-    z: i32,
-    plane_y_initial: f32,
 ) -> u32 {
-    let img_slice =
-        unsafe { std::slice::from_raw_parts_mut(render_img, (width * height * 4) as usize) };
-
     let wall_texture_array = unsafe {
         from_raw_parts(
             wall_texture,
@@ -658,28 +620,15 @@ pub fn draw_walls_raycast(
         )
     };
 
-    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
     let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
             (all_sprites_count + (2 * width) as usize) * 10,
         )
     };
-    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
 
     let mut found_sprites_count = 0;
 
-    let position = Position {
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
-    };
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
@@ -810,7 +759,8 @@ pub fn draw_walls_raycast(
 
 #[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
-    render_img: *mut u8,
+    position: &Position,
+    img_slice: &mut [u8],
     floor_texture: *const u8,
     ceiling_texture: *const u8,
     road_texture: *const u8,
@@ -824,31 +774,9 @@ pub fn draw_ceiling_floor_raycast(
     ceiling_texture_height: i32,
     road_texture_width: i32,
     road_texture_height: i32,
-    map_array: *const u64,
+    map_data: &[u64],
     map_width: usize,
-    x: f32,
-    y: f32,
-    dir_x: f32,
-    dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-    pitch: i32,
-    z: i32,
-    plane_y_initial: f32,
 ) {
-    let position = Position {
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
-    };
-    let map_data = unsafe { from_raw_parts(map_array, map_width * map_width) };
-
     let road_texture_array = unsafe {
         from_raw_parts(
             road_texture,
@@ -890,8 +818,6 @@ pub fn draw_ceiling_floor_raycast(
 
     let height_ratio = height as f32 / width as f32;
     let distance_divider = (2.0 * height_ratio) * position.plane_y_initial;
-
-    let img_slice = unsafe { from_raw_parts_mut(render_img, (width * height * 4) as usize) };
 
     let road_texture_data = Texture {
         data: road_texture_array,
@@ -988,7 +914,7 @@ pub fn draw_ceiling_floor_raycast(
 }
 
 pub fn translate_coordinate_to_camera(
-    position: Position,
+    position: &Position,
     point_x: f32,
     point_y: f32,
     height_multiplier: f32,
@@ -1034,42 +960,19 @@ pub fn translate_coordinate_to_camera(
 
 #[wasm_bindgen]
 pub fn draw_sprites_wasm(
-    render_img: *mut u8,
+    position: &Position,
+    img_slice: &mut [u8],
     width: i32,
     height: i32,
     visible_sprites_array: *mut f32,
-    zbuffer_array: *mut f32,
+    zbuffer: &mut [f32],
     sprites_texture_array: *const i32,
     sprites_texture_array_length: usize,
     light_range: i32,
     map_light: i32,
     found_sprites_count: u32,
-    x: f32,
-    y: f32,
-    dir_x: f32,
-    dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-    pitch: i32,
-    z: i32,
-    plane_y_initial: f32,
     sprites_texture_map: &WasmStripeTextureHashMapArray,
-) -> usize {
-    let img_slice =
-        unsafe { std::slice::from_raw_parts_mut(render_img, width as usize * height as usize * 4) };
-
-    let position = Position {
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
-    };
-    let zbuffer = unsafe { from_raw_parts(zbuffer_array, width as usize) };
+) {
     let sprite_data =
         unsafe { from_raw_parts(visible_sprites_array, found_sprites_count as usize * 10) };
     let texture_array =
@@ -1294,26 +1197,20 @@ pub fn draw_sprites_wasm(
                 }
             }
         });
-
-    0
 }
 
 #[wasm_bindgen]
 pub fn draw_background_image_prescaled(
+    position: &Position,
     background: &BackgroundImageWasm,
-    render_img: *mut u8,
+    img_slice: &mut [u8],
     width: i32,
     height: i32,
-    dir_x: f32,
-    dir_y: f32,
-    pitch: i32,
 ) {
-    let direction = dir_x.atan2(dir_y) + PI;
+    let direction = position.dir_x.atan2(position.dir_y) + PI;
 
     let pre_scaled = &background.get_data();
     let sky_width = background.get_width();
-
-    let img_slice = unsafe { from_raw_parts_mut(render_img, (width * height * 4) as usize) };
 
     let circle = 2.0 * std::f32::consts::PI;
     let mut left_offset = ((direction / circle) * (sky_width as f32)) as i32;
@@ -1327,7 +1224,7 @@ pub fn draw_background_image_prescaled(
         .par_chunks_mut((width * 4) as usize)
         .enumerate()
         .for_each(|(y, row)| {
-            let screen_y_pitch = y as i32 - pitch;
+            let screen_y_pitch = y as i32 - position.pitch;
             if screen_y_pitch < 0 || screen_y_pitch >= height {
                 return;
             }
@@ -1409,7 +1306,7 @@ pub fn walk(
     // raycast middle column to get the distance
     let (perp_wall_dist, col_data, _, _) = raycast_column(
         (width / 2) as i32,
-        raycast_position,
+        &raycast_position,
         map_data,
         map_width as usize,
         width,
@@ -1441,7 +1338,7 @@ pub fn walk(
     // raycast middle column to get the distance
     let (perp_wall_dist_x, _, _, _) = raycast_column(
         (width / 2) as i32,
-        raycast_position_x,
+        &raycast_position_x,
         map_data,
         map_width as usize,
         width,
@@ -1467,7 +1364,7 @@ pub fn walk(
     // raycast middle column to get the distance
     let (perp_wall_dist_y, _, _, _) = raycast_column(
         (width / 2) as i32,
-        raycast_position_y,
+        &raycast_position_y,
         map_data,
         map_width as usize,
         width,
