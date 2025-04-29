@@ -7,6 +7,8 @@ const Canvas = () => {
       style={{
         width: "100vw",
         height: "100vh",
+        maxWidth: "100vw",
+        maxHeight: "100vh",
         position: "absolute",
         left: 0,
         top: 0,

@@ -571,6 +571,7 @@ pub fn raycast_column(
 
     let alpha_i = (FIXED_ONE - to_fixed(global_alpha)) as i32;
 
+    // TODO: to struct for readability
     let col_data = [
         tex_x,
         column,
@@ -640,15 +641,23 @@ pub fn draw_walls_raycast(
         })
         .collect();
 
-    let uniqued_met_coords: Vec<&(i32, i32)> = data
+    // let uniqued_met_coords: Vec<&(i32, i32)> = data
+    //     .iter()
+    //     .flat_map(|(_, _, met_coords, _)| met_coords)
+    //     .collect::<HashSet<_>>()
+    //     .into_iter()
+    //     .collect();
+
+    let mut uniqued_met_coords: Vec<(i32, i32)> = data
         .iter()
-        .flat_map(|(_, _, met_coords, _)| met_coords)
-        .collect::<HashSet<_>>()
-        .into_iter()
+        .flat_map(|(_, _, met_coords, _)| met_coords.clone()) // Make sure met_coords are owned
         .collect();
 
+    uniqued_met_coords.sort_unstable();
+    uniqued_met_coords.dedup();
+
     for (x, y) in uniqued_met_coords {
-        let (map_x, map_y) = (*x as i32, *y as i32);
+        let (map_x, map_y) = (x as i32, y as i32);
 
         if let Some(sprite_list) = sprites_map.get_map().get(&(map_x, map_y)) {
             for &sprite in sprite_list {
@@ -660,28 +669,22 @@ pub fn draw_walls_raycast(
         }
     }
 
-    let all_window_sprites: Vec<&[f32; 10]> = data
+    let all_window_sprites: Vec<[f32; 10]> = data
         .iter()
-        .flat_map(|(_, _, _, window_sprites)| window_sprites)
+        .flat_map(|(_, _, _, window_sprites)| window_sprites.clone())
         .collect();
 
     // Compute start position and length
     let start_index = found_sprites_count as usize * 10;
     let total_len = all_window_sprites.len() * 10;
 
-    // Get a mutable slice to just the part we want to fill
-    let target_slice = &mut found_sprites[start_index..start_index + total_len];
-
-    // SAFELY split into mutable chunks of 9
-    let mut chunks: Vec<&mut [f32]> = target_slice.chunks_mut(10).collect();
-
-    // Zip input and output together and write in parallel
-    chunks
-        .iter_mut()
-        .zip(all_window_sprites.iter())
-        .for_each(|(out_chunk, &sprite)| {
-            out_chunk.copy_from_slice(sprite);
-        });
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            all_window_sprites.as_ptr() as *const f32,
+            found_sprites.as_mut_ptr().add(start_index),
+            total_len,
+        );
+    }
 
     // Update count afterward
     found_sprites_count += all_window_sprites.len() as u32;
@@ -704,20 +707,15 @@ pub fn draw_walls_raycast(
         height: wall_texture_height,
     };
 
-    let col_datas: Vec<&[i32; 7]> = data
-        .par_iter()
-        .map(|(_, col_data, _, _)| col_data)
-        .collect();
-
     img_slice
         .par_chunks_mut((width * 4) as usize)
         .enumerate()
         .for_each(|(screen_y, row)| {
             let screen_y = screen_y as i32;
 
-            for col_data in col_datas.iter() {
+            for (_, col_data, _, _) in data.iter() {
                 let [tex_x, left, draw_start_y, wall_height, global_alpha, hit, col_type] =
-                    **col_data;
+                    *col_data;
 
                 if hit == 0 || screen_y < draw_start_y || screen_y >= draw_start_y + wall_height {
                     continue;
@@ -739,7 +737,6 @@ pub fn draw_walls_raycast(
 
                 let idx = (left * 4) as usize;
                 row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
-                // row[idx..idx + 4].copy_from_slice(&[result[0], result[1], result[2], 255]);
             }
         });
 
