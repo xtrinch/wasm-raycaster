@@ -69,7 +69,7 @@ export class GameLoop {
   loop() {
     // this.map.update(this.frameTime);
     this.player.update(this.controls.states, this.map, this.frameTime);
-    this.camera.render(this.player, this.map, this.spriteMap);
+    this.camera.render(this.player, this.spriteMap);
     this.camera.drawCanvas();
   }
 

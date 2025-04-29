@@ -4,18 +4,63 @@ use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub struct WasmStripeTextureHashMapArray {
+pub struct WasmTextureMetaMap {
+    map: HashMap<i32, TextureData>,
+}
+
+#[derive(Clone)]
+pub struct TextureData {
+    pub width: i32,
+    pub height: i32,
+    pub angles: u32,
+    // pub data: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl WasmTextureMetaMap {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = populateFromArray)]
+    pub fn populate_from_array(&mut self, key: i32, width: i32, height: i32, angles: u32) {
+        self.map.insert(
+            key,
+            TextureData {
+                width,
+                height,
+                angles, // data,
+            },
+        );
+    }
+}
+
+impl WasmTextureMetaMap {
+    pub fn get_map(&self) -> &HashMap<i32, TextureData> {
+        &self.map
+    }
+
+    pub fn get(&self, key: i32) -> Option<&TextureData> {
+        self.map.get(&key)
+    }
+}
+
+#[wasm_bindgen]
+pub struct WasmTextureMap {
     map: HashMap<(i32, i32), Vec<u8>>,
 }
 
-impl WasmStripeTextureHashMapArray {
+impl WasmTextureMap {
     pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<u8>> {
         &self.map
     }
 }
 
 #[wasm_bindgen]
-impl WasmStripeTextureHashMapArray {
+impl WasmTextureMap {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
@@ -35,19 +80,19 @@ impl WasmStripeTextureHashMapArray {
 }
 
 #[wasm_bindgen]
-pub struct WasmStripeHashMapArray {
+pub struct WasmStripePerCoordMap {
     map: HashMap<(i32, i32), Vec<[f32; 5]>>,
 }
 
 // 🦀 Rust-only implementation block
-impl WasmStripeHashMapArray {
+impl WasmStripePerCoordMap {
     pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<[f32; 5]>> {
         &self.map
     }
 }
 
 #[wasm_bindgen]
-impl WasmStripeHashMapArray {
+impl WasmStripePerCoordMap {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {

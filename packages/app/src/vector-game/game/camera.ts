@@ -5,8 +5,9 @@ import {
   render,
   WasmFloat32Array,
   WasmInt32Array,
-  WasmStripeHashMapArray,
-  WasmStripeTextureHashMapArray,
+  WasmStripePerCoordMap,
+  WasmTextureMap,
+  WasmTextureMetaMap,
   WasmUInt64Array,
   WasmUint8Array,
 } from "../../../wasm";
@@ -51,9 +52,10 @@ export class Camera {
   public spritesTextureRef: WasmInt32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
-  public spriteHashMap: WasmStripeHashMapArray; // sprites per coordinate
-  public spriteTextureHashMap: WasmStripeTextureHashMapArray;
+  public spriteHashMap: WasmStripePerCoordMap; // sprites per coordinate
+  public spriteTextureHashMap: WasmTextureMap;
   public backgroundRef: BackgroundImageWasm;
+  public spriteTextureMetaHashMap: WasmTextureMetaMap;
 
   constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
@@ -114,11 +116,26 @@ export class Camera {
         spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
       )
     );
-    this.spriteHashMap = new WasmStripeHashMapArray();
+    this.spriteHashMap = new WasmStripePerCoordMap();
     this.spriteHashMap.populateFromArray(allSprites);
 
-    this.spriteTextureHashMap = new WasmStripeTextureHashMapArray();
+    this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
+
+    this.spriteTextureMetaHashMap = new WasmTextureMetaMap();
+    for (let textureType of Object.values(TextureType).filter(
+      isNumber as any
+    ) as number[]) {
+      const height = this.map.getSpriteTexture(textureType).texture.height;
+      const width = this.map.getSpriteTexture(textureType).texture.width;
+      const angles = this.map.getSpriteData(textureType).angles;
+      this.spriteTextureMetaHashMap.populateFromArray(
+        textureType,
+        width,
+        height,
+        angles
+      );
+    }
 
     makeAutoObservable(this);
   }
@@ -184,11 +201,11 @@ export class Camera {
     };
   }
 
-  render(player: Player, map: GridMap, spriteMap: SpriteMap) {
+  render(player: Player, spriteMap: SpriteMap) {
     if (
       !this.skyTextureRef ||
       !this.backgroundRef ||
-      this.spriteTextureHashMap.count_cells() < 19 // including angles
+      this.spriteTextureHashMap.count_cells() < 19 // including angles; TODO: dynamicize
     ) {
       return;
     }
@@ -215,10 +232,9 @@ export class Camera {
       this.backgroundRef,
       this.spriteHashMap,
       this.spriteTextureHashMap,
+      this.spriteTextureMetaHashMap,
       this.visibleSpritesRef.ptr,
-      spriteMap.size,
-      this.spritesTextureRef.ptr,
-      Object.values(TextureType).length * 4
+      spriteMap.size
     );
 
     this.drawWeapon(player.weapon, player.paces);

@@ -3,7 +3,7 @@
 use helpers::{
     fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
     to_fixed_large, BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TranslationResult,
-    WasmStripeHashMapArray, WasmStripeTextureHashMapArray, FIXED_ONE, FIXED_SHIFT,
+    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -50,12 +50,11 @@ pub fn render(
     range: i8,
     map_light: i32,
     background: &BackgroundImageWasm,
-    sprites_map: &WasmStripeHashMapArray,
-    sprites_texture_map: &WasmStripeTextureHashMapArray,
+    sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
+    sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
+    sprites_texture_meta_map: &WasmTextureMetaMap,
     visible_sprites_array: *mut f32,
     all_sprites_count: usize,
-    sprites_texture_array: *mut i32,
-    sprites_texture_array_length: usize,
 ) {
     let position = Position {
         x,
@@ -76,22 +75,19 @@ pub fn render(
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
 
-    let texture_array =
-        parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
-
-    let (wall_texture_width, wall_texture_height, _) = *texture_array.get(&1).unwrap();
+    let wall_texture_meta = sprites_texture_meta_map.get_map().get(&1).unwrap();
     let wall_texture = sprites_texture_map.get_map().get(&(1, 0)).unwrap();
 
-    let (ceiling_texture_width, ceiling_texture_height, _) = *texture_array.get(&2).unwrap();
+    let ceiling_texture_meta = sprites_texture_meta_map.get_map().get(&2).unwrap();
     let ceiling_texture = sprites_texture_map.get_map().get(&(2, 0)).unwrap();
 
-    let (floor_texture_width, floor_texture_height, _) = *texture_array.get(&3).unwrap();
+    let floor_texture_meta = sprites_texture_meta_map.get_map().get(&3).unwrap();
     let floor_texture = sprites_texture_map.get_map().get(&(3, 0)).unwrap();
 
-    let (road_texture_width, road_texture_height, _) = *texture_array.get(&4).unwrap();
+    let road_texture_meta = sprites_texture_meta_map.get_map().get(&4).unwrap();
     let road_texture = sprites_texture_map.get_map().get(&(4, 0)).unwrap();
 
-    let (door_texture_width, door_texture_height, _) = *texture_array.get(&5).unwrap();
+    let door_texture_meta = sprites_texture_meta_map.get_map().get(&5).unwrap();
     let door_texture = sprites_texture_map.get_map().get(&(5, 0)).unwrap();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
@@ -105,12 +101,12 @@ pub fn render(
         height,
         light_range,
         map_light,
-        floor_texture_width,
-        floor_texture_height,
-        ceiling_texture_width,
-        ceiling_texture_height,
-        road_texture_width,
-        road_texture_height,
+        floor_texture_meta.width,
+        floor_texture_meta.height,
+        ceiling_texture_meta.width,
+        ceiling_texture_meta.height,
+        road_texture_meta.width,
+        road_texture_meta.height,
         map_data,
         map_width,
     );
@@ -126,10 +122,10 @@ pub fn render(
         height,
         light_range,
         range,
-        wall_texture_width,
-        wall_texture_height,
-        door_texture_width,
-        door_texture_height,
+        wall_texture_meta.width,
+        wall_texture_meta.height,
+        door_texture_meta.width,
+        door_texture_meta.height,
         visible_sprites_array,
         all_sprites_count,
         sprites_map,
@@ -141,12 +137,11 @@ pub fn render(
         height,
         visible_sprites_array,
         zbuffer,
-        sprites_texture_array,
-        sprites_texture_array_length,
         light_range,
         map_light,
         found_sprites_count,
         sprites_texture_map,
+        sprites_texture_meta_map,
     );
 }
 
@@ -608,7 +603,7 @@ pub fn draw_walls_raycast(
     door_texture_height: i32,
     found_sprites_array: *mut f32,
     all_sprites_count: usize,
-    sprites_map: &WasmStripeHashMapArray,
+    sprites_map: &WasmStripePerCoordMap,
 ) -> u32 {
     let found_sprites = unsafe {
         from_raw_parts_mut(
@@ -640,13 +635,6 @@ pub fn draw_walls_raycast(
             (perp_wall_dist, col_data, met_coords, window_sprites)
         })
         .collect();
-
-    // let uniqued_met_coords: Vec<&(i32, i32)> = data
-    //     .iter()
-    //     .flat_map(|(_, _, met_coords, _)| met_coords)
-    //     .collect::<HashSet<_>>()
-    //     .into_iter()
-    //     .collect();
 
     let mut uniqued_met_coords: Vec<(i32, i32)> = data
         .iter()
@@ -935,17 +923,14 @@ pub fn draw_sprites_wasm(
     height: i32,
     visible_sprites_array: *mut f32,
     zbuffer: &mut [f32],
-    sprites_texture_array: *const i32,
-    sprites_texture_array_length: usize,
     light_range: i32,
     map_light: i32,
     found_sprites_count: u32,
-    sprites_texture_map: &WasmStripeTextureHashMapArray,
+    sprites_texture_map: &WasmTextureMap,
+    texture_array: &WasmTextureMetaMap,
 ) {
     let sprite_data =
         unsafe { from_raw_parts(visible_sprites_array, found_sprites_count as usize * 10) };
-    let texture_array =
-        parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
 
     let px = to_fixed_large(position.x);
     let py = to_fixed_large(position.y);
@@ -1018,11 +1003,10 @@ pub fn draw_sprites_wasm(
 
             let mut angle_index = (angle_i) / 45; // Default to 1 if the result is 0
 
-            let (texture_height, texture_width, angles) =
-                *texture_array.get(&sprite.r#type).unwrap();
+            let texture_meta = texture_array.get(sprite.r#type).unwrap();
 
             // if there's no textures for other angles
-            if angles <= angle_index {
+            if texture_meta.angles as i32 <= angle_index {
                 angle_index = 0;
             }
             let texture_data = sprites_texture_map
@@ -1048,7 +1032,7 @@ pub fn draw_sprites_wasm(
                 fract -= sprite.offset;
                 fract /= sprite.width;
 
-                let texture_x: i32 = (fract * texture_width as f32) as i32;
+                let texture_x: i32 = (fract * texture_meta.width as f32) as i32;
                 return Some(SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: (sprite.column),
@@ -1059,8 +1043,8 @@ pub fn draw_sprites_wasm(
                     tex_width: 1,
                     alpha: alpha_i,
                     angle: 0,
-                    full_texture_height: texture_height,
-                    full_texture_width: texture_width,
+                    full_texture_height: texture_meta.height,
+                    full_texture_width: texture_meta.width,
                     full_texture_data: texture_data,
                 });
             }
@@ -1068,7 +1052,7 @@ pub fn draw_sprites_wasm(
             if projection.distance < 0.0 {
                 return None;
             }
-            let texture_aspect_ratio = texture_width as f32 / texture_height as f32;
+            let texture_aspect_ratio = texture_meta.width as f32 / texture_meta.height as f32;
 
             let sprite_width = (projection.full_height as f32 * texture_aspect_ratio as f32) as i32;
 
@@ -1095,8 +1079,8 @@ pub fn draw_sprites_wasm(
             }
 
             let to_remove_texture = projection.screen_x - (sprite_width / 2);
-            let tex_x1 = ((draw_start_x - to_remove_texture) * texture_width) / sprite_width;
-            let tex_x2 = ((draw_end_x - to_remove_texture) * texture_width) / sprite_width;
+            let tex_x1 = ((draw_start_x - to_remove_texture) * texture_meta.width) / sprite_width;
+            let tex_x2 = ((draw_end_x - to_remove_texture) * texture_meta.width) / sprite_width;
             let tex_width = tex_x2 - tex_x1;
 
             Some(SpritePart {
@@ -1109,8 +1093,8 @@ pub fn draw_sprites_wasm(
                 tex_width,
                 alpha: alpha_i,
                 angle: angle_i,
-                full_texture_height: texture_height,
-                full_texture_width: texture_width,
+                full_texture_height: texture_meta.height,
+                full_texture_width: texture_meta.width,
                 full_texture_data: texture_data,
             })
         })
