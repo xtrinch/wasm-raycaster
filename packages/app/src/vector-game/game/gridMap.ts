@@ -21,7 +21,7 @@ import lady7Texture from "../../assets/woman/woman7.png";
 import lady8Texture from "../../assets/woman/woman8.png";
 
 import { Bitmap } from "./bitmap";
-import { SpriteType } from "./spriteMap";
+import { TextureType } from "./spriteMap";
 
 export interface Point {
   x: number; // x coordinate on the grid
@@ -128,27 +128,6 @@ export class GridMap {
     return ((x * 73856093) ^ (y * 19349663)) % 100;
   }
 
-  public stepTriangle = (
-    rise: number,
-    run: number,
-    x: number,
-    y: number,
-    inverted?: boolean
-  ): Point => {
-    if (run === 0) return { length2: Infinity, x: undefined, y: undefined };
-    let dx = run > 0 ? Math.floor(x + 1) - x : Math.ceil(x - 1) - x;
-    let dy = dx * (rise / run);
-    let newX = inverted ? y + dy : x + dx;
-    let newY = inverted ? x + dx : y + dy;
-    return {
-      x: newX,
-      y: newY,
-      flooredX: Math.floor(x),
-      flooredY: Math.floor(y),
-      length2: dx * dx + dy * dy, // for the pythagorean theorem, so we can get the distance we made (which is the hypothenuse)
-    };
-  };
-
   public update = (seconds: number) => {
     if (this.light > 0) this.light = Math.max(this.light - 10 * seconds, 0);
     // else if (Math.random() * 5 < seconds) this.light = 2;
@@ -156,73 +135,98 @@ export class GridMap {
 
   getSpriteTextureArray(): Int32Array {
     return new Int32Array([
-      SpriteType.LADY,
-      this.getSpriteTexture(SpriteType.LADY).texture.height,
-      this.getSpriteTexture(SpriteType.LADY).texture.width,
-      this.getSpriteData(SpriteType.LADY).angles,
-      SpriteType.BUSH1,
-      this.getSpriteTexture(SpriteType.BUSH1).texture.height,
-      this.getSpriteTexture(SpriteType.BUSH1).texture.width,
-      this.getSpriteData(SpriteType.BUSH1).angles,
-      SpriteType.TREE_CONE,
-      this.getSpriteTexture(SpriteType.TREE_CONE).texture.height,
-      this.getSpriteTexture(SpriteType.TREE_CONE).texture.width,
-      this.getSpriteData(SpriteType.TREE_CONE).angles,
-      SpriteType.TREE_COLUMNAR,
-      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.height,
-      this.getSpriteTexture(SpriteType.TREE_COLUMNAR).texture.width,
-      this.getSpriteData(SpriteType.TREE_COLUMNAR).angles,
-      SpriteType.PILLAR,
-      this.getSpriteTexture(SpriteType.PILLAR).texture.height,
-      this.getSpriteTexture(SpriteType.PILLAR).texture.width,
-      this.getSpriteData(SpriteType.PILLAR).angles,
-      SpriteType.TREE_VASE,
-      this.getSpriteTexture(SpriteType.TREE_VASE).texture.height,
-      this.getSpriteTexture(SpriteType.TREE_VASE).texture.width,
-      this.getSpriteData(SpriteType.TREE_VASE).angles,
-      SpriteType.COLUMN,
-      this.getSpriteTexture(SpriteType.COLUMN).texture.height,
-      this.getSpriteTexture(SpriteType.COLUMN).texture.width,
-      this.getSpriteData(SpriteType.COLUMN).angles,
+      TextureType.WALL,
+      this.getSpriteTexture(TextureType.WALL).texture.height,
+      this.getSpriteTexture(TextureType.WALL).texture.width,
+      this.getSpriteData(TextureType.WALL).angles,
+      TextureType.CEILING,
+      this.getSpriteTexture(TextureType.CEILING).texture.height,
+      this.getSpriteTexture(TextureType.CEILING).texture.width,
+      this.getSpriteData(TextureType.CEILING).angles,
+      TextureType.FLOOR,
+      this.getSpriteTexture(TextureType.FLOOR).texture.height,
+      this.getSpriteTexture(TextureType.FLOOR).texture.width,
+      this.getSpriteData(TextureType.FLOOR).angles,
+      TextureType.ROAD,
+      this.getSpriteTexture(TextureType.ROAD).texture.height,
+      this.getSpriteTexture(TextureType.ROAD).texture.width,
+      this.getSpriteData(TextureType.ROAD).angles,
+      TextureType.DOOR,
+      this.getSpriteTexture(TextureType.DOOR).texture.height,
+      this.getSpriteTexture(TextureType.DOOR).texture.width,
+      this.getSpriteData(TextureType.DOOR).angles,
+      TextureType.TREE_CONE,
+      this.getSpriteTexture(TextureType.TREE_CONE).texture.height,
+      this.getSpriteTexture(TextureType.TREE_CONE).texture.width,
+      this.getSpriteData(TextureType.TREE_CONE).angles,
+      TextureType.PILLAR,
+      this.getSpriteTexture(TextureType.PILLAR).texture.height,
+      this.getSpriteTexture(TextureType.PILLAR).texture.width,
+      this.getSpriteData(TextureType.PILLAR).angles,
+      TextureType.BUSH1,
+      this.getSpriteTexture(TextureType.BUSH1).texture.height,
+      this.getSpriteTexture(TextureType.BUSH1).texture.width,
+      this.getSpriteData(TextureType.BUSH1).angles,
+      TextureType.TREE_VASE,
+      this.getSpriteTexture(TextureType.TREE_VASE).texture.height,
+      this.getSpriteTexture(TextureType.TREE_VASE).texture.width,
+      this.getSpriteData(TextureType.TREE_VASE).angles,
+      TextureType.TREE_COLUMNAR,
+      this.getSpriteTexture(TextureType.TREE_COLUMNAR).texture.height,
+      this.getSpriteTexture(TextureType.TREE_COLUMNAR).texture.width,
+      this.getSpriteData(TextureType.TREE_COLUMNAR).angles,
+      TextureType.LADY,
+      this.getSpriteTexture(TextureType.LADY).texture.height,
+      this.getSpriteTexture(TextureType.LADY).texture.width,
+      this.getSpriteData(TextureType.LADY).angles,
+      TextureType.COLUMN,
+      this.getSpriteTexture(TextureType.COLUMN).texture.height,
+      this.getSpriteTexture(TextureType.COLUMN).texture.width,
+      this.getSpriteData(TextureType.COLUMN).angles,
     ]);
   }
 
-  // TODO: map in rust?
-  mapAngleToValue = (angle: number) => {
-    let index = Math.round(angle / 45); // Default to 1 if the result is 0
-    if (index === 8) {
-      index = 0;
-    }
-    // Return the index of the closest midpoint
-    return index;
-  };
-
   public getSpriteTexture = (
-    spriteType: SpriteType,
+    spriteType: TextureType,
     angleVal: number = 0
   ): { texture: Bitmap } => {
     let texture: Bitmap;
 
     switch (spriteType) {
-      case SpriteType.LADY:
+      case TextureType.WALL:
+        texture = this.wallTexture;
+        break;
+      case TextureType.CEILING:
+        texture = this.ceilingTexture;
+        break;
+      case TextureType.FLOOR:
+        texture = this.floorTexture;
+        break;
+      case TextureType.ROAD:
+        texture = this.roadTexture;
+        break;
+      case TextureType.DOOR:
+        texture = this.doorTexture;
+        break;
+      case TextureType.LADY:
         texture = this.ladyTextures[angleVal];
         break;
-      case SpriteType.TREE_CONE:
+      case TextureType.TREE_CONE:
         texture = this.treeTexture;
         break;
-      case SpriteType.TREE_VASE:
+      case TextureType.TREE_VASE:
         texture = this.treeTextureVase;
         break;
-      case SpriteType.TREE_COLUMNAR:
+      case TextureType.TREE_COLUMNAR:
         texture = this.treeTextureColumnar;
         break;
-      case SpriteType.PILLAR:
+      case TextureType.PILLAR:
         texture = this.pillarTexture;
         break;
-      case SpriteType.BUSH1:
+      case TextureType.BUSH1:
         texture = this.bush1Texture;
         break;
-      case SpriteType.COLUMN:
+      case TextureType.COLUMN:
         texture = this.windowTexture;
         break;
       default:
@@ -234,24 +238,30 @@ export class GridMap {
     return { texture };
   };
 
-  public getSpriteData = (spriteType: SpriteType): { angles: number } => {
+  public getSpriteData = (spriteType: TextureType): { angles: number } => {
     let angles = 1;
 
     switch (spriteType) {
-      case SpriteType.LADY:
+      case TextureType.WALL:
+      case TextureType.CEILING:
+      case TextureType.FLOOR:
+      case TextureType.ROAD:
+      case TextureType.DOOR:
+        break;
+      case TextureType.LADY:
         angles = 8;
         break;
-      case SpriteType.TREE_CONE:
+      case TextureType.TREE_CONE:
         break;
-      case SpriteType.TREE_VASE:
+      case TextureType.TREE_VASE:
         break;
-      case SpriteType.TREE_COLUMNAR:
+      case TextureType.TREE_COLUMNAR:
         break;
-      case SpriteType.PILLAR:
+      case TextureType.PILLAR:
         break;
-      case SpriteType.BUSH1:
+      case TextureType.BUSH1:
         break;
-      case SpriteType.COLUMN:
+      case TextureType.COLUMN:
         break;
       default:
         console.log("Sprite texture not found for type " + spriteType);

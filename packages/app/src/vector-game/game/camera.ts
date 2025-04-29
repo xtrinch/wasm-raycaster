@@ -13,13 +13,13 @@ import {
 import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
-import { SpriteMap, SpriteType } from "./spriteMap";
+import { SpriteMap, TextureType } from "./spriteMap";
 
 export interface Sprite {
   x: number;
   y: number;
   angle: number;
-  type: SpriteType;
+  type: TextureType;
 }
 
 export class Camera {
@@ -44,7 +44,6 @@ export class Camera {
   public roadTextureRef: WasmUint8Array;
   public doorTextureRef: WasmUint8Array;
   public treeTextureRef: WasmUint8Array;
-  public windowTextureRef: WasmUint8Array;
   public wallTextureRef: WasmUint8Array;
   public visibleSpritesRef: WasmFloat32Array;
   public spritePartsRef: WasmInt32Array;
@@ -71,13 +70,6 @@ export class Camera {
     this.map = map;
     this.originalCanvas = canvas;
 
-    this.initializeTexture(this.map.windowTexture, "windowTextureRef");
-    this.initializeTexture(this.map.floorTexture, "floorTextureRef");
-    this.initializeTexture(this.map.ceilingTexture, "ceilingTextureRef");
-    this.initializeTexture(this.map.roadTexture, "roadTextureRef");
-    this.initializeTexture(this.map.doorTexture, "doorTextureRef");
-    this.initializeTexture(this.map.wallTexture, "wallTextureRef");
-    // pre-scale background image to fit the browser window
     this.initializeTexture(this.map.skybox, "skyTextureRef", () => {
       this.backgroundRef = new BackgroundImageWasm(
         this.skyTextureRef.ptr,
@@ -111,7 +103,7 @@ export class Camera {
     this.zBufferRef = new WasmFloat32Array(this.width);
 
     this.spritesTextureRef = new WasmInt32Array(
-      Object.values(SpriteType).length * 4
+      Object.values(TextureType).length * 4
     );
     this.spritesTextureRef.set(map.getSpriteTextureArray());
     this.mapRef = new WasmUInt64Array(map.size * map.size);
@@ -132,7 +124,7 @@ export class Camera {
   }
 
   populateSpriteTextureHashMap() {
-    Object.values(SpriteType)
+    Object.values(TextureType)
       .filter(isNumber as any)
       .map((val: number) => {
         let { angles } = this.map.getSpriteData(val);
@@ -194,20 +186,12 @@ export class Camera {
 
   render(player: Player, map: GridMap, spriteMap: SpriteMap) {
     if (
-      !this.ceilingTextureRef ||
-      !this.floorTextureRef ||
-      !this.roadTextureRef ||
-      !this.doorTextureRef ||
       !this.skyTextureRef ||
-      !this.backgroundRef
+      !this.backgroundRef ||
+      this.spriteTextureHashMap.count_cells() < 19 // including angles
     ) {
       return;
     }
-
-    // this.drawSky(player, map.light);
-    // this.drawCeilingFloorRaycastWasm(player, map);
-    // const foundSpritesCount = this.drawWallsRaycastWasm(player, map, spriteMap);
-    // this.drawSpritesWasm(player, map, foundSpritesCount);
 
     render(
       player.position.x,
@@ -234,22 +218,7 @@ export class Camera {
       this.visibleSpritesRef.ptr,
       spriteMap.size,
       this.spritesTextureRef.ptr,
-      Object.values(SpriteType).length * 4,
-      this.wallTextureRef.ptr,
-      map.wallTexture.width,
-      map.wallTexture.height,
-      this.doorTextureRef.ptr,
-      map.doorTexture.width,
-      map.doorTexture.height,
-      this.roadTextureRef.ptr,
-      map.roadTexture.width,
-      map.roadTexture.height,
-      this.floorTextureRef.ptr,
-      map.floorTexture.width,
-      map.floorTexture.height,
-      this.ceilingTextureRef.ptr,
-      map.ceilingTexture.width,
-      map.ceilingTexture.height
+      Object.values(TextureType).length * 4
     );
 
     this.drawWeapon(player.weapon, player.paces);
@@ -369,7 +338,7 @@ export class Camera {
   //     this.visibleSpritesRef.ptr,
   //     this.zBufferRef.ptr,
   //     this.spritesTextureRef.ptr,
-  //     Object.values(SpriteType).length * 4,
+  //     Object.values(TextureType).length * 4,
   //     this.lightRange,
   //     map.light,
   //     foundSpritesCount,

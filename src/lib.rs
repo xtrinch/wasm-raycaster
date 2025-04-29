@@ -56,21 +56,6 @@ pub fn render(
     all_sprites_count: usize,
     sprites_texture_array: *mut i32,
     sprites_texture_array_length: usize,
-    wall_texture: *const u8, // TODO: just build a Struct from jS
-    wall_texture_width: i32,
-    wall_texture_height: i32,
-    door_texture: *const u8,
-    door_texture_width: i32,
-    door_texture_height: i32,
-    road_texture: *const u8,
-    road_texture_width: i32,
-    road_texture_height: i32,
-    floor_texture: *const u8,
-    floor_texture_width: i32,
-    floor_texture_height: i32,
-    ceiling_texture: *const u8,
-    ceiling_texture_width: i32,
-    ceiling_texture_height: i32,
 ) {
     let position = Position {
         x,
@@ -90,6 +75,24 @@ pub fn render(
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
+
+    let texture_array =
+        parse_sprite_texture_array(sprites_texture_array, sprites_texture_array_length);
+
+    let (wall_texture_width, wall_texture_height, _) = *texture_array.get(&1).unwrap();
+    let wall_texture = sprites_texture_map.get_map().get(&(1, 0)).unwrap();
+
+    let (ceiling_texture_width, ceiling_texture_height, _) = *texture_array.get(&2).unwrap();
+    let ceiling_texture = sprites_texture_map.get_map().get(&(2, 0)).unwrap();
+
+    let (floor_texture_width, floor_texture_height, _) = *texture_array.get(&3).unwrap();
+    let floor_texture = sprites_texture_map.get_map().get(&(3, 0)).unwrap();
+
+    let (road_texture_width, road_texture_height, _) = *texture_array.get(&4).unwrap();
+    let road_texture = sprites_texture_map.get_map().get(&(4, 0)).unwrap();
+
+    let (door_texture_width, door_texture_height, _) = *texture_array.get(&5).unwrap();
+    let door_texture = sprites_texture_map.get_map().get(&(5, 0)).unwrap();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
@@ -452,7 +455,7 @@ pub fn raycast_column(
                                     local_intersection_coord.y,
                                     0.0,
                                     100.0,
-                                    7 as f32,
+                                    12 as f32, // texture type
                                     column as f32,
                                     local_side as f32,
                                     local_offset,
@@ -586,12 +589,11 @@ pub fn raycast_column(
     )
 }
 
-#[wasm_bindgen]
 pub fn draw_walls_raycast(
     position: &Position,
     img_slice: &mut [u8],
-    wall_texture: *const u8,
-    door_texture: *const u8,
+    wall_texture_array: &Vec<u8>,
+    door_texture_array: &Vec<u8>,
     zbuffer: &mut [f32],
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
@@ -607,19 +609,6 @@ pub fn draw_walls_raycast(
     all_sprites_count: usize,
     sprites_map: &WasmStripeHashMapArray,
 ) -> u32 {
-    let wall_texture_array = unsafe {
-        from_raw_parts(
-            wall_texture,
-            (wall_texture_width * wall_texture_height * 4) as usize,
-        )
-    };
-    let door_texture_array = unsafe {
-        from_raw_parts(
-            door_texture,
-            (door_texture_width * door_texture_height * 4) as usize,
-        )
-    };
-
     let found_sprites = unsafe {
         from_raw_parts_mut(
             found_sprites_array,
@@ -757,13 +746,12 @@ pub fn draw_walls_raycast(
     found_sprites_count
 }
 
-#[wasm_bindgen]
 pub fn draw_ceiling_floor_raycast(
     position: &Position,
     img_slice: &mut [u8],
-    floor_texture: *const u8,
-    ceiling_texture: *const u8,
-    road_texture: *const u8,
+    floor_texture_array: &Vec<u8>,
+    ceiling_texture_array: &Vec<u8>,
+    road_texture_array: &Vec<u8>,
     width: i32,
     height: i32,
     light_range: i32,
@@ -777,25 +765,6 @@ pub fn draw_ceiling_floor_raycast(
     map_data: &[u64],
     map_width: usize,
 ) {
-    let road_texture_array = unsafe {
-        from_raw_parts(
-            road_texture,
-            (road_texture_width * road_texture_height * 4) as usize,
-        )
-    };
-    let ceiling_texture_array = unsafe {
-        from_raw_parts(
-            ceiling_texture,
-            (ceiling_texture_width * ceiling_texture_height * 4) as usize,
-        )
-    };
-    let floor_texture_array = unsafe {
-        from_raw_parts(
-            floor_texture,
-            (floor_texture_width * floor_texture_height * 4) as usize,
-        )
-    };
-
     let ray_dir_x0 = position.dir_x - position.plane_x;
     let ray_dir_y0 = position.dir_y - position.plane_y;
     let ray_dir_x1 = position.dir_x + position.plane_x;
@@ -958,7 +927,6 @@ pub fn translate_coordinate_to_camera(
     }
 }
 
-#[wasm_bindgen]
 pub fn draw_sprites_wasm(
     position: &Position,
     img_slice: &mut [u8],
@@ -1056,14 +1024,13 @@ pub fn draw_sprites_wasm(
             if angles <= angle_index {
                 angle_index = 0;
             }
-            // angle_index = 0;
             let texture_data = sprites_texture_map
                 .get_map()
                 .get(&(sprite.r#type, angle_index))
                 .unwrap();
 
-            // windows
-            if sprite.r#type == 7 {
+            // windows; TODO: to enum
+            if sprite.r#type == 12 {
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[sprite.column as usize] {
                     return None;
