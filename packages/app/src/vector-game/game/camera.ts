@@ -57,8 +57,10 @@ export class Camera {
     this.scale = (this.width + this.height) / 1200;
     this.map = map;
 
+    this.backgroundRef = new BackgroundImageWasm();
+
     this.initializeTexture(this.map.skybox, "skyTextureRef", () => {
-      this.backgroundRef = new BackgroundImageWasm(
+      this.backgroundRef.set(
         this.skyTextureRef.ptr,
         this.map.skybox.width,
         this.map.skybox.height,

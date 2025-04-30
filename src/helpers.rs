@@ -456,14 +456,15 @@ impl BackgroundImageWasm {
 
 #[wasm_bindgen]
 impl BackgroundImageWasm {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
+    #[wasm_bindgen]
+    pub fn set(
+        &mut self,
         bg_img_texture: *const u8,
         texture_width: i32,
         texture_height: i32,
         screen_width: i32,
         screen_height: i32,
-    ) -> BackgroundImageWasm {
+    ) {
         let src = unsafe {
             from_raw_parts(
                 bg_img_texture,
@@ -489,10 +490,21 @@ impl BackgroundImageWasm {
             }
         }
 
+        self.data = data;
+        self.height = screen_height;
+        self.width = sky_width;
+    }
+
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> BackgroundImageWasm {
         BackgroundImageWasm {
-            data,
-            width: sky_width,
-            height: screen_height,
+            data: vec![],
+            width: 0,
+            height: 0,
+        }
+    }
+}
+
         }
     }
 }
