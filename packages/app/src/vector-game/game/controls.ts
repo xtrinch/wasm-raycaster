@@ -34,7 +34,6 @@ export class Controls {
   };
 
   constructor() {
-    // TODO; THROTTLE?
     document.addEventListener("keydown", this.onKey.bind(this), false);
     document.addEventListener("keyup", this.onKey.bind(this), false);
 

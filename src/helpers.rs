@@ -317,7 +317,7 @@ pub struct Position {
     pub plane_x: f32,
     pub plane_y: f32,
     pub pitch: i32,
-    pub z: i32, // TODO: i32?
+    pub z: i32,
     pub plane_y_initial: f32,
 }
 
