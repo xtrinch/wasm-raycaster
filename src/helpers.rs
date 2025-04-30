@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
+pub enum TextureType {
+    WALL = 1,
+    CEILING = 2,
+    FLOOR = 3,
+    ROAD = 4,
+    DOOR = 5,
+    TREE_CONE = 6,
+    PILLAR = 7,
+    BUSH1 = 8,
+    TREE_VASE = 9,
+    TREE_COLUMNAR = 10,
+    LADY = 11,
+    WINDOW = 12,
+}
+
 #[wasm_bindgen]
 pub struct WasmTextureMetaMap {
     map: HashMap<i32, TextureData>,

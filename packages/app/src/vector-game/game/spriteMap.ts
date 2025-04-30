@@ -12,7 +12,7 @@ export enum TextureType {
   TREE_VASE = 9,
   TREE_COLUMNAR = 10,
   LADY = 11,
-  COLUMN = 12,
+  WINDOW = 12,
 }
 
 export class SpriteMap {

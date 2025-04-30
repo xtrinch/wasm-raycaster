@@ -2,8 +2,9 @@
 #![feature(portable_simd)]
 use helpers::{
     fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
-    to_fixed_large, BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TranslationResult,
-    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    to_fixed_large, BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TextureType,
+    TranslationResult, WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE,
+    FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -53,8 +54,6 @@ pub fn render(
     sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
-    visible_sprites_array: *mut f32,
-    all_sprites_count: usize,
 ) {
     let position = Position {
         x,
@@ -75,22 +74,52 @@ pub fn render(
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
 
-    let wall_texture_meta = sprites_texture_meta_map.get_map().get(&1).unwrap();
-    let wall_texture = sprites_texture_map.get_map().get(&(1, 0)).unwrap();
+    let wall_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::WALL as i32))
+        .unwrap();
+    let wall_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::WALL as i32, 0))
+        .unwrap();
 
-    let ceiling_texture_meta = sprites_texture_meta_map.get_map().get(&2).unwrap();
-    let ceiling_texture = sprites_texture_map.get_map().get(&(2, 0)).unwrap();
+    let ceiling_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::CEILING as i32))
+        .unwrap();
+    let ceiling_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::CEILING as i32, 0))
+        .unwrap();
 
-    let floor_texture_meta = sprites_texture_meta_map.get_map().get(&3).unwrap();
-    let floor_texture = sprites_texture_map.get_map().get(&(3, 0)).unwrap();
+    let floor_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::FLOOR as i32))
+        .unwrap();
+    let floor_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::FLOOR as i32, 0))
+        .unwrap();
 
-    let road_texture_meta = sprites_texture_meta_map.get_map().get(&4).unwrap();
-    let road_texture = sprites_texture_map.get_map().get(&(4, 0)).unwrap();
+    let road_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::ROAD as i32))
+        .unwrap();
+    let road_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::ROAD as i32, 0))
+        .unwrap();
 
-    let door_texture_meta = sprites_texture_meta_map.get_map().get(&5).unwrap();
-    let door_texture = sprites_texture_map.get_map().get(&(5, 0)).unwrap();
+    let door_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::DOOR as i32))
+        .unwrap();
+    let door_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::DOOR as i32, 0))
+        .unwrap();
 
-    let mut found_sprites: Vec<Sprite> = vec![];
+    let mut found_sprites: SmallVec<[Sprite; 128]> = vec![].into();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
@@ -602,10 +631,8 @@ pub fn draw_walls_raycast(
     door_texture_width: i32,
     door_texture_height: i32,
     sprites_map: &WasmStripePerCoordMap,
-    found_sprites: &mut Vec<Sprite>,
-) -> u32 {
-    let mut found_sprites_count = 0;
-
+    found_sprites: &mut SmallVec<[Sprite; 128]>,
+) {
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
@@ -660,8 +687,6 @@ pub fn draw_walls_raycast(
                     y_fixed: 0,
                 };
                 found_sprites.push(sprite);
-
-                found_sprites_count += 1;
             }
         }
     }
@@ -692,9 +717,6 @@ pub fn draw_walls_raycast(
         };
         found_sprites.push(sprite);
     });
-
-    // Update count afterward
-    found_sprites_count += all_window_sprites.len() as u32;
 
     zbuffer
         .iter_mut()
@@ -748,8 +770,6 @@ pub fn draw_walls_raycast(
                 row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
             }
         });
-
-    found_sprites_count
 }
 
 pub fn draw_ceiling_floor_raycast(
@@ -947,7 +967,7 @@ pub fn draw_sprites_wasm(
     map_light: i32,
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
-    found_sprites: &mut Vec<Sprite>,
+    found_sprites: &mut SmallVec<[Sprite; 128]>,
 ) {
     let px = to_fixed_large(position.x);
     let py = to_fixed_large(position.y);
@@ -1010,8 +1030,7 @@ pub fn draw_sprites_wasm(
                 .get(&(sprite.r#type, angle_index))
                 .unwrap();
 
-            // windows; TODO: to enum
-            if sprite.r#type == 12 {
+            if sprite.r#type == TextureType::WINDOW as i32 {
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[sprite.column as usize] {
                     return None;

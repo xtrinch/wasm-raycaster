@@ -179,10 +179,10 @@ export class GridMap {
       this.getSpriteTexture(TextureType.LADY).texture.height,
       this.getSpriteTexture(TextureType.LADY).texture.width,
       this.getSpriteData(TextureType.LADY).angles,
-      TextureType.COLUMN,
-      this.getSpriteTexture(TextureType.COLUMN).texture.height,
-      this.getSpriteTexture(TextureType.COLUMN).texture.width,
-      this.getSpriteData(TextureType.COLUMN).angles,
+      TextureType.WINDOW,
+      this.getSpriteTexture(TextureType.WINDOW).texture.height,
+      this.getSpriteTexture(TextureType.WINDOW).texture.width,
+      this.getSpriteData(TextureType.WINDOW).angles,
     ]);
   }
 
@@ -226,7 +226,7 @@ export class GridMap {
       case TextureType.BUSH1:
         texture = this.bush1Texture;
         break;
-      case TextureType.COLUMN:
+      case TextureType.WINDOW:
         texture = this.windowTexture;
         break;
       default:
@@ -261,7 +261,7 @@ export class GridMap {
         break;
       case TextureType.BUSH1:
         break;
-      case TextureType.COLUMN:
+      case TextureType.WINDOW:
         break;
       default:
         console.log("Sprite texture not found for type " + spriteType);

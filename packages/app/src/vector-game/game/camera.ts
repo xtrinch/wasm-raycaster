@@ -232,9 +232,7 @@ export class Camera {
       this.backgroundRef,
       this.spriteHashMap,
       this.spriteTextureHashMap,
-      this.spriteTextureMetaHashMap,
-      this.visibleSpritesRef.ptr,
-      spriteMap.size
+      this.spriteTextureMetaHashMap
     );
 
     this.drawWeapon(player.weapon, player.paces);
