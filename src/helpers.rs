@@ -333,6 +333,8 @@ pub struct Coords {
 pub struct Sprite {
     pub x: f32,
     pub y: f32,
+    pub dx: f32,
+    pub dy: f32,
     pub x_fixed: i32,
     pub y_fixed: i32,
     pub angle: i32,

@@ -551,7 +551,7 @@ pub fn raycast_column(
 
     perp_wall_dist = perp_wall_dist * position.plane_y_initial;
     // scale the height according to width so they're square!
-    let line_height = (width as f32 / 2.0 / perp_wall_dist) as i32;
+    let line_height = ((width / 2) as f32 / perp_wall_dist) as i32;
 
     let middle_y = height / 2
         + position.pitch
@@ -684,6 +684,8 @@ pub fn draw_walls_raycast(
                     distance_fixed: 0,
                     x_fixed: 0, // TODO: iz this needed?
                     y_fixed: 0,
+                    dx: 0.,
+                    dy: 0.,
                 };
                 found_sprites.push(sprite);
             }
@@ -713,6 +715,8 @@ pub fn draw_walls_raycast(
             distance_fixed: 0,
             x_fixed: 0,
             y_fixed: 0,
+            dx: 0.,
+            dy: 0.,
         };
         found_sprites.push(sprite);
     });
@@ -911,8 +915,8 @@ pub fn draw_ceiling_floor_raycast(
 
 pub fn translate_coordinate_to_camera(
     position: &Position,
-    point_x: f32,
-    point_y: f32,
+    point_dx: f32, // position relative to camera
+    point_dy: f32,
     height_multiplier: f32,
     width: i32,
     height: i32,
@@ -922,21 +926,17 @@ pub fn translate_coordinate_to_camera(
     let half_height = height / 2;
     let half_width = width / 2;
 
-    // translate x, y position to relative to camera
-    let sprite_x = point_x - position.x;
-    let sprite_y = point_y - position.y;
-
     // inverse camera matrix calculation
-    let transform_x = inv_det * (position.dir_y * sprite_x - position.dir_x * sprite_y)
+    let transform_x = inv_det * (position.dir_y * point_dx - position.dir_x * point_dy)
         / position.plane_y_initial;
-    let transform_y = (inv_det * (-position.plane_y * sprite_x + position.plane_x * sprite_y))
+    let transform_y = (inv_det * (-position.plane_y * point_dx + position.plane_x * point_dy))
         / position.plane_y_initial;
 
     let screen_x = ((half_width as f32) * (1.0 + (transform_x / transform_y))) as i32;
 
     // to control the pitch/jump
     let v_move_screen =
-        (position.pitch as f32 + (position.z as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
+        position.pitch + ((position.z as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
 
     let y_height_before_adjustment = (half_width as f32 / (transform_y)) as i32;
     // since each sprite has a certain height (e.g. 1.1 of the 1 normal height), we multiply by that
@@ -968,13 +968,15 @@ pub fn draw_sprites_wasm(
     texture_array: &WasmTextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 128]>,
 ) {
-    let px = to_fixed_large(position.x);
-    let py = to_fixed_large(position.y);
-
     found_sprites.iter_mut().for_each(|sprite| {
-        let x_fixed = to_fixed_large(sprite.x);
-        let y_fixed = to_fixed_large(sprite.y);
-        let distance_fixed = (px - x_fixed).pow(2) + (py - y_fixed).pow(2);
+        let dx = sprite.x - position.x;
+        let dy = sprite.y - position.y;
+        sprite.dx = dx;
+        sprite.dy = dy;
+
+        let x_fixed = to_fixed_large(sprite.dx);
+        let y_fixed = to_fixed_large(sprite.dy);
+        let distance_fixed = (x_fixed).pow(2) + (y_fixed).pow(2);
 
         sprite.distance_fixed = distance_fixed;
     });
@@ -995,8 +997,8 @@ pub fn draw_sprites_wasm(
         .filter_map(|sprite| {
             let projection = translate_coordinate_to_camera(
                 position,
-                sprite.x,
-                sprite.y,
+                sprite.dx,
+                sprite.dy,
                 sprite.height as f32 / 100.0,
                 width,
                 height,
@@ -1009,27 +1011,14 @@ pub fn draw_sprites_wasm(
             // ensure sprites are always at least a little bit visible - alpha 1 is all black
             let alpha_i = (FIXED_ONE - to_fixed(alpha)).clamp(FIXED_ONE / 8, FIXED_ONE) as i32;
 
-            let dx = position.x - sprite.x;
-            let dy = position.y - sprite.y;
-            let angle = atan2(dx as f64, dy as f64);
-
-            // will return from -180 to 180
-            let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
-
-            let mut angle_index = (angle_i) / 45; // Default to 1 if the result is 0
-
             let texture_meta = texture_array.get(sprite.r#type).unwrap();
 
-            // if there's no textures for other angles
-            if texture_meta.angles as i32 <= angle_index {
-                angle_index = 0;
-            }
-            let texture_data = sprites_texture_map
-                .get_map()
-                .get(&(sprite.r#type, angle_index))
-                .unwrap();
-
             if sprite.r#type == TextureType::WINDOW as i32 {
+                let texture_data = sprites_texture_map
+                    .get_map()
+                    .get(&(sprite.r#type, 0))
+                    .unwrap();
+
                 // we'll only run into this when we have a window and a wall in the same coord, but we need to check nevertheless
                 if projection.distance > zbuffer[sprite.column as usize] {
                     return None;
@@ -1063,6 +1052,22 @@ pub fn draw_sprites_wasm(
                 });
             }
 
+            let angle = atan2(sprite.dx as f64, sprite.dy as f64);
+
+            // will return from -180 to 180
+            let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
+
+            let mut angle_index = (angle_i) / 45; // Default to 1 if the result is 0
+
+            // if there's no textures for other angles
+            if texture_meta.angles as i32 <= angle_index {
+                angle_index = 0;
+            }
+            let texture_data = sprites_texture_map
+                .get_map()
+                .get(&(sprite.r#type, angle_index))
+                .unwrap();
+
             if projection.distance < 0.0 {
                 return None;
             }
@@ -1094,8 +1099,7 @@ pub fn draw_sprites_wasm(
 
             let to_remove_texture = projection.screen_x - (sprite_width / 2);
             let tex_x1 = ((draw_start_x - to_remove_texture) * texture_meta.width) / sprite_width;
-            let tex_x2 = ((draw_end_x - to_remove_texture) * texture_meta.width) / sprite_width;
-            let tex_width = tex_x2 - tex_x1;
+            let tex_width = ((draw_end_x - draw_start_x) * texture_meta.width) / sprite_width;
 
             Some(SpritePart {
                 sprite_type: sprite.r#type,
