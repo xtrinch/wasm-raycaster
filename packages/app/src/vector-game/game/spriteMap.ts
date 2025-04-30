@@ -1,19 +1,5 @@
 import { makeAutoObservable } from "mobx";
-
-export enum TextureType {
-  WALL = 1,
-  CEILING = 2,
-  FLOOR = 3,
-  ROAD = 4,
-  DOOR = 5,
-  TREE_CONE = 6,
-  PILLAR = 7,
-  BUSH1 = 8,
-  TREE_VASE = 9,
-  TREE_COLUMNAR = 10,
-  LADY = 11,
-  WINDOW = 12,
-}
+import { TextureType } from "../../../wasm";
 
 export class SpriteMap {
   public size: number;

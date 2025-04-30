@@ -3,6 +3,7 @@ import { makeAutoObservable } from "mobx";
 import {
   BackgroundImageWasm,
   render,
+  TextureType,
   WasmFloat32Array,
   WasmInt32Array,
   WasmStripePerCoordMap,
@@ -14,7 +15,7 @@ import {
 import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
-import { SpriteMap, TextureType } from "./spriteMap";
+import { SpriteMap } from "./spriteMap";
 
 export interface Sprite {
   x: number;

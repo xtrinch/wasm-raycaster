@@ -1,10 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    fixed_mul, get_bits, get_grid_value, has_bit_set, parse_sprite_texture_array, to_fixed,
-    to_fixed_large, BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TextureType,
-    TranslationResult, WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE,
-    FIXED_SHIFT,
+    fixed_mul, get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_large,
+    BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TextureType, TranslationResult,
+    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;

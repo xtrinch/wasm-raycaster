@@ -20,8 +20,8 @@ import lady6Texture from "../../assets/woman/woman6.png";
 import lady7Texture from "../../assets/woman/woman7.png";
 import lady8Texture from "../../assets/woman/woman8.png";
 
+import { TextureType } from "../../../wasm";
 import { Bitmap } from "./bitmap";
-import { TextureType } from "./spriteMap";
 
 export interface Point {
   x: number; // x coordinate on the grid

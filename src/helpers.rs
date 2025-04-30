@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
+#[wasm_bindgen]
 pub enum TextureType {
     WALL = 1,
     CEILING = 2,
