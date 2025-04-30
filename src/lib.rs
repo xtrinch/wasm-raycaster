@@ -990,9 +990,9 @@ pub fn draw_sprites_wasm(
     let aspect_ratio = height as f32 / width as f32;
     let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
 
-    let sprite_parts_collected: Vec<Option<SpritePart>> = found_sprites
+    let sprite_parts_collected: Vec<SpritePart> = found_sprites
         .into_par_iter()
-        .map(|sprite| {
+        .filter_map(|sprite| {
             let projection = translate_coordinate_to_camera(
                 position,
                 sprite.x,
@@ -1114,15 +1114,12 @@ pub fn draw_sprites_wasm(
         })
         .collect();
 
-    let sprite_parts_flattened: Vec<SpritePart> =
-        sprite_parts_collected.into_iter().flatten().collect();
-
     img_slice
         .par_chunks_mut(4 * width as usize) // One row at a time
         .enumerate()
         .for_each(|(y, row)| {
             let y = y as i32;
-            for sprite in sprite_parts_flattened.iter() {
+            for sprite in sprite_parts_collected.iter() {
                 if y < sprite.screen_y_ceiling || y >= sprite.screen_y_ceiling + sprite.height {
                     continue;
                 }
