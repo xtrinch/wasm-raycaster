@@ -19,7 +19,6 @@ mod helpers;
 mod line_intersection;
 use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
-use std::collections::HashSet;
 use std::f32::consts::PI;
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
@@ -28,7 +27,6 @@ use web_sys::console;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
-// TODO: pre-initialize most of this data except position
 #[wasm_bindgen]
 pub fn render(
     x: f32,

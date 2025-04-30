@@ -504,7 +504,3 @@ impl BackgroundImageWasm {
         }
     }
 }
-
-        }
-    }
-}
