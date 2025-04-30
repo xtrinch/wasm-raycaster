@@ -112,7 +112,7 @@ pub fn render(
         map_data,
         map_width,
     );
-    let found_sprites_count = draw_walls_raycast(
+    draw_walls_raycast(
         &position,
         img_slice,
         wall_texture,
@@ -128,23 +128,20 @@ pub fn render(
         wall_texture_meta.height,
         door_texture_meta.width,
         door_texture_meta.height,
-        visible_sprites_array,
-        all_sprites_count,
         sprites_map,
-        &found_sprites,
+        &mut found_sprites,
     );
     draw_sprites_wasm(
         &position,
         img_slice,
         width,
         height,
-        visible_sprites_array,
         zbuffer,
         light_range,
         map_light,
-        found_sprites_count,
         sprites_texture_map,
         sprites_texture_meta_map,
+        &mut found_sprites,
     );
 }
 
@@ -604,18 +601,9 @@ pub fn draw_walls_raycast(
     wall_texture_height: i32,
     door_texture_width: i32,
     door_texture_height: i32,
-    found_sprites_array: *mut f32,
-    all_sprites_count: usize,
     sprites_map: &WasmStripePerCoordMap,
-    found_sprites: &Vec<Sprite>,
+    found_sprites: &mut Vec<Sprite>,
 ) -> u32 {
-    let found_sprites = unsafe {
-        from_raw_parts_mut(
-            found_sprites_array,
-            (all_sprites_count + (2 * width) as usize) * 10,
-        )
-    };
-
     let mut found_sprites_count = 0;
 
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>)> = (0..width)
@@ -653,9 +641,26 @@ pub fn draw_walls_raycast(
 
         if let Some(sprite_list) = sprites_map.get_map().get(&(map_x, map_y)) {
             for &sprite in sprite_list {
-                let index = (found_sprites_count as usize) * 10; // Convert u32 to usize
+                let sprite_type = sprite[4] as i32;
+                let x = sprite[0];
+                let y = sprite[1];
+                let sprite = Sprite {
+                    x,
+                    y,
+                    angle: sprite[2] as i32,
+                    height: sprite[3] as i32,
+                    r#type: sprite_type,
+                    column: 0,
+                    side: 0,
+                    offset: 0.,
+                    width: 0.,
+                    distance: 0.,
+                    distance_fixed: 0,
+                    x_fixed: 0, // TODO: iz this needed?
+                    y_fixed: 0,
+                };
+                found_sprites.push(sprite);
 
-                (found_sprites)[index..index + 5].copy_from_slice(&sprite);
                 found_sprites_count += 1;
             }
         }
@@ -666,17 +671,27 @@ pub fn draw_walls_raycast(
         .flat_map(|(_, _, _, window_sprites)| window_sprites.clone())
         .collect();
 
-    // Compute start position and length
-    let start_index = found_sprites_count as usize * 10;
-    let total_len = all_window_sprites.len() * 10;
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            all_window_sprites.as_ptr() as *const f32,
-            found_sprites.as_mut_ptr().add(start_index),
-            total_len,
-        );
-    }
+    all_window_sprites.iter().for_each(|chunk| {
+        let sprite_type = chunk[4] as i32;
+        let x = chunk[0];
+        let y = chunk[1];
+        let sprite = Sprite {
+            x,
+            y,
+            angle: chunk[2] as i32,
+            height: chunk[3] as i32,
+            r#type: sprite_type,
+            column: chunk[5] as u32,
+            side: chunk[6] as u8,
+            offset: chunk[7],
+            width: chunk[8],
+            distance: chunk[9],
+            distance_fixed: 0,
+            x_fixed: 0,
+            y_fixed: 0,
+        };
+        found_sprites.push(sprite);
+    });
 
     // Update count afterward
     found_sprites_count += all_window_sprites.len() as u32;
@@ -927,50 +942,25 @@ pub fn draw_sprites_wasm(
     img_slice: &mut [u8],
     width: i32,
     height: i32,
-    visible_sprites_array: *mut f32,
     zbuffer: &mut [f32],
     light_range: i32,
     map_light: i32,
-    found_sprites_count: u32,
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
+    found_sprites: &mut Vec<Sprite>,
 ) {
-    let sprite_data =
-        unsafe { from_raw_parts(visible_sprites_array, found_sprites_count as usize * 10) };
-
     let px = to_fixed_large(position.x);
     let py = to_fixed_large(position.y);
 
-    // copy them since we need to sort them anyway
-    let mut sprites: Vec<Sprite> = sprite_data
-        .par_chunks(10)
-        .map(|chunk| {
-            let sprite_type = chunk[4] as i32;
-            let x = chunk[0];
-            let x_fixed = to_fixed_large(x);
-            let y = chunk[1];
-            let y_fixed = to_fixed_large(y);
-            let distance_fixed = (px - x_fixed).pow(2) + (py - y_fixed).pow(2);
-            Sprite {
-                x,
-                y,
-                angle: chunk[2] as i32,
-                height: chunk[3] as i32,
-                r#type: sprite_type,
-                column: chunk[5] as u32,
-                side: chunk[6] as u8,
-                offset: chunk[7],
-                width: chunk[8],
-                distance: chunk[9],
-                distance_fixed,
-                x_fixed,
-                y_fixed,
-            }
-        })
-        .collect();
+    found_sprites.iter_mut().for_each(|sprite| {
+        let x_fixed = to_fixed_large(sprite.x);
+        let y_fixed = to_fixed_large(sprite.y);
+        let distance_fixed = (px - x_fixed).pow(2) + (py - y_fixed).pow(2);
 
+        sprite.distance_fixed = distance_fixed;
+    });
     // since we should draw those in the distance first, we sort them
-    sprites.sort_unstable_by(|a, b| {
+    found_sprites.sort_unstable_by(|a, b| {
         let da = a.distance_fixed;
         let db = b.distance_fixed;
 
@@ -981,7 +971,7 @@ pub fn draw_sprites_wasm(
     let aspect_ratio = height as f32 / width as f32;
     let inv_det = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs();
 
-    let sprite_parts_collected: Vec<Option<SpritePart>> = sprites
+    let sprite_parts_collected: Vec<Option<SpritePart>> = found_sprites
         .into_par_iter()
         .map(|sprite| {
             let projection = translate_coordinate_to_camera(
