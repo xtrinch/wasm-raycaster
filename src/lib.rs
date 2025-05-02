@@ -649,21 +649,19 @@ pub fn draw_walls_raycast(
 
     uniqued_met_coords.sort_unstable();
     uniqued_met_coords.dedup();
+    let sprites_map = sprites_map.get_map();
 
     for (x, y) in uniqued_met_coords {
         let (map_x, map_y) = (x as i32, y as i32);
 
-        if let Some(sprite_list) = sprites_map.get_map().get(&(map_x, map_y)) {
-            for &sprite in sprite_list {
-                let sprite_type = sprite[4] as i32;
-                let x = sprite[0];
-                let y = sprite[1];
+        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
+            for &[x, y, angle, height, sprite_type] in sprite_list {
                 let sprite = Sprite {
                     x,
                     y,
-                    angle: sprite[2] as i32,
-                    height: sprite[3] as i32,
-                    r#type: sprite_type,
+                    angle: angle as i32,
+                    height: height as i32,
+                    r#type: sprite_type as i32,
                     column: 0,
                     side: 0,
                     offset: 0.,
