@@ -251,8 +251,7 @@ pub fn raycast_column(
         if num_walls > 0 {
             hit_type = 1 as i8;
 
-            let mut coord_delta_dist_x = MAX;
-            let mut coord_delta_dist_y = MAX;
+            let mut distance_multiplier = 0.0; // how much to move back/forward the distance due to internal offsets
             let mut distance = MAX;
 
             // we support two lines per coordinate
@@ -299,8 +298,7 @@ pub fn raycast_column(
                     _ => (),
                 };
 
-                let mut local_delta_dist_x = 0.0;
-                let mut local_delta_dist_y = 0.0;
+                let mut local_distance_multiplier = 0.0;
 
                 // from east or west side
                 // offset is defined from the east or north
@@ -399,9 +397,7 @@ pub fn raycast_column(
                     local_hit = true;
 
                     // move it back for the amount it should move back (assign to both even though only 1 will be used, x for east/west and y for north/south)
-                    let amount_to_move_back = 1.0 - (distance_offset);
-                    local_delta_dist_x += delta_dist_x * amount_to_move_back;
-                    local_delta_dist_y += delta_dist_y * amount_to_move_back;
+                    local_distance_multiplier = 1.0 - (distance_offset);
 
                     local_side = sides[0];
 
@@ -434,17 +430,12 @@ pub fn raycast_column(
 
                         if ray_dirs[1] < 0.0 {
                             // move it back for the amount it should move back due to depth
+                            // && move it forward for the amount it should move forward due to secondary offset
                             // if we're looking at it from the shortened side
-                            local_delta_dist_y += delta_dist_y * (1.0 - depth);
-                            local_delta_dist_x += delta_dist_x * (1.0 - depth);
-
-                            // move it forward for the amount it should move forward due to secondary offset
-                            local_delta_dist_y -= delta_dist_y * (offset_secondary);
-                            local_delta_dist_x -= delta_dist_x * (offset_secondary);
+                            local_distance_multiplier = 1.0 - depth - offset_secondary;
                         } else {
                             // move it back for the amount it should move back due to secondary offset
-                            local_delta_dist_y += delta_dist_y * (offset_secondary);
-                            local_delta_dist_x += delta_dist_x * (offset_secondary);
+                            local_distance_multiplier = offset_secondary;
                         }
                     }
                 }
@@ -456,12 +447,11 @@ pub fn raycast_column(
                         // we'll only use this data if we're stopping at a window or it's not a window
                         if !is_window || stop_at_window {
                             distance = local_distance;
-                            coord_delta_dist_x = local_delta_dist_x;
-                            coord_delta_dist_y = local_delta_dist_y;
                             side = local_side;
                             wall_width = local_width;
                             wall_offset = local_offset;
                             hit = true;
+                            distance_multiplier = local_distance_multiplier;
                         }
                         // has door bit set
                         if is_door {
@@ -493,8 +483,8 @@ pub fn raycast_column(
                 }
             }
             if hit {
-                side_dist_x += coord_delta_dist_x;
-                side_dist_y += coord_delta_dist_y;
+                side_dist_x += delta_dist_x * distance_multiplier;
+                side_dist_y += delta_dist_y * distance_multiplier;
             }
         }
 
