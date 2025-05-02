@@ -683,29 +683,28 @@ pub fn draw_walls_raycast(
         .flat_map(|(_, _, _, window_sprites)| window_sprites.clone())
         .collect();
 
-    all_window_sprites.iter().for_each(|chunk| {
-        let sprite_type = chunk[4] as i32;
-        let x = chunk[0];
-        let y = chunk[1];
-        let sprite = Sprite {
-            x,
-            y,
-            angle: chunk[2] as i32,
-            height: chunk[3] as i32,
-            r#type: sprite_type,
-            column: chunk[5] as u32,
-            side: chunk[6] as u8,
-            offset: chunk[7],
-            width: chunk[8],
-            distance: chunk[9],
-            distance_fixed: 0,
-            x_fixed: 0,
-            y_fixed: 0,
-            dx: 0.,
-            dy: 0.,
-        };
-        found_sprites.push(sprite);
-    });
+    all_window_sprites.iter().for_each(
+        |&[x, y, angle, height, sprite_type, column, side, offset, width, distance]| {
+            let sprite = Sprite {
+                x,
+                y,
+                angle: angle as i32,
+                height: height as i32,
+                r#type: sprite_type as i32,
+                column: column as u32,
+                side: side as u8,
+                offset,
+                width,
+                distance,
+                distance_fixed: 0,
+                x_fixed: 0,
+                y_fixed: 0,
+                dx: 0.,
+                dy: 0.,
+            };
+            found_sprites.push(sprite);
+        },
+    );
 
     zbuffer
         .iter_mut()
