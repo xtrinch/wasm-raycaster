@@ -19,6 +19,7 @@ mod helpers;
 mod line_intersection;
 use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
+use std::collections::HashSet;
 use std::f32::consts::PI;
 use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
@@ -642,17 +643,15 @@ pub fn draw_walls_raycast(
         })
         .collect();
 
-    let mut uniqued_met_coords: Vec<(i32, i32)> = data
+    let uniqued_met_coords: HashSet<(i32, i32)> = data
         .iter()
-        .flat_map(|(_, _, met_coords, _)| met_coords.clone()) // Make sure met_coords are owned
+        .flat_map(|(_, _, met_coords, _)| met_coords.iter().copied())
         .collect();
 
-    uniqued_met_coords.sort_unstable();
-    uniqued_met_coords.dedup();
     let sprites_map = sprites_map.get_map();
 
-    for (x, y) in uniqued_met_coords {
-        let (map_x, map_y) = (x as i32, y as i32);
+    for (x, y) in &uniqued_met_coords {
+        let (map_x, map_y) = (*x as i32, *y as i32);
 
         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
             for &[x, y, angle, height, sprite_type] in sprite_list {
@@ -678,14 +677,13 @@ pub fn draw_walls_raycast(
         }
     }
 
-    let all_window_sprites: Vec<[f32; 10]> = data
-        .iter()
-        .flat_map(|(_, _, _, window_sprites)| window_sprites.clone())
-        .collect();
+    for (idx, (perp_wall_dist, _, _, window_sprites)) in data.iter().enumerate() {
+        zbuffer[idx] = *perp_wall_dist;
 
-    all_window_sprites.iter().for_each(
-        |&[x, y, angle, height, sprite_type, column, side, offset, width, distance]| {
-            let sprite = Sprite {
+        for &[x, y, angle, height, sprite_type, column, side, offset, width, distance] in
+            window_sprites
+        {
+            found_sprites.push(Sprite {
                 x,
                 y,
                 angle: angle as i32,
@@ -701,17 +699,9 @@ pub fn draw_walls_raycast(
                 y_fixed: 0,
                 dx: 0.,
                 dy: 0.,
-            };
-            found_sprites.push(sprite);
-        },
-    );
-
-    zbuffer
-        .iter_mut()
-        .zip(data.iter())
-        .for_each(|(zb, (perp_wall_dist, _, _, _))| {
-            *zb = *perp_wall_dist;
-        });
+            });
+        }
+    }
 
     let door_texture_data = Texture {
         data: door_texture_array,
