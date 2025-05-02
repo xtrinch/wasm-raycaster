@@ -1342,10 +1342,9 @@ pub fn rotate_view(
     plane_x: f32,
     plane_y: f32,
 ) -> Float32Array {
-    let rot_speed = 4.0 * (PI / 5.0) * frame_time * multiplier as f32;
+    let rot_speed = 0.8 * PI * frame_time * multiplier as f32;
 
-    let cos_r = rot_speed.cos();
-    let sin_r = rot_speed.sin();
+    let (sin_r, cos_r) = rot_speed.sin_cos(); // more efficient than separate .sin() and .cos()
 
     let new_dir_x = dir_x * cos_r - dir_y * sin_r;
     let new_dir_y = dir_x * sin_r + dir_y * cos_r;
@@ -1353,6 +1352,6 @@ pub fn rotate_view(
     let new_plane_x = plane_x * cos_r - plane_y * sin_r;
     let new_plane_y = plane_x * sin_r + plane_y * cos_r;
 
-    let result = vec![new_dir_x, new_dir_y, new_plane_x, new_plane_y];
-    Float32Array::from(result.as_slice())
+    // Avoid heap allocation by creating a fixed-size array
+    Float32Array::from(&[new_dir_x, new_dir_y, new_plane_x, new_plane_y][..])
 }
