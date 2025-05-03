@@ -209,6 +209,8 @@ export class Camera {
   }
 
   drawCanvas() {
+    // this.imageData.data.set(this.ceilingFloorPixelsRef.buffer);
+
     this.pixelsClampedArray.set(this.ceilingFloorPixelsRef.buffer);
     const img01 = new ImageData(
       this.pixelsClampedArray,
