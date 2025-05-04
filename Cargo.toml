@@ -28,9 +28,10 @@ dashmap = "6.1.0"
 [features]
 parallel = ["wasm-bindgen-rayon"]
 
-[profile.dev]
+[profile.release]
 #opt-level = 3
 #debug = true
 
-[package.metadata.wasm-pack.profile.release]
+[package.metadata.wasm-pack.profile.profiling]
 wasm-opt = ['-O4', '-g', '--enable-simd']
+debug = true

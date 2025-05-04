@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "pnpm run build:wasm && pnpm run build:app",
-    "build:wasm": "wasm-pack build --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
+    "build:wasm": "wasm-pack build --profiling --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
     "build:app": "pnpm --filter app run build",
     "start": "pnpm --filter app run start",
     "dev": "pnpm --filter app run run-dev"

@@ -29,6 +29,7 @@ use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
 #[wasm_bindgen]
+#[inline(never)]
 pub fn render(
     x: f32,
     y: f32,
@@ -602,6 +603,8 @@ pub fn raycast_column(
     )
 }
 
+#[inline(never)]
+#[no_mangle]
 pub fn draw_walls_raycast(
     position: &Position,
     img_slice: &mut [u8],
@@ -750,12 +753,14 @@ pub fn draw_walls_raycast(
         });
 }
 
-pub fn draw_ceiling_floor_raycast(
+#[inline(never)]
+#[no_mangle]
+pub extern "C" fn draw_ceiling_floor_raycast(
     position: &Position,
     img_slice: &mut [u8],
-    floor_texture_array: &Vec<u8>,
-    ceiling_texture_array: &Vec<u8>,
-    road_texture_array: &Vec<u8>,
+    floor_texture_array: &[u8],
+    ceiling_texture_array: &[u8],
+    road_texture_array: &[u8],
     width: i32,
     height: i32,
     light_range: i32,
@@ -931,6 +936,8 @@ pub fn translate_coordinate_to_camera(
     }
 }
 
+#[inline(never)]
+#[no_mangle]
 pub fn draw_sprites_wasm(
     position: &Position,
     img_slice: &mut [u8],
@@ -1145,7 +1152,8 @@ pub fn draw_sprites_wasm(
         });
 }
 
-#[wasm_bindgen]
+#[inline(never)]
+#[no_mangle]
 pub fn draw_background_image_prescaled(
     position: &Position,
     background: &BackgroundImageWasm,
