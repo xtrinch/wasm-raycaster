@@ -755,7 +755,7 @@ pub fn draw_walls_raycast(
 
 #[inline(never)]
 #[no_mangle]
-pub extern "C" fn draw_ceiling_floor_raycast(
+pub fn draw_ceiling_floor_raycast(
     position: &Position,
     img_slice: &mut [u8],
     floor_texture_array: &[u8],
