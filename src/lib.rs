@@ -185,7 +185,7 @@ pub fn raycast_column(
     light_range: i32,
     range: i8,
     wall_texture_width: i32,
-    sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
+    sprites_map: Option<&HashMap<(i32, i32), Vec<Sprite>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
@@ -650,22 +650,7 @@ pub fn draw_walls_raycast(
         let (map_x, map_y) = (*x as i32, *y as i32);
 
         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-            for &[x, y, angle, height, sprite_type] in sprite_list {
-                let sprite = Sprite {
-                    x,
-                    y,
-                    angle: angle as i32,
-                    height: height as i32,
-                    r#type: sprite_type as i32,
-                    column: 0,
-                    distance: 0.,
-                    distance_fixed: 0,
-                    dx: 0.,
-                    dy: 0.,
-                    fract: 0.,
-                };
-                found_sprites.push(sprite);
-            }
+            found_sprites.extend((*sprite_list).clone());
         }
     }
 
@@ -708,7 +693,6 @@ pub fn draw_walls_raycast(
                 let tex_y = dy * texture.height / wall_height;
                 let tex_idx = ((tex_y * wall_texture_width + tex_x) * 4) as usize;
 
-                // let texel = &texture.data[tex_idx..tex_idx + 3];
                 let texel = unsafe { texture.data.get_unchecked(tex_idx..tex_idx + 3) };
 
                 let r = ((texel[0] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
@@ -848,7 +832,6 @@ pub fn draw_ceiling_floor_raycast(
                     let ty = (tex.height as usize * frac_y) >> FIXED_SHIFT;
 
                     let tex_idx = (ty * tex.width as usize + tx) * 4;
-                    // let texel = &tex.data[tex_idx..tex_idx + 3];
                     let texel = unsafe { tex.data.get_unchecked(tex_idx..tex_idx + 3) };
 
                     let r = (texel[0] as u16 * alpha as u16) >> 8;
@@ -1093,7 +1076,6 @@ pub fn draw_sprites_wasm(
                     if a != 255 {
                         let current_texel = unsafe { row.get_unchecked(idx..idx + 4) };
 
-                        // let current_texel = &row[idx..idx + 4];
                         let inverted_alpha = 255 - a;
                         r = (((a * r as u16) + (current_texel[0] as u16 * inverted_alpha)) >> 8)
                             as u8;
@@ -1130,6 +1112,10 @@ pub fn draw_background_image_prescaled(
     }
 
     let pre_scaled_len = pre_scaled.len();
+    let sky_w_bytes = (sky_width * 4) as usize;
+    let screen_w_bytes = (width * 4) as usize;
+    let start = ((left_offset * 4) as usize) % sky_w_bytes;
+    let end = start + screen_w_bytes;
 
     img_slice
         .par_chunks_mut((width * 4) as usize)
@@ -1140,26 +1126,19 @@ pub fn draw_background_image_prescaled(
                 return;
             }
 
-            let row_start = (screen_y_pitch * sky_width * 4) as usize;
+            let row_start = screen_y_pitch as usize * sky_w_bytes;
 
-            let sky_w_bytes = (sky_width * 4) as usize;
-            let screen_w_bytes = (width * 4) as usize;
-
-            let start = ((left_offset * 4) as usize) % sky_w_bytes;
-
-            if start + screen_w_bytes <= sky_w_bytes {
-                let idx_start = row_start + start;
-                let idx_end = row_start + start + screen_w_bytes;
+            let idx_start = row_start + start;
+            if end <= sky_w_bytes {
+                let idx_end = row_start + end;
                 if idx_end < pre_scaled_len {
                     row.copy_from_slice(&pre_scaled[idx_start..idx_end]);
                 }
             } else {
                 let first_part = sky_w_bytes - start;
-
-                let idx_start1 = row_start + start;
                 let idx_end1 = row_start + sky_w_bytes;
                 if idx_end1 < pre_scaled_len {
-                    row[..first_part].copy_from_slice(&pre_scaled[idx_start1..idx_end1]);
+                    row[..first_part].copy_from_slice(&pre_scaled[idx_start..idx_end1]);
                 }
 
                 let idx_start2 = row_start;

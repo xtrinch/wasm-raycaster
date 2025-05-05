@@ -97,12 +97,12 @@ impl WasmTextureMap {
 
 #[wasm_bindgen]
 pub struct WasmStripePerCoordMap {
-    map: HashMap<(i32, i32), Vec<[f32; 5]>>,
+    map: HashMap<(i32, i32), Vec<Sprite>>,
 }
 
 // 🦀 Rust-only implementation block
 impl WasmStripePerCoordMap {
-    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<[f32; 5]>> {
+    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<Sprite>> {
         &self.map
     }
 }
@@ -119,12 +119,26 @@ impl WasmStripePerCoordMap {
     /// Accepts a JS Float32Array directly!
     #[wasm_bindgen(js_name = populateFromArray)]
     pub fn populate_from_array(&mut self, sprite_data: &[f32]) {
-        let mut sprites_map: HashMap<(i32, i32), Vec<[f32; 5]>> = HashMap::new();
+        let mut sprites_map: HashMap<(i32, i32), Vec<Sprite>> = HashMap::new();
 
         for i in (0..sprite_data.len()).step_by(5) {
             let sprite: [f32; 5] = sprite_data[i..i + 5].try_into().unwrap();
             let key = (sprite[0].floor() as i32, sprite[1].floor() as i32);
-            sprites_map.entry(key).or_default().push(sprite);
+            let [x, y, angle, height, sprite_type] = sprite;
+            sprites_map.entry(key).or_default().push(Sprite {
+                // TODO: to a smaller struct
+                x,
+                y,
+                fract: 0., // offset inside the coord
+                dx: 0.,
+                dy: 0.,
+                angle: angle as i32,
+                height: height as i32,
+                r#type: sprite_type as i32,
+                column: 0,
+                distance: 0.,
+                distance_fixed: 0,
+            });
         }
 
         self.map = sprites_map;
