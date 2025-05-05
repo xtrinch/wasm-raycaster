@@ -683,7 +683,7 @@ pub fn draw_walls_raycast(
                 if hit == 0 || screen_y < draw_start_y || screen_y >= draw_start_y + wall_height {
                     continue;
                 }
-                let texture = if col_type == TextureType::DOOR as i32 {
+                let texture = if col_type == 2 {
                     &door_texture_data
                 } else {
                     &wall_texture_data
