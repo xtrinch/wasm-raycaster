@@ -120,7 +120,7 @@ pub fn render(
         .get(&(TextureType::DOOR as i32, 0))
         .unwrap();
 
-    let mut found_sprites: SmallVec<[Sprite; 128]> = vec![].into();
+    let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
@@ -271,6 +271,12 @@ pub fn raycast_column(
     let mut new_map_end_y;
     let mut segment_map_adder;
 
+    // ray between player position and point on the ray direction
+    let line = LineInterval::ray(Line {
+        start: (position.x, position.y).into(),
+        end: (position.x + ray_dir_x, position.y + ray_dir_y).into(),
+    });
+
     while !hit && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
         let num_walls = get_bits(value, 12); // since the upper two are reserves we can afford this
@@ -282,7 +288,7 @@ pub fn raycast_column(
             let mut distance_multiplier = 0.0; // how much to move back/forward the distance due to internal offsets
             let mut distance = MAX;
 
-            // we support two lines per coordinate
+            // we support up to three lines per coordinate
             for i in 0..num_walls {
                 match i {
                     0 => {
@@ -354,12 +360,6 @@ pub fn raycast_column(
                 let segment = LineInterval::line_segment(Line {
                     start: (new_map_start_x, new_map_start_y).into(),
                     end: (new_map_end_x, new_map_end_y).into(),
-                });
-
-                // ray between player position and point on the ray direction
-                let line = LineInterval::ray(Line {
-                    start: (position.x, position.y).into(),
-                    end: (position.x + ray_dir_x, position.y + ray_dir_y).into(),
                 });
 
                 // check main segment line
@@ -615,7 +615,7 @@ pub fn draw_walls_raycast(
     door_texture_width: i32,
     door_texture_height: i32,
     sprites_map: &WasmStripePerCoordMap,
-    found_sprites: &mut SmallVec<[Sprite; 128]>,
+    found_sprites: &mut SmallVec<[Sprite; 1024]>,
 ) {
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
@@ -683,7 +683,7 @@ pub fn draw_walls_raycast(
                 if hit == 0 || screen_y < draw_start_y || screen_y >= draw_start_y + wall_height {
                     continue;
                 }
-                let texture = if col_type == 2 {
+                let texture = if col_type == TextureType::DOOR as i32 {
                     &door_texture_data
                 } else {
                     &wall_texture_data
@@ -801,11 +801,16 @@ pub fn draw_ceiling_floor_raycast(
             let base_x = to_fixed(position.x + row_distance * ray_dir_x0);
             let base_y = to_fixed(position.y + row_distance * ray_dir_y0);
 
-            row.chunks_exact_mut(4).enumerate().for_each(|(x, pixel)| {
-                let step = x as i32;
+            let mut world_x = base_x;
+            let mut world_y = base_y;
 
-                let world_x = base_x + fixed_mul(floor_step_x, step << FIXED_SHIFT);
-                let world_y = base_y + fixed_mul(floor_step_y, step << FIXED_SHIFT);
+            row.chunks_exact_mut(4).enumerate().for_each(|(x, pixel)| {
+                // let step = x as i32;
+                // let world_x = base_x + fixed_mul(floor_step_x, step << FIXED_SHIFT);
+                // let world_y = base_y + fixed_mul(floor_step_y, step << FIXED_SHIFT);
+
+                world_x += floor_step_x;
+                world_y += floor_step_y;
 
                 let map_x = world_x >> FIXED_SHIFT;
                 let map_y = world_y >> FIXED_SHIFT;
@@ -814,14 +819,11 @@ pub fn draw_ceiling_floor_raycast(
                 let has_ceiling = has_bit_set(value, 1);
                 let has_road = has_bit_set(value, 3);
 
-                let tex = if is_floor && has_road {
-                    Some(&road_texture_data)
-                } else if is_floor && has_ceiling {
-                    Some(&floor_texture_data)
-                } else if !is_floor && has_ceiling {
-                    Some(&ceiling_texture_data)
-                } else {
-                    None
+                let tex = match (is_floor, has_road, has_ceiling) {
+                    (true, false, true) => Some(&floor_texture_data),
+                    (false, _, true) => Some(&ceiling_texture_data),
+                    (true, true, _) => Some(&road_texture_data),
+                    _ => None,
                 };
 
                 if let Some(tex) = tex {
@@ -899,7 +901,7 @@ pub fn draw_sprites_wasm(
     map_light: i32,
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
-    found_sprites: &mut SmallVec<[Sprite; 128]>,
+    found_sprites: &mut SmallVec<[Sprite; 1024]>,
 ) {
     found_sprites.iter_mut().for_each(|sprite| {
         let dx = sprite.x - position.x;
@@ -1027,8 +1029,8 @@ pub fn draw_sprites_wasm(
                 sprite_type: sprite.r#type,
                 sprite_left_x: draw_start_x as u32,
                 width: draw_end_x - draw_start_x,
-                screen_y_ceiling: projection.screen_y_ceiling as i32,
-                height: (projection.full_height) as i32,
+                screen_y_ceiling: projection.screen_y_ceiling,
+                height: projection.full_height,
                 tex_x1,
                 tex_width,
                 alpha: alpha_i,
@@ -1057,7 +1059,6 @@ pub fn draw_sprites_wasm(
                     let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
                     let tex_idx = ((y_tex_idx + tex_x) * 4) as usize;
 
-                    // let texel = &sprite.full_texture_data[tex_idx..tex_idx + 4];
                     let texel =
                         unsafe { sprite.full_texture_data.get_unchecked(tex_idx..tex_idx + 4) };
 
