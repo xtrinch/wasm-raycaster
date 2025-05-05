@@ -312,6 +312,8 @@ pub fn parse_sprite_texture_array(ptr: *const i32, len: usize) -> HashMap<i32, (
 pub struct Position {
     pub x: f32,
     pub y: f32,
+    pub map_x: i32,
+    pub map_y: i32,
     pub dir_x: f32,
     pub dir_y: f32,
     pub plane_x: f32,

@@ -95,3 +95,5 @@ The frontend application in `packages/app` demonstrates:
 ## License
 
 ISC
+
+`pnpm run dev`

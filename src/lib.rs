@@ -64,6 +64,8 @@ pub fn render(
         pitch,
         z,
         plane_y_initial,
+        map_x: x.floor() as i32,
+        map_y: y.floor() as i32,
     };
 
     let img_slice =
@@ -187,8 +189,8 @@ pub fn raycast_column(
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 10]; 2]>) {
-    let mut met_coords: HashMap<(i32, i32), i32> = HashMap::new();
-    let mut window_sprites: SmallVec<[[f32; 10]; 2]> = SmallVec::new();
+    let mut met_coords: Vec<(i32, i32)> = Vec::new();
+    let mut window_sprites: SmallVec<[[f32; 10]; 2]> = SmallVec::with_capacity(2);
 
     let default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
@@ -199,9 +201,8 @@ pub fn raycast_column(
     let ray_dir_x = position.dir_x + position.plane_x * camera_x;
     let ray_dir_y = position.dir_y + position.plane_y * camera_x;
 
-    // which box of the map we're in
-    let mut map_x = position.x.floor() as i32;
-    let mut map_y = position.y.floor() as i32;
+    let mut map_x = position.map_x;
+    let mut map_y = position.map_y;
 
     // length of ray from one x or y-side to next x or y-side
     let delta_dist_x = ray_dir_x.abs().recip();
@@ -245,6 +246,31 @@ pub fn raycast_column(
     let aspect_ratio = height as f32 / width as f32;
     let position_coord = Coord::from([position.x, position.y]);
 
+    // local pre-initialized while/for loop variables
+    let mut bit_width = 0;
+    let mut local_width: f32 = 1.0;
+    let mut local_offset: f32 = 1.0;
+    let mut bit_offset = 0;
+    let mut bit_thickness = 0;
+    let mut bit_offset_secondary = 0;
+    let mut is_door = false;
+    let mut is_window = false;
+    let mut is_east = false;
+    let mut local_distance_multiplier = 0.0;
+    let mut local_side = 0;
+    let mut local_intersection_coord: Coord<f32> = Coord::zero();
+    // from east or west side
+    // offset is defined from the east or north
+    let mut offset: f32;
+    let mut distance_offset: f32;
+    let mut ray_dirs: [f32; 2];
+    let mut sides: [i32; 2];
+    let mut new_map_start_x;
+    let mut new_map_end_x;
+    let mut new_map_start_y;
+    let mut new_map_end_y;
+    let mut segment_map_adder;
+
     while !hit && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
         let num_walls = get_bits(value, 12); // since the upper two are reserves we can afford this
@@ -258,17 +284,6 @@ pub fn raycast_column(
 
             // we support two lines per coordinate
             for i in 0..num_walls {
-                // get bit width first so we can skip all the rest
-                let mut bit_width = 0;
-                let mut local_width: f32 = 1.0;
-                let mut local_offset: f32 = 1.0;
-                let mut bit_offset = 0;
-                let mut bit_thickness = 0;
-                let mut bit_offset_secondary = 0;
-                let mut is_door = false;
-                let mut is_window = false;
-                let mut is_east = false;
-
                 match i {
                     0 => {
                         bit_width = get_bits(value, initial_bit_offset + 8);
@@ -300,20 +315,10 @@ pub fn raycast_column(
                     _ => (),
                 };
 
-                let mut local_distance_multiplier = 0.0;
-
-                // from east or west side
-                // offset is defined from the east or north
-                let offset: f32;
-                let distance_offset: f32;
-
                 let offset1: f32 = (bit_offset % 11) as f32 / 10.0;
                 let thickness: f32 = (bit_thickness % 11) as f32 / 10.0;
                 let offset_secondary: f32 = (bit_offset_secondary % 11) as f32 / 10.0;
                 let depth: f32 = (bit_width % 11) as f32 / 10.0;
-
-                let ray_dirs: [f32; 2];
-                let sides: [i32; 2];
 
                 if is_east {
                     ray_dirs = [ray_dir_x, ray_dir_y];
@@ -331,11 +336,6 @@ pub fn raycast_column(
                     offset = offset1;
                     distance_offset = 1.0 - offset;
                 }
-
-                let new_map_start_x;
-                let new_map_end_x;
-                let new_map_start_y;
-                let new_map_end_y;
 
                 // find the intersection of a line segment and an infinite line
                 if is_east {
@@ -356,32 +356,6 @@ pub fn raycast_column(
                     end: (new_map_end_x, new_map_end_y).into(),
                 });
 
-                let segment_map_adder;
-                // the segment of line between the offsets of the wall
-                if ray_dirs[1] > 0.0 {
-                    // depending on which side we're looking at the space between the offsets from
-                    segment_map_adder = offset_secondary;
-                } else {
-                    segment_map_adder = offset_secondary + depth;
-                }
-
-                let new_map_between_start_x;
-                let new_map_between_end_x;
-                let new_map_between_start_y;
-                let new_map_between_end_y;
-
-                if is_east {
-                    new_map_between_start_x = map_x as f32 + offset1;
-                    new_map_between_end_x = new_map_between_start_x + thickness;
-                    new_map_between_start_y = map_y as f32 + segment_map_adder;
-                    new_map_between_end_y = new_map_between_start_y;
-                } else {
-                    new_map_between_start_y = map_y as f32 + offset1;
-                    new_map_between_end_y = new_map_between_start_y + thickness;
-                    new_map_between_start_x = map_x as f32 + segment_map_adder;
-                    new_map_between_end_x = new_map_between_start_x;
-                }
-
                 // ray between player position and point on the ray direction
                 let line = LineInterval::ray(Line {
                     start: (position.x, position.y).into(),
@@ -392,8 +366,6 @@ pub fn raycast_column(
                 let intersection = segment.relate(&line).unique_intersection();
 
                 let mut local_hit = false;
-                let mut local_side = 0;
-                let mut local_intersection_coord: Coord<f32> = Coord::zero();
                 if let Some(coord) = intersection {
                     local_intersection_coord = coord;
                     local_hit = true;
@@ -413,9 +385,29 @@ pub fn raycast_column(
                     }
                 } else {
                     // the segment of line between the offsets of the wall
+                    if ray_dirs[1] > 0.0 {
+                        // depending on which side we're looking at the space between the offsets from
+                        segment_map_adder = offset_secondary;
+                    } else {
+                        segment_map_adder = offset_secondary + depth;
+                    }
+
+                    if is_east {
+                        new_map_start_x = map_x as f32 + offset1;
+                        new_map_end_x = new_map_start_x + thickness;
+                        new_map_start_y = map_y as f32 + segment_map_adder;
+                        new_map_end_y = new_map_start_y;
+                    } else {
+                        new_map_start_x = map_x as f32 + segment_map_adder;
+                        new_map_end_x = new_map_start_x;
+                        new_map_start_y = map_y as f32 + offset1;
+                        new_map_end_y = new_map_start_y + thickness;
+                    }
+
+                    // the segment of line between the offsets of the wall
                     let segment_between = LineInterval::line_segment(Line {
-                        start: (new_map_between_start_x, new_map_between_start_y).into(),
-                        end: (new_map_between_end_x, new_map_between_end_y).into(),
+                        start: (new_map_start_x, new_map_start_y).into(),
+                        end: (new_map_end_x, new_map_end_y).into(),
                     });
 
                     // check line between segments of thickness
@@ -501,7 +493,7 @@ pub fn raycast_column(
         // TODO: check more smartly
         if !skip_sprites_and_writes && column % 5 == 0 {
             if let Some(_) = sprites_map.get(&(map_x, map_y)) {
-                let _ = met_coords.try_insert((map_x, map_y), 0);
+                let _ = met_coords.push((map_x, map_y));
             }
         }
 
@@ -556,16 +548,7 @@ pub fn raycast_column(
     wall_x /= wall_width;
 
     let tex_x = (wall_x * wall_texture_width as f32) as i32;
-    let tex_x = if side == 0 && ray_dir_x > 0.0 {
-        wall_texture_width - tex_x - 1
-    } else {
-        tex_x
-    };
-    let tex_x = if side == 1 && ray_dir_y < 0.0 {
-        wall_texture_width - tex_x - 1
-    } else {
-        tex_x
-    };
+    let tex_x = wall_texture_width - tex_x - 1;
 
     // Calculate globalAlpha based on light range and distance
     let mut global_alpha = perp_wall_dist / light_range as f32;
@@ -598,7 +581,7 @@ pub fn raycast_column(
     (
         perp_wall_dist,
         col_data,
-        met_coords.keys().cloned().collect(),
+        met_coords.to_vec(),
         window_sprites,
     )
 }
@@ -1245,6 +1228,8 @@ pub fn walk(
         pitch,
         z,
         plane_y_initial,
+        map_x: x.floor() as i32,
+        map_y: y.floor() as i32,
     };
 
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
