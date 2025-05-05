@@ -342,7 +342,6 @@ pub struct Sprite {
     pub height: i32,
     pub r#type: i32,
     pub column: u32,
-    pub width: f32,
     pub distance: f32,
     pub distance_fixed: i32,
 }

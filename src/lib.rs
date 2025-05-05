@@ -188,9 +188,9 @@ pub fn raycast_column(
     sprites_map: Option<&HashMap<(i32, i32), Vec<[f32; 5]>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
-) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>) {
+) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
     let mut met_coords: Vec<(i32, i32)> = Vec::new();
-    let mut window_sprites: SmallVec<[[f32; 9]; 2]> = SmallVec::with_capacity(2);
+    let mut window_sprites: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
 
     let default_sprites_map = HashMap::new();
     let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
@@ -466,19 +466,19 @@ pub fn raycast_column(
 
                             // add to visible sprites
                             if !skip_sprites_and_writes {
-                                let window_data = [
-                                    local_intersection_coord.x,
-                                    local_intersection_coord.y,
-                                    0.0,
-                                    100.0,
-                                    12 as f32, // texture type
-                                    column as f32,
-                                    local_width,
-                                    local_distance,
+                                window_sprites.push(Sprite {
+                                    x: local_intersection_coord.x,
+                                    y: local_intersection_coord.y,
+                                    angle: 0,
+                                    height: 100,
+                                    r#type: TextureType::WINDOW as i32,
+                                    column: column as u32,
+                                    distance: local_distance,
+                                    distance_fixed: 0,
+                                    dx: 0.,
+                                    dy: 0.,
                                     fract,
-                                ];
-
-                                window_sprites.push(window_data);
+                                });
                             }
                         } else {
                             hit_type = 1;
@@ -617,7 +617,7 @@ pub fn draw_walls_raycast(
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 128]>,
 ) {
-    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[[f32; 9]; 2]>)> = (0..width)
+    let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
             let (perp_wall_dist, col_data, met_coords, window_sprites) = raycast_column(
@@ -658,7 +658,6 @@ pub fn draw_walls_raycast(
                     height: height as i32,
                     r#type: sprite_type as i32,
                     column: 0,
-                    width: 0.,
                     distance: 0.,
                     distance_fixed: 0,
                     dx: 0.,
@@ -672,24 +671,7 @@ pub fn draw_walls_raycast(
 
     for (idx, (perp_wall_dist, _, _, window_sprites)) in data.iter().enumerate() {
         zbuffer[idx] = *perp_wall_dist;
-
-        for &[x, y, angle, height, sprite_type, column, width, distance, fract] in window_sprites {
-            // TODO: why not return sprite directly??
-            found_sprites.push(Sprite {
-                x,
-                y,
-                angle: angle as i32,
-                height: height as i32,
-                r#type: sprite_type as i32,
-                column: column as u32,
-                width,
-                distance,
-                distance_fixed: 0,
-                dx: 0.,
-                dy: 0.,
-                fract,
-            });
-        }
+        found_sprites.extend((*window_sprites).clone());
     }
 
     let door_texture_data = Texture {
@@ -936,7 +918,7 @@ pub fn draw_sprites_wasm(
     texture_array: &WasmTextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 128]>,
 ) {
-    found_sprites.par_iter_mut().for_each(|sprite| {
+    found_sprites.iter_mut().for_each(|sprite| {
         let dx = sprite.x - position.x;
         let dy = sprite.y - position.y;
         sprite.dx = dx;
