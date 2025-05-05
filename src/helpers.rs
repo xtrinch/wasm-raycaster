@@ -335,16 +335,13 @@ pub struct Coords {
 pub struct Sprite {
     pub x: f32,
     pub y: f32,
+    pub fract: f32, // offset inside the coord
     pub dx: f32,
     pub dy: f32,
-    pub x_fixed: i32,
-    pub y_fixed: i32,
     pub angle: i32,
     pub height: i32,
     pub r#type: i32,
     pub column: u32,
-    pub side: u8,
-    pub offset: f32,
     pub width: f32,
     pub distance: f32,
     pub distance_fixed: i32,
