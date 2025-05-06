@@ -97,3 +97,4 @@ The frontend application in `packages/app` demonstrates:
 ISC
 
 `pnpm run dev`
+feature/all-sprites for all sprites
