@@ -991,7 +991,7 @@ pub fn draw_sprites_wasm(
             let mut angle_index = (angle_i) / 45; // Default to 1 if the result is 0
 
             // if there's no textures for other angles
-            if texture_meta.angles as i32 <= angle_index {
+            if (texture_meta.angles as i32) <= (angle_index) {
                 angle_index = 0;
             }
             let texture_data = sprites_texture_map
