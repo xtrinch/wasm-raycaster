@@ -1035,7 +1035,7 @@ pub fn draw_sprites_wasm(
             let tex_width = ((draw_end_x - draw_start_x) * texture_meta.width) / sprite_width;
 
             let inv_sprite_height = texture_meta.height * FIXED_ONE / projection.full_height;
-            let inv_sprite_width = tex_width * FIXED_ONE / (draw_end_x - draw_start_x);
+            let inv_sprite_width = tex_width * FIXED_ONE / (draw_end_x - draw_start_x).max(1);
             SpritePart {
                 sprite_type: sprite.r#type,
                 sprite_left_x: draw_start_x as u32,
