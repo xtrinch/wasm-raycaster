@@ -382,6 +382,8 @@ pub struct SpritePart<'a> {
     pub full_texture_height: i32,
     pub full_texture_width: i32,
     pub full_texture_data: &'a Vec<u8>,
+    pub inv_sprite_width: i32,
+    pub inv_sprite_height: i32,
 }
 
 #[inline(always)]

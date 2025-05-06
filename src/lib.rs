@@ -967,6 +967,9 @@ pub fn draw_sprites_wasm(
                     .unwrap();
 
                 let texture_x: i32 = (sprite.fract * texture_meta.width as f32) as i32;
+
+                let inv_sprite_height = texture_meta.height * FIXED_ONE / projection.full_height;
+                let inv_sprite_width = 1 * FIXED_ONE / (1);
                 return SpritePart {
                     sprite_type: sprite.r#type,
                     sprite_left_x: sprite.column,
@@ -980,6 +983,8 @@ pub fn draw_sprites_wasm(
                     full_texture_height: texture_meta.height,
                     full_texture_width: texture_meta.width,
                     full_texture_data: texture_data,
+                    inv_sprite_height,
+                    inv_sprite_width,
                 };
             }
 
@@ -1029,6 +1034,8 @@ pub fn draw_sprites_wasm(
             let tex_x1 = ((draw_start_x - to_remove_texture) * texture_meta.width) / sprite_width;
             let tex_width = ((draw_end_x - draw_start_x) * texture_meta.width) / sprite_width;
 
+            let inv_sprite_height = texture_meta.height * FIXED_ONE / projection.full_height;
+            let inv_sprite_width = tex_width * FIXED_ONE / (draw_end_x - draw_start_x);
             SpritePart {
                 sprite_type: sprite.r#type,
                 sprite_left_x: draw_start_x as u32,
@@ -1042,6 +1049,8 @@ pub fn draw_sprites_wasm(
                 full_texture_height: texture_meta.height,
                 full_texture_width: texture_meta.width,
                 full_texture_data: texture_data,
+                inv_sprite_height,
+                inv_sprite_width,
             }
         })
         .collect();
@@ -1055,12 +1064,14 @@ pub fn draw_sprites_wasm(
                 if y < sprite.screen_y_ceiling || y >= sprite.screen_y_ceiling + sprite.height {
                     continue;
                 }
+
                 let dy = y - sprite.screen_y_ceiling;
-                let tex_y = dy * sprite.full_texture_height / sprite.height;
+                let tex_y = ((dy * sprite.inv_sprite_height) >> FIXED_SHIFT) as i32;
                 let y_tex_idx = tex_y * sprite.full_texture_width;
 
                 for dx in 0..sprite.width {
-                    let tex_x = sprite.tex_x1 + dx * sprite.tex_width / sprite.width;
+                    let tex_x =
+                        sprite.tex_x1 + ((dx * sprite.inv_sprite_width) >> FIXED_SHIFT) as i32;
                     let tex_idx = ((y_tex_idx + tex_x) * 4) as usize;
 
                     let texel =
@@ -1090,7 +1101,8 @@ pub fn draw_sprites_wasm(
                             as u8;
                     }
 
-                    row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
+                    let dst = unsafe { row.get_unchecked_mut(idx..idx + 4) };
+                    dst.copy_from_slice(&[r, g, b, 255]);
                 }
             }
         });
