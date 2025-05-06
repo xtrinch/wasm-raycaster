@@ -822,7 +822,7 @@ pub fn draw_ceiling_floor_raycast(
             let mut world_x = base_x;
             let mut world_y = base_y;
 
-            row.chunks_exact_mut(4).enumerate().for_each(|(x, pixel)| {
+            row.chunks_exact_mut(4).for_each(|pixel| {
                 // let step = x as i32;
                 // let world_x = base_x + fixed_mul(floor_step_x, step << FIXED_SHIFT);
                 // let world_y = base_y + fixed_mul(floor_step_y, step << FIXED_SHIFT);
@@ -1090,7 +1090,7 @@ pub fn draw_sprites_wasm(
 
                     // alpha blending
                     if a != 255 {
-                        let current_texel = unsafe { row.get_unchecked(idx..idx + 4) };
+                        let current_texel = unsafe { row.get_unchecked(idx..idx + 3) };
 
                         let inverted_alpha = 255 - a;
                         r = (((a * r as u16) + (current_texel[0] as u16 * inverted_alpha)) >> 8)
@@ -1101,8 +1101,8 @@ pub fn draw_sprites_wasm(
                             as u8;
                     }
 
-                    let dst = unsafe { row.get_unchecked_mut(idx..idx + 4) };
-                    dst.copy_from_slice(&[r, g, b, 255]);
+                    let dst = unsafe { row.get_unchecked_mut(idx..idx + 3) };
+                    dst.copy_from_slice(&[r, g, b]);
                 }
             }
         });
