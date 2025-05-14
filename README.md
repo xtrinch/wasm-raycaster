@@ -1,6 +1,7 @@
 # WASM + Rust + Vite Raycaster
 
 This project is a raycaster written in Rust WASM.
+See it live at https://xtrinch.github.io/wasm-raycaster/.
 
 ## Prerequisites
 
