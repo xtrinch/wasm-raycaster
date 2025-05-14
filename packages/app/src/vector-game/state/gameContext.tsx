@@ -13,6 +13,7 @@ export class GameStore {
   public initialize = async () => {
     await def();
     if (await threads()) {
+      // @ts-ignore
       const { initThreadPool } = await import("../../../wasm");
       if (initThreadPool) {
         await initThreadPool(navigator.hardwareConcurrency);

@@ -5,10 +5,13 @@
   "main": "index.js",
   "scripts": {
     "build": "pnpm run build:wasm && pnpm run build:app",
-    "build:wasm": "wasm-pack build --profiling --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
+    "build:wasm": "wasm-pack build --profiling --target web --out-dir packages/app/wasm --out-name in -- --features parallel",
+    "build-gh": "pnpm run build:wasm-gh && pnpm run build:app",
+    "build:wasm-gh": "wasm-pack build --release --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
     "build:app": "pnpm --filter app run build",
     "start": "pnpm --filter app run start",
-    "dev": "pnpm --filter app run run-dev"
+    "dev": "pnpm --filter app run run-dev",
+    "preview": "pnpm --filter app run preview"
   },
   "keywords": [],
   "author": "",
