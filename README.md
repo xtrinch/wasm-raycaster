@@ -2,6 +2,7 @@
 
 This project is a raycaster written in Rust WASM.
 See it live at https://xtrinch.github.io/wasm-raycaster/.
+It's also paralellized with rayon (uses a nightly Rust build).
 
 ## Prerequisites
 
