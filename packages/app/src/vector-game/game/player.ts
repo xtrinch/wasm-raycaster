@@ -85,8 +85,6 @@ export class Player {
       this.camera.mapRef.ptr,
       map.size,
       this.camera.width,
-      this.camera.height,
-      this.camera.lightRange,
       this.camera.range,
       map.wallTexture.width
     );
@@ -96,7 +94,7 @@ export class Player {
 
   public jumpUp = (frameTime: number) => {
     this.position.z += 400 * frameTime;
-    // if (this.position.z > 300) this.position.z = 300;
+    if (this.position.z > 300) this.position.z = 300;
   };
 
   public jumpDown = (frameTime: number) => {

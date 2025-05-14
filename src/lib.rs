@@ -144,20 +144,12 @@ pub fn render(
     );
     draw_walls_raycast(
         &position,
-        img_slice,
-        wall_texture,
-        door_texture,
         zbuffer,
         map_data,
         map_width,
         width,
-        height,
-        light_range,
         range,
         wall_texture_meta.width,
-        wall_texture_meta.height,
-        door_texture_meta.width,
-        door_texture_meta.height,
         sprites_map,
         &mut found_sprites,
     );
@@ -181,8 +173,6 @@ pub fn raycast_column(
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
     width: i32,
-    height: i32,
-    light_range: i32,
     range: i8,
     wall_texture_width: i32,
     sprites_map: Option<&HashMap<(i32, i32), Vec<Sprite>>>,
@@ -239,11 +229,8 @@ pub fn raycast_column(
     let mut hit = false;
     let mut hit_type: i8 = 1;
     let mut remaining_range: i8 = range;
-    let mut wall_width = 1.0;
-    let mut wall_offset = 0.0;
     let initial_bit_offset = 16;
 
-    let aspect_ratio = height as f32 / width as f32;
     let position_coord = Coord::from([position.x, position.y]);
 
     // local pre-initialized while/for loop variables
@@ -442,8 +429,6 @@ pub fn raycast_column(
                         if !is_window || stop_at_window {
                             distance = local_distance;
                             side = local_side;
-                            wall_width = local_width;
-                            wall_offset = local_offset;
                             hit = true;
                             distance_multiplier = local_distance_multiplier;
                         }
@@ -502,8 +487,6 @@ pub fn raycast_column(
 
         // handle thick wall
         if value == 1 {
-            wall_width = 1.0;
-            wall_offset = 0.0;
             hit = true;
         }
 
@@ -542,59 +525,7 @@ pub fn raycast_column(
         perp_wall_dist += side_dist_y - delta_dist_y;
     }
 
-    // let mut wall_x: f32; // where exactly the wall was hit; note that even if it's called wallX, it's actually an y-coordinate of the wall if side==0, but it's always the x-coordinate of the texture.
-    // if side == 0 {
-    //     wall_x = position.y + perp_wall_dist * ray_dir_y;
-    // } else {
-    //     wall_x = position.x + perp_wall_dist * ray_dir_x;
-    // }
-
     perp_wall_dist = perp_wall_dist * position.plane_y_initial;
-    // // scale the height according to width so they're square!
-    // let line_height = ((width / 2) as f32 / perp_wall_dist) as i32;
-
-    // let middle_y = height / 2
-    //     + position.pitch
-    //     + (position.z as f32 / (perp_wall_dist * (2.0 * aspect_ratio))) as i32;
-    // let draw_start_y = -line_height / 2 + middle_y;
-    // let draw_end_y = line_height / 2 + middle_y;
-
-    // wall_x -= wall_x.floor();
-
-    // // since we'd like texture to match the width if it's a door
-    // wall_x -= wall_offset;
-    // wall_x /= wall_width;
-
-    // let tex_x = (wall_x * wall_texture_width as f32) as i32;
-    // let tex_x = wall_texture_width - tex_x - 1;
-
-    // // Calculate globalAlpha based on light range and distance
-    // let mut global_alpha = perp_wall_dist / light_range as f32;
-    // if global_alpha > 0.8 {
-    //     global_alpha = 0.8; // Ensure minimum visibility
-    // }
-    // if side == 1 {
-    //     // give x and y sides different brightness
-    //     global_alpha = global_alpha * 2.0;
-    // }
-    // if global_alpha > 0.85 {
-    //     global_alpha = 0.85; // Ensure minimum visibility
-    // }
-
-    // let wall_height = draw_end_y - draw_start_y;
-
-    // let alpha_i = (FIXED_ONE - to_fixed(global_alpha)) as i32;
-
-    // TODO: to struct for readability
-    // let col_data = [
-    //     tex_x,
-    //     column,
-    //     draw_start_y,
-    //     wall_height,
-    //     alpha_i,
-    //     hit as i32,
-    //     hit_type as i32,
-    // ];
 
     let col_data = [0, column, 0, 0, 0, hit as i32, hit_type as i32];
 
@@ -610,20 +541,12 @@ pub fn raycast_column(
 #[no_mangle]
 pub fn draw_walls_raycast(
     position: &Position,
-    img_slice: &mut [u8],
-    wall_texture_array: &Vec<u8>,
-    door_texture_array: &Vec<u8>,
     zbuffer: &mut [f32],
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
     width: i32,
-    height: i32,
-    light_range: i32,
     range: i8,
     wall_texture_width: i32,
-    wall_texture_height: i32,
-    door_texture_width: i32,
-    door_texture_height: i32,
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
 ) {
@@ -636,8 +559,6 @@ pub fn draw_walls_raycast(
                 map_data,
                 map_width,
                 width,
-                height,
-                light_range,
                 range,
                 wall_texture_width,
                 Some(&sprites_map.get_map()),
@@ -676,51 +597,6 @@ pub fn draw_walls_raycast(
         zbuffer[idx] = *perp_wall_dist;
         found_sprites.extend((*window_sprites).clone());
     }
-
-    // let door_texture_data = Texture {
-    //     data: door_texture_array,
-    //     width: door_texture_width,
-    //     height: door_texture_height,
-    // };
-    // let wall_texture_data = Texture {
-    //     data: wall_texture_array,
-    //     width: wall_texture_width,
-    //     height: wall_texture_height,
-    // };
-
-    // img_slice
-    //     .par_chunks_mut((width * 4) as usize)
-    //     .enumerate()
-    //     .for_each(|(screen_y, row)| {
-    //         let screen_y = screen_y as i32;
-
-    //         for (_, col_data, _, _) in data.iter() {
-    //             let [tex_x, left, draw_start_y, wall_height, global_alpha, hit, col_type] =
-    //                 *col_data;
-
-    //             if hit == 0 || screen_y < draw_start_y || screen_y >= draw_start_y + wall_height {
-    //                 continue;
-    //             }
-    //             let texture = if col_type == 2 {
-    //                 &door_texture_data
-    //             } else {
-    //                 &wall_texture_data
-    //             };
-
-    //             let dy = screen_y - draw_start_y;
-    //             let tex_y = dy * texture.height / wall_height;
-    //             let tex_idx = ((tex_y * wall_texture_width + tex_x) * 4) as usize;
-
-    //             let texel = unsafe { texture.data.get_unchecked(tex_idx..tex_idx + 3) };
-
-    //             let r = ((texel[0] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
-    //             let g = ((texel[1] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
-    //             let b = ((texel[2] as i32 * global_alpha) >> FIXED_SHIFT) as u8;
-
-    //             let idx = (left * 4) as usize;
-    //             row[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
-    //         }
-    //     });
 }
 
 #[inline(never)]
@@ -854,11 +730,13 @@ pub fn draw_ceiling_floor_raycast(
                     let tex_idx = (ty * tex.width as usize + tx) * 4;
                     let texel = unsafe { tex.data.get_unchecked(tex_idx..tex_idx + 3) };
 
-                    let r = (texel[0] as u16 * alpha as u16) >> 8;
-                    let g = (texel[1] as u16 * alpha as u16) >> 8;
-                    let b = (texel[2] as u16 * alpha as u16) >> 8;
+                    // let r = (texel[0] as u16 * alpha as u16) >> 8;
+                    // let g = (texel[1] as u16 * alpha as u16) >> 8;
+                    // let b = (texel[2] as u16 * alpha as u16) >> 8;
 
-                    pixel.copy_from_slice(&[r as u8, g as u8, b as u8, 255]);
+                    pixel[0] = (texel[0] as u16 * alpha as u16 >> 8) as u8;
+                    pixel[1] = (texel[1] as u16 * alpha as u16 >> 8) as u8;
+                    pixel[2] = (texel[2] as u16 * alpha as u16 >> 8) as u8;
                 }
             });
         });
@@ -902,7 +780,7 @@ pub fn translate_coordinate_to_camera(
     TranslationResult {
         screen_x,
         screen_y_ceiling: sprite_ceiling_screen_y.min(height),
-        distance: transform_y, // this is the perpendicular, not euclidian distance
+        distance: transform_y, // this is the perpendicular, not euclidian distance (!)
         full_height: y_height,
     }
 }
@@ -1102,7 +980,10 @@ pub fn draw_sprites_wasm(
                     }
 
                     let dst = unsafe { row.get_unchecked_mut(idx..idx + 3) };
-                    dst.copy_from_slice(&[r, g, b]);
+                    // dst.copy_from_slice(&[r, g, b]);
+                    dst[0] = r;
+                    dst[1] = g;
+                    dst[2] = b;
                 }
             }
         });
@@ -1183,8 +1064,6 @@ pub fn walk(
     map_array: *mut u64,
     map_width: i32,
     width: i32,
-    height: i32,
-    light_range: i32,
     range: i8,
     wall_texture_width: i32,
 ) -> Float32Array {
@@ -1219,8 +1098,6 @@ pub fn walk(
         map_data,
         map_width as usize,
         width,
-        height,
-        light_range,
         range,
         wall_texture_width,
         None,
@@ -1251,8 +1128,6 @@ pub fn walk(
         map_data,
         map_width as usize,
         width,
-        height,
-        light_range,
         range,
         wall_texture_width,
         None,
@@ -1277,8 +1152,6 @@ pub fn walk(
         map_data,
         map_width as usize,
         width,
-        height,
-        light_range,
         range,
         wall_texture_width,
         None,
