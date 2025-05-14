@@ -1,8 +1,6 @@
-# WASM + Rust + Vite Demo
+# WASM + Rust + Vite Raycaster
 
-This project demonstrates:
-- How to bundle WebAssembly (WASM) modules written in Rust into a web application using Vite bundler
-- How to organize a monorepo using pnpm workspaces to manage WASM, library, and application packages
+This project is a raycaster written in Rust WASM.
 
 ## Prerequisites
 
@@ -17,23 +15,15 @@ Before you begin, ensure you have the following installed:
 .
 ├── packages/
 │   ├── app/          # Frontend application
-│   └── library/      # TypeScript library that uses and reexports the wasm
-│       └── wasm/     # Generated WASM output
+│   └── wasm/     # Generated WASM output
 ├── src/              # Rust source code
 │   └── lib.rs        # Rust WASM module source
 ├── package.json      # Workspace configuration
 └── pnpm-workspace.yaml  # PNPM workspace configuration
 ```
-The project uses pnpm workspaces to organize the codebase into three main parts:
+The project uses pnpm workspaces to organize the codebase into two main parts:
 1. Rust WASM module (root/src)
-2. TypeScript wrapper library (packages/library)
 3. Application (packages/app)
-
-This workspace structure allows for:
-- Independent versioning of packages
-- Simplified dependency management
-- Local package linking for development
-- Centralized build scripts
 
 ## Getting Started
 
@@ -70,13 +60,7 @@ The Rust code in `src/lib.rs` contains the WebAssembly module implementation. Wh
 - JavaScript bindings
 - TypeScript type definitions
 
-These files are output to `packages/library/wasm/`.
-
-### TypeScript Library
-Located in `packages/library`, this wrapper provides:
-- Type-safe interface to the WASM module
-- Additional utility functions
-- Easy integration with JavaScript/TypeScript applications
+These files are output to `packages/app/wasm/`.
 
 ### Application
 The frontend application in `packages/app` demonstrates:
@@ -88,13 +72,9 @@ The frontend application in `packages/app` demonstrates:
 
 - `pnpm run build`: Build all components
 - `pnpm run build:wasm`: Build only the WASM module
-- `pnpm run build:library`: Build only the TypeScript library
 - `pnpm run build:app`: Build only the frontend application
 - `pnpm run start`: Start the development server
 
-## License
+## Running in development
 
-ISC
-
-`pnpm run dev`
-feature/all-sprites for all sprites
+- `pnpm run dev`: Run development server, observe output at `http://localhost:5173`
