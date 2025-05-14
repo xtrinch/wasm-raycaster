@@ -24,7 +24,7 @@ export default defineConfig({
       ],
     }),
   ],
-  base: "",
+  base: "wasm-raycaster",
   build: {
     target: "esnext", //browsers can handle the latest ES features
   },
