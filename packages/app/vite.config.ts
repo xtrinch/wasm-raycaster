@@ -9,7 +9,7 @@ import crossOriginIsolation from "vite-plugin-cross-origin-isolation";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), wasm(), crossOriginIsolation()],
-  base: "raycasting-game",
+  base: "wasm-raycaster",
   build: {
     target: "esnext", //browsers can handle the latest ES features
   },
