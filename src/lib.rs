@@ -762,32 +762,29 @@ pub fn draw_ceiling_floor_raycast(
                     let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
                     // A nearer plane may already cover this pixel.
                     if distance < *z {
-                        // Only ground includes outdoor road cells; stories use building cells.
-                        let cells = if is_ground { 2 | 8 } else { 2 };
-                        let tex = if value & cells != 0 {
-                            Some(if is_ground && value & 8 != 0 {
-                                &road_texture_data
-                            } else if !is_floor {
-                                &ceiling_texture_data
-                            } else if is_roof {
-                                &roof_texture_data
-                            } else {
-                                &floor_texture_data
-                            })
-                        } else if is_roof
-                            && inside_wall_footprint(
-                                value,
-                                (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
-                                (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
-                            )
-                        {
-                            // Outside full roof cells, concrete covers just the wall footprint.
-                            Some(&roof_texture_data)
-                        } else {
-                            None
+                        let has_floor = has_bit_set(value, 1);
+                        let has_road = has_bit_set(value, 3);
+                        let tex = match (is_floor, has_road, has_floor) {
+                            (true, _, true) if is_roof => Some(&roof_texture_data),
+                            (true, _, false)
+                                if is_roof
+                                    && inside_wall_footprint(
+                                        value,
+                                        (world_x & (FIXED_ONE as i64 - 1)) as f32
+                                            / FIXED_ONE as f32,
+                                        (world_y & (FIXED_ONE as i64 - 1)) as f32
+                                            / FIXED_ONE as f32,
+                                    ) =>
+                            {
+                                Some(&roof_texture_data)
+                            }
+                            (true, true, _) if is_ground => Some(&road_texture_data),
+                            (true, _, true) => Some(&floor_texture_data),
+                            (false, _, true) => Some(&ceiling_texture_data),
+                            _ => None,
                         };
                         if let Some(tex) = tex {
-                            // Fractional world coordinates repeat the tex once per cell.
+                            // Fractional world coordinates repeat the texture once per cell.
                             let frac_x = (world_x & (FIXED_ONE as i64 - 1)) as usize;
                             let frac_y = (world_y & (FIXED_ONE as i64 - 1)) as usize;
                             let tx = (tex.width as usize * frac_x) >> FIXED_SHIFT;
