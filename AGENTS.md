@@ -2,6 +2,8 @@
 
 ## Architecture
 - Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
+- Keep rendering data structs and enums in `src/helpers.rs`, alongside the existing
+  types; keep rendering behavior in `src/lib.rs` unless a separate move is requested.
 - Keep movement physics and collision decisions in Rust: wall blocking, roof
   support, ceiling limits, landing and gravity. TypeScript handles input, hover
   state and applying Rust's returned position; do not duplicate collision rules there.
