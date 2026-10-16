@@ -2,6 +2,9 @@
 
 ## Architecture
 - Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
+- Keep movement physics and collision decisions in Rust: wall blocking, roof
+  support, ceiling limits, landing and gravity. TypeScript handles input, hover
+  state and applying Rust's returned position; do not duplicate collision rules there.
 - `packages/app/src/vector-game/game/` owns the TypeScript game state, input,
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
 - `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,

@@ -1150,11 +1150,41 @@ pub fn draw_background_image_prescaled(
         });
 }
 
-// Roof coverage matches the floor renderer, including exposed thin-wall tops.
+// Apply vertical movement and collisions; return [feet height, landed flag].
 #[wasm_bindgen]
-pub fn roof_height(x: f32, y: f32, map_array: *const u64, map_width: usize) -> f32 {
+pub fn move_vertical(
+    x: f32,                // Player's world x coordinate.
+    y: f32,                // Player's world y coordinate.
+    z: f32,                // Feet height in canvas-scaled units.
+    height: i32,           // Canvas height; one world unit in z units.
+    frame_time: f32,       // Elapsed seconds for this update.
+    direction: i8,         // Ascend (1), descend (-1), or no vertical input (0).
+    jetpack_active: bool,  // Hover instead of applying gravity while airborne.
+    map_array: *const u64, // Packed world grid in WASM memory.
+    map_width: usize,      // Grid width used to find the current cell.
+) -> Float32Array {
     let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
-    roof_height_at(x, y, grid, map_width)
+    let world_height = height as f32;
+    let roof = roof_height_at(x, y, grid, map_width) * world_height;
+    // A roof supports feet above it; underneath it, the walking surface is ground.
+    let support = if z >= world_height - 0.001 { roof } else { 0.0 };
+    // Flight travels one world unit per second; D/F keep their existing speed.
+    let speed = if jetpack_active { world_height } else { 400.0 };
+    let mut next_z = (z + direction as f32 * speed * frame_time).max(support);
+    if !jetpack_active && direction > 0 {
+        // Preserve the D-key jump limit: 300 z units above the ground or roof.
+        next_z = next_z.min(support + 300.0);
+    }
+    if support == 0.0 && roof > 0.0 {
+        // Eyes sit 0.5 units above feet; leave a gap below the ceiling at height 1.
+        next_z = next_z.min(world_height * 0.49);
+    }
+    let landed = direction < 0 && next_z <= support;
+    if !jetpack_active || landed {
+        // Gravity stops at the walking surface; hovering disables it until landing.
+        next_z = (next_z - 100.0 * frame_time).max(support);
+    }
+    Float32Array::from(&[next_z, if landed { 1.0 } else { 0.0 }][..])
 }
 
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {

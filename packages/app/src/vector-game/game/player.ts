@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { roof_height, rotate_view, walk } from "../../../wasm";
+import { move_vertical, rotate_view, walk } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
@@ -95,29 +95,26 @@ export class Player {
     this.position.y = y;
   };
 
-  public jumpUp = (frameTime: number) => {
-    this.position.z += 400 * frameTime;
-    // Keep the existing D-key height limit relative to the ground or roof.
-    const support = this.supportHeight();
-    // Preserve the D-key jump limit: 300 position.z units above the ground or roof.
-    if (this.position.z > support + 300) this.position.z = support + 300;
+  public jumpUp = (frameTime: number) => this.moveVertical(1, frameTime);
+
+  public jumpDown = (frameTime: number) => this.moveVertical(-1, frameTime);
+
+  private moveVertical = (direction: number, frameTime: number) => {
+    const [z, landed] = move_vertical(
+      this.position.x,
+      this.position.y,
+      this.position.z,
+      this.camera.height,
+      frameTime,
+      direction,
+      this.jetpackActive,
+      this.camera.mapRef.ptr,
+      this.camera.map.size
+    );
+    this.position.z = z;
+    // Rust reports landing; stop hovering so walking off an edge causes a fall.
+    if (landed) this.jetpackActive = false;
   };
-
-  public jumpDown = (frameTime: number) => {
-    // Find the landing surface before lowering the feet past it.
-    const support = this.supportHeight();
-    this.position.z -= 400 * frameTime;
-    if (this.position.z < support) this.position.z = support;
-  };
-
-  // Convert Rust's world height to the canvas-scaled units used by position.z.
-  private roofHeight = () => roof_height(
-    this.position.x, this.position.y, this.camera.mapRef.ptr, this.camera.map.size
-  ) * this.camera.height;
-
-  // A roof supports feet above it; underneath it, the walking surface is ground.
-  private supportHeight = () => this.position.z >= this.camera.height - 0.001
-    ? this.roofHeight() : 0;
 
   public lookDown = (frameTime: number) => {
     // look down
@@ -132,31 +129,18 @@ export class Player {
   };
 
   private updateHeight = (controls: ControlStates, frameTime: number) => {
-    const support = this.supportHeight();
     if (controls.jetpackUp || controls.jetpackDown) {
       this.jetpackActive = true;
-      // Opposite flight keys cancel; speed is one world unit per second.
+      // Opposite flight keys cancel; releasing both keeps hovering active.
       const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
-      this.position.z = Math.max(support,
-        this.position.z + direction * this.camera.height * frameTime);
-      // Landing ends hovering so walking off an edge causes a fall.
-      if (direction < 0 && this.position.z <= support) this.jetpackActive = false;
-    } else if (!this.jetpackActive) {
-      if (controls.jumpDown) this.jumpDown(frameTime);
-      else if (controls.jumpUp) this.jumpUp(frameTime);
+      this.moveVertical(direction, frameTime);
+    } else if (!this.jetpackActive && controls.jumpDown) {
+      this.jumpDown(frameTime);
+    } else if (!this.jetpackActive && controls.jumpUp) {
+      this.jumpUp(frameTime);
+    } else {
+      this.moveVertical(0, frameTime);
     }
-
-    // A roof overhead blocks ascent from inside the building.
-    if (support === 0 && this.roofHeight() > 0) {
-      // Eyes sit 0.5 units above feet; leave a small gap below the ceiling at 1.
-      this.position.z = Math.min(this.position.z, this.camera.height * 0.49);
-    }
-  };
-
-  private applyGravity = (frameTime: number) => {
-    // Gravity stops at the current walking surface and is disabled while hovering.
-    if (!this.jetpackActive)
-      this.position.z = Math.max(this.supportHeight(), this.position.z - 100 * frameTime);
   };
 
   public update = (
@@ -184,6 +168,5 @@ export class Player {
         Math.min(0, this.position.pitch + 100 * frameTime)
       );
 
-    this.applyGravity(frameTime);
   };
 }
