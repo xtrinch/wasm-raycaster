@@ -104,6 +104,7 @@ export class Player {
     this.position.z += 400 * frameTime;
     // Keep the existing D-key height limit relative to the ground or roof.
     const support = this.supportHeight();
+    // Preserve the D-key jump limit: 300 position.z units above the ground or roof.
     if (this.position.z > support + 300) this.position.z = support + 300;
   };
 
