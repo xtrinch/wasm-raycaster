@@ -36,7 +36,7 @@ fn looking_down_draws_wall_top_with_visible_thickness() {
         let grid = [((0x0a04 | (thickness << 4)) << 16) | (1 << 12) | (1 << 6) | 9];
         let mut pixels = vec![0; 64 * 64 * 4];
         let mut depth = vec![0.0; 64 * 64];
-        draw(
+        draw_ceiling_floor_raycast(
             &p,
             &mut pixels,
             &mut depth,
@@ -104,7 +104,7 @@ fn floors_at_multiple_heights_use_the_same_renderer_and_nearest_wins() {
     let render = |planes: &[FloorPlane<'_>]| {
         let mut pixels = vec![0; 64 * 64 * 4];
         let mut depth = vec![0.0; 64 * 64];
-        draw(
+        draw_ceiling_floor_raycast(
             &camera(128),
             &mut pixels,
             &mut depth,
@@ -162,7 +162,7 @@ fn ceiling_and_floor_share_height_with_opposite_visible_sides() {
             alternate: None,
             wall_tops: None,
         };
-        draw(
+        draw_ceiling_floor_raycast(
             &camera(z),
             &mut pixels,
             &mut depth,
@@ -195,7 +195,7 @@ fn grid_gaps_remain_open_at_any_plane_height() {
     };
     let mut pixels = vec![73; 64 * 64 * 4];
     let mut depth = vec![0.0; 64 * 64];
-    draw(
+    draw_ceiling_floor_raycast(
         &camera(64),
         &mut pixels,
         &mut depth,

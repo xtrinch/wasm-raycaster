@@ -43,5 +43,11 @@ version, then build the underlying features in small, separately reviewable step
 - [ ] Reuse the saved branch's textures, fixes, and relevant tests where useful.
 - [ ] Remove the special stair-box buffer and renderer once the shared path replaces them.
 
+## Later cleanup
+
+- [ ] Move `draw_ceiling_floor_raycast` and its supporting types from `src/lib.rs`
+      into a dedicated floor-rendering module after the behavior changes are reviewed.
+      Keep the current name and location while reviewing flight and roof support.
+
 Finish and review each step before starting the next. Keep comments short and
 describe packed fields in plain terms.

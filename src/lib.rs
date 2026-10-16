@@ -15,7 +15,6 @@ use rayon::prelude::*;
 #[cfg(feature = "parallel")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
-mod floors;
 mod helpers;
 mod line_intersection;
 use geo::{Coord, Distance, Euclidean, Line};
@@ -99,32 +98,32 @@ pub fn render(
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     // Floors at any height use the same projection, coverage and depth rules.
     let planes = [
-        floors::FloorPlane {
+        FloorPlane {
             height: 0.0,
-            facing: floors::Facing::Up,
+            facing: Facing::Up,
             cells: 2 | 8, // Ground covers floor cells (bit 1) and road cells (bit 3).
             texture: surface_texture(TextureType::FLOOR),
             alternate: Some((8, surface_texture(TextureType::ROAD))),
             wall_tops: None,
         },
-        floors::FloorPlane {
+        FloorPlane {
             height: 1.0,
-            facing: floors::Facing::Down,
+            facing: Facing::Down,
             cells: 2, // Building floor cells also have a ceiling.
             texture: surface_texture(TextureType::CEILING),
             alternate: None,
             wall_tops: None,
         },
-        floors::FloorPlane {
+        FloorPlane {
             height: 1.0,
-            facing: floors::Facing::Up,
+            facing: Facing::Up,
             cells: 2, // The same building footprint has a roof above its ceiling.
             texture: surface_texture(TextureType::ROOF),
             alternate: None,
             wall_tops: Some(surface_texture(TextureType::ROOF)),
         },
     ];
-    floors::draw(
+    draw_ceiling_floor_raycast(
         &position,
         img_slice,
         surface_depth,
@@ -607,6 +606,157 @@ pub fn draw_walls_raycast(
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum Facing {
+    Up,
+    Down,
+}
+
+pub struct FloorPlane<'a> {
+    pub height: f32,                           // World height of this floor or ceiling
+    pub facing: Facing,                        // Visible side of the plane
+    pub cells: u64,                            // Grid flags marking where the plane exists
+    pub texture: Texture<'a>,                  // Default surface material
+    pub alternate: Option<(u64, Texture<'a>)>, // Optional material selected by a grid flag
+    pub wall_tops: Option<Texture<'a>>,        // Material for exposed wall tops at this height
+}
+
+fn inside_wall(value: u64, x: f32, y: f32) -> bool {
+    // Coordinates are local to this cell; value 1 fills the whole cell.
+    if value == 1 {
+        return true;
+    }
+    for index in 0..get_bits(value, 12).min(3) {
+        // Each wall footprint uses four 4-bit fields, measured in tenths of a cell.
+        let shift = 16 + index * 16;
+        let primary = (get_bits(value, shift) % 11) as f32 / 10.0;
+        let thickness = (get_bits(value, shift + 4) % 11) as f32 / 10.0;
+        let length = (get_bits(value, shift + 8) % 11) as f32 / 10.0;
+        let secondary = (get_bits(value, shift + 12) % 11) as f32 / 10.0;
+        // These are the existing orientation bits for the cell's three wall slots.
+        let (along, across) = if has_bit_set(value, [6, 7, 2][index as usize]) {
+            (x, y)
+        } else {
+            (y, x)
+        };
+        if across >= primary
+            && across < primary + thickness
+            && along >= secondary
+            && along < secondary + length
+        {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn draw_ceiling_floor_raycast(
+    position: &Position,
+    pixels: &mut [u8],
+    depth: &mut [f32],
+    planes: &[FloorPlane<'_>],
+    grid: &[u64],
+    size: usize,
+    width: i32,
+    height: i32,
+    light_range: i32,
+    map_light: i32,
+) {
+    // Convert feet to world units and add the fixed half-unit eye height.
+    let eye = 0.5 + position.z as f32 / height as f32;
+    let middle = height as f32 * 0.5 + position.pitch as f32;
+    pixels
+        .par_chunks_mut(width as usize * 4)
+        .zip(depth.par_chunks_mut(width as usize))
+        .enumerate()
+        .for_each(|(y, (row, zrow))| {
+            // Start each frame with no horizontal surface hiding this row.
+            zrow.fill(f32::INFINITY);
+            // Sample pixel centers relative to the pitched horizon.
+            let screen_offset = y as f32 + 0.5 - middle;
+            // Nearer planes are normally declared last; depth also makes order safe.
+            for plane in planes.iter().rev() {
+                // Floor/roof tops face up; ceilings face down.
+                let visible = match plane.facing {
+                    Facing::Up => eye > plane.height,
+                    Facing::Down => eye < plane.height,
+                };
+                if !visible {
+                    continue;
+                }
+                // A flat plane has the same forward depth across an entire screen row.
+                let distance = (eye - plane.height) * width as f32 * 0.5 / screen_offset;
+                let ray_distance = distance / position.plane_y_initial;
+                // Skip the horizon and intersections behind or too close to the camera.
+                if !distance.is_finite() || ray_distance <= 0.02 {
+                    continue;
+                }
+                let light = ((1.0 - distance / light_range as f32 + map_light as f32)
+                    .clamp(0.0, 1.0)
+                    * 256.0) as u16;
+                // Wide fixed coordinates avoid overflow near the horizon on large views.
+                let step_x = (ray_distance * 2.0 * position.plane_x / width as f32
+                    * FIXED_ONE as f32) as i64;
+                let step_y = (ray_distance * 2.0 * position.plane_y / width as f32
+                    * FIXED_ONE as f32) as i64;
+                let mut world_x = ((position.x
+                    + ray_distance
+                        * (position.dir_x - position.plane_x + position.plane_x / width as f32))
+                    * FIXED_ONE as f32) as i64;
+                let mut world_y = ((position.y
+                    + ray_distance
+                        * (position.dir_y - position.plane_y + position.plane_y / width as f32))
+                    * FIXED_ONE as f32) as i64;
+                for (pixel, z) in row.chunks_exact_mut(4).zip(zrow.iter_mut()) {
+                    let value = get_grid_value(
+                        (world_x >> FIXED_SHIFT) as i32,
+                        (world_y >> FIXED_SHIFT) as i32,
+                        size as i32,
+                        grid,
+                    );
+                    // A nearer plane may already cover this pixel.
+                    if distance < *z {
+                        let texture = if value & plane.cells != 0 {
+                            Some(match &plane.alternate {
+                                Some((flag, texture)) if value & flag != 0 => texture,
+                                _ => &plane.texture,
+                            })
+                        } else {
+                            // Without a full roof cell, draw only the actual wall footprint.
+                            plane.wall_tops.as_ref().filter(|_| {
+                                inside_wall(
+                                    value,
+                                    (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                                    (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                                )
+                            })
+                        };
+                        if let Some(texture) = texture {
+                            // Fractional world coordinates repeat the texture once per cell.
+                            let tx = (texture.width as usize
+                                * (world_x & (FIXED_ONE as i64 - 1)) as usize)
+                                >> FIXED_SHIFT;
+                            let ty = (texture.height as usize
+                                * (world_y & (FIXED_ONE as i64 - 1)) as usize)
+                                >> FIXED_SHIFT;
+                            let idx = (ty * texture.width as usize + tx) * 4;
+                            for c in 0..3 {
+                                pixel[c] = (texture.data[idx + c] as u16 * light >> 8) as u8;
+                            }
+                            *z = distance;
+                        }
+                    }
+                    world_x += step_x;
+                    world_y += step_y;
+                }
+            }
+        });
+}
+
+#[cfg(test)]
+#[path = "tests/floors.rs"]
+mod floor_tests;
+
 pub fn translate_coordinate_to_camera(
     position: &Position,
     point_dx: f32, // position relative to camera
@@ -952,7 +1102,7 @@ pub fn roof_height(x: f32, y: f32, map_array: *const u64, map_width: usize) -> f
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     let value = get_grid_value(x.floor() as i32, y.floor() as i32, size as i32, grid);
     // Bit 1 covers the building's roof; other walls support feet only on their tops.
-    if value & 2 != 0 || floors::inside_wall(value, x - x.floor(), y - y.floor()) {
+    if value & 2 != 0 || inside_wall(value, x - x.floor(), y - y.floor()) {
         1.0
     } else {
         0.0
