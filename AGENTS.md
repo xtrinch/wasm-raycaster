@@ -5,6 +5,8 @@
 - Keep movement physics and collision decisions in Rust: wall blocking, roof
   support, ceiling limits, landing and gravity. TypeScript handles input, hover
   state and applying Rust's returned position; do not duplicate collision rules there.
+- Calculate requested movement distances from speed and frame time in TypeScript;
+  pass distances into Rust, as with `walk`, rather than passing frame time.
 - `packages/app/src/vector-game/game/` owns the TypeScript game state, input,
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
 - `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,

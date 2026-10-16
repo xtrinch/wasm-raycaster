@@ -1157,8 +1157,8 @@ pub fn move_vertical(
     y: f32,                // Player's world y coordinate.
     z: f32,                // Feet height in canvas-scaled units.
     height: i32,           // Canvas height; one world unit in z units.
-    frame_time: f32,       // Elapsed seconds for this update.
-    direction: i8,         // Ascend (1), descend (-1), or no vertical input (0).
+    distance: f32,         // Requested vertical travel in z units; positive means up.
+    fall_distance: f32,    // Downward travel to apply when gravity is active.
     jetpack_active: bool,  // Hover instead of applying gravity while airborne.
     map_array: *const u64, // Packed world grid in WASM memory.
     map_width: usize,      // Grid width used to find the current cell.
@@ -1168,10 +1168,8 @@ pub fn move_vertical(
     let roof = roof_height_at(x, y, grid, map_width) * world_height;
     // A roof supports feet above it; underneath it, the walking surface is ground.
     let support = if z >= world_height - 0.001 { roof } else { 0.0 };
-    // Flight travels one world unit per second; D/F keep their existing speed.
-    let speed = if jetpack_active { world_height } else { 400.0 };
-    let mut next_z = (z + direction as f32 * speed * frame_time).max(support);
-    if !jetpack_active && direction > 0 {
+    let mut next_z = (z + distance).max(support);
+    if !jetpack_active && distance > 0.0 {
         // Preserve the D-key jump limit: 300 z units above the ground or roof.
         next_z = next_z.min(support + 300.0);
     }
@@ -1179,10 +1177,10 @@ pub fn move_vertical(
         // Eyes sit 0.5 units above feet; leave a gap below the ceiling at height 1.
         next_z = next_z.min(world_height * 0.49);
     }
-    let landed = direction < 0 && next_z <= support;
+    let landed = distance < 0.0 && next_z <= support;
     if !jetpack_active || landed {
         // Gravity stops at the walking surface; hovering disables it until landing.
-        next_z = (next_z - 100.0 * frame_time).max(support);
+        next_z = (next_z - fall_distance).max(support);
     }
     Float32Array::from(&[next_z, if landed { 1.0 } else { 0.0 }][..])
 }

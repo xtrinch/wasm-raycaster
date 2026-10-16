@@ -95,18 +95,18 @@ export class Player {
     this.position.y = y;
   };
 
-  public jumpUp = (frameTime: number) => this.moveVertical(1, frameTime);
+  public jumpUp = (frameTime: number) => this.moveVertical(400 * frameTime, frameTime);
 
-  public jumpDown = (frameTime: number) => this.moveVertical(-1, frameTime);
+  public jumpDown = (frameTime: number) => this.moveVertical(-400 * frameTime, frameTime);
 
-  private moveVertical = (direction: number, frameTime: number) => {
+  private moveVertical = (distance: number, frameTime: number) => {
     const [z, landed] = move_vertical(
       this.position.x,
       this.position.y,
       this.position.z,
       this.camera.height,
-      frameTime,
-      direction,
+      distance,
+      100 * frameTime, // Fall distance at the existing gravity speed.
       this.jetpackActive,
       this.camera.mapRef.ptr,
       this.camera.map.size
@@ -133,7 +133,8 @@ export class Player {
       this.jetpackActive = true;
       // Opposite flight keys cancel; releasing both keeps hovering active.
       const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
-      this.moveVertical(direction, frameTime);
+      // Flight travels one world unit per second, converted to position.z units.
+      this.moveVertical(direction * this.camera.height * frameTime, frameTime);
     } else if (!this.jetpackActive && controls.jumpDown) {
       this.jumpDown(frameTime);
     } else if (!this.jetpackActive && controls.jumpUp) {
