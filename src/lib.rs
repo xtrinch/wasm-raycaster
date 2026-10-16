@@ -659,6 +659,8 @@ fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
     false
 }
 
+#[inline(never)]
+#[no_mangle]
 pub fn draw_ceiling_floor_raycast(
     position: &Position,
     img_slice: &mut [u8],
@@ -682,6 +684,12 @@ pub fn draw_ceiling_floor_raycast(
     roof_texture_height: i32,
     depth: &mut [f32], // Nearest horizontal surface per screen pixel.
 ) {
+    let ray_dir_x0 = position.dir_x - position.plane_x;
+    let ray_dir_y0 = position.dir_y - position.plane_y;
+    // Eyes sit half a world unit above the player's feet.
+    let eye = 0.5 + position.z;
+    let middle_view_y = height as f32 * 0.5 + position.pitch as f32;
+
     let road_texture_data = Texture {
         data: road_texture_array,
         width: road_texture_width,
@@ -703,9 +711,6 @@ pub fn draw_ceiling_floor_raycast(
         height: roof_texture_height,
     };
 
-    // Eyes sit half a world unit above the player's feet.
-    let eye = 0.5 + position.z;
-    let middle = height as f32 * 0.5 + position.pitch as f32;
     img_slice
         .par_chunks_mut(width as usize * 4)
         .zip(depth.par_chunks_mut(width as usize))
@@ -714,55 +719,53 @@ pub fn draw_ceiling_floor_raycast(
             // Start each frame with no horizontal surface hiding this row.
             zrow.fill(f32::INFINITY);
             // Sample pixel centers relative to the pitched horizon.
-            let screen_offset = y as f32 + 0.5 - middle;
+            let p = y as f32 + 0.5 - middle_view_y;
             // N stories have horizontal boundaries at 0..N; N is the overhead roof.
             for level in (0..=STORY_COUNT).rev() {
                 let surface_height = level as f32;
-                let looking_at_top = eye > surface_height;
+                let is_floor = eye > surface_height;
+                let is_ground = level == 0;
+                let is_roof = level == STORY_COUNT && is_floor;
                 // Ground has no underside; upper boundaries are ceilings from below.
-                if level == 0 && !looking_at_top {
+                if level == 0 && !is_floor {
                     continue;
                 }
                 // A flat surface has the same forward depth across an entire screen row.
-                let distance = (eye - surface_height) * width as f32 * 0.5 / screen_offset;
-                let ray_distance = distance / position.plane_y_initial;
+                let distance = (eye - surface_height) * width as f32 * 0.5 / p;
+                let row_distance = distance / position.plane_y_initial;
                 // Skip the horizon and intersections behind or too close to the camera.
-                if !distance.is_finite() || ray_distance <= 0.02 {
+                if !distance.is_finite() || row_distance <= 0.02 {
                     continue;
                 }
-                let light = ((1.0 - distance / light_range as f32 + map_light as f32)
+                let alpha = ((1.0 - distance / light_range as f32 + map_light as f32)
                     .clamp(0.0, 1.0)
                     * 256.0) as u16;
                 // Wide fixed coordinates avoid overflow near the horizon on large views.
-                let step_x = (ray_distance * 2.0 * position.plane_x / width as f32
+                let floor_step_x = (row_distance * 2.0 * position.plane_x / width as f32
                     * FIXED_ONE as f32) as i64;
-                let step_y = (ray_distance * 2.0 * position.plane_y / width as f32
+                let floor_step_y = (row_distance * 2.0 * position.plane_y / width as f32
                     * FIXED_ONE as f32) as i64;
-                let mut world_x = ((position.x
-                    + ray_distance
-                        * (position.dir_x - position.plane_x + position.plane_x / width as f32))
+                let base_x = ((position.x
+                    + row_distance * (ray_dir_x0 + position.plane_x / width as f32))
                     * FIXED_ONE as f32) as i64;
-                let mut world_y = ((position.y
-                    + ray_distance
-                        * (position.dir_y - position.plane_y + position.plane_y / width as f32))
+                let base_y = ((position.y
+                    + row_distance * (ray_dir_y0 + position.plane_y / width as f32))
                     * FIXED_ONE as f32) as i64;
+                let mut world_x = base_x;
+                let mut world_y = base_y;
+
                 for (pixel, z) in row.chunks_exact_mut(4).zip(zrow.iter_mut()) {
-                    let value = get_grid_value(
-                        (world_x >> FIXED_SHIFT) as i32,
-                        (world_y >> FIXED_SHIFT) as i32,
-                        map_width as i32,
-                        map_data,
-                    );
+                    let map_x = (world_x >> FIXED_SHIFT) as i32;
+                    let map_y = (world_y >> FIXED_SHIFT) as i32;
+                    let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
                     // A nearer plane may already cover this pixel.
                     if distance < *z {
-                        let is_ground = level == 0;
-                        let is_roof = level == STORY_COUNT && looking_at_top;
                         // Only ground includes outdoor road cells; stories use building cells.
                         let cells = if is_ground { 2 | 8 } else { 2 };
-                        let texture = if value & cells != 0 {
+                        let tex = if value & cells != 0 {
                             Some(if is_ground && value & 8 != 0 {
                                 &road_texture_data
-                            } else if !looking_at_top {
+                            } else if !is_floor {
                                 &ceiling_texture_data
                             } else if is_roof {
                                 &roof_texture_data
@@ -781,23 +784,23 @@ pub fn draw_ceiling_floor_raycast(
                         } else {
                             None
                         };
-                        if let Some(texture) = texture {
-                            // Fractional world coordinates repeat the texture once per cell.
-                            let tx = (texture.width as usize
-                                * (world_x & (FIXED_ONE as i64 - 1)) as usize)
-                                >> FIXED_SHIFT;
-                            let ty = (texture.height as usize
-                                * (world_y & (FIXED_ONE as i64 - 1)) as usize)
-                                >> FIXED_SHIFT;
-                            let idx = (ty * texture.width as usize + tx) * 4;
-                            for c in 0..3 {
-                                pixel[c] = (texture.data[idx + c] as u16 * light >> 8) as u8;
-                            }
+                        if let Some(tex) = tex {
+                            // Fractional world coordinates repeat the tex once per cell.
+                            let frac_x = (world_x & (FIXED_ONE as i64 - 1)) as usize;
+                            let frac_y = (world_y & (FIXED_ONE as i64 - 1)) as usize;
+                            let tx = (tex.width as usize * frac_x) >> FIXED_SHIFT;
+                            let ty = (tex.height as usize * frac_y) >> FIXED_SHIFT;
+
+                            let tex_idx = (ty * tex.width as usize + tx) * 4;
+                            let texel = &tex.data[tex_idx..tex_idx + 3];
+                            pixel[0] = (texel[0] as u16 * alpha >> 8) as u8;
+                            pixel[1] = (texel[1] as u16 * alpha >> 8) as u8;
+                            pixel[2] = (texel[2] as u16 * alpha >> 8) as u8;
                             *z = distance;
                         }
                     }
-                    world_x += step_x;
-                    world_y += step_y;
+                    world_x += floor_step_x;
+                    world_y += floor_step_y;
                 }
             }
         });
