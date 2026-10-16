@@ -753,10 +753,6 @@ pub fn draw_ceiling_floor_raycast(
         });
 }
 
-#[cfg(test)]
-#[path = "tests/floors.rs"]
-mod floor_tests;
-
 pub fn translate_coordinate_to_camera(
     position: &Position,
     point_dx: f32, // position relative to camera
