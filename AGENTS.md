@@ -19,8 +19,9 @@
   implements flight and fixed-height roofs; stairs remain on the prototype branch.
 - G/H ascend and descend; releasing both hovers until landing. Roof coverage is
   shared by Rust rendering and movement queries, including thin-wall tops.
-- World walls are one unit high. Player `position.z` is an offset in renderer
-  units: one world unit equals the canvas height. Roofs meet wall tops at z=1.
+- Player x/y/z and movement distances use world units: one cell is 1 by 1,
+  ground is z=0 and existing wall/roof tops are z=1. Scale z by canvas height
+  only during rendering projection; collision must not depend on canvas size.
 - Derive horizontal surfaces from `STORY_COUNT` (currently 1): ground at 0,
   floor/ceiling boundaries between stories, and the overhead ceiling/roof at N.
   Do not maintain a separate list of plane configurations.

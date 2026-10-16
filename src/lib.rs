@@ -38,7 +38,7 @@ pub fn render(
     plane_x: f32,
     plane_y: f32,
     pitch: i32,
-    z: i32,
+    z: f32,
     plane_y_initial: f32,
     render_img: *mut u8,
     zbuffer_array: *mut f32,
@@ -168,7 +168,6 @@ pub fn render(
         wall_texture_meta.width,
         sprites_map,
         &mut found_sprites,
-        height,
     );
     draw_sprites_wasm(
         &position,
@@ -572,10 +571,9 @@ pub fn draw_walls_raycast(
     wall_texture_width: i32,
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
-    height: i32, // Canvas height converts position.z into world height.
 ) {
     // Eyes are above wall tops once feet reach half a world unit.
-    let above_walls = position.z >= height / 2;
+    let above_walls = position.z >= 0.5;
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
@@ -705,8 +703,8 @@ pub fn draw_ceiling_floor_raycast(
         height: roof_texture_height,
     };
 
-    // Convert feet to world units and add the fixed half-unit eye height.
-    let eye = 0.5 + position.z as f32 / height as f32;
+    // Eyes sit half a world unit above the player's feet.
+    let eye = 0.5 + position.z;
     let middle = height as f32 * 0.5 + position.pitch as f32;
     img_slice
         .par_chunks_mut(width as usize * 4)
@@ -827,8 +825,8 @@ pub fn translate_coordinate_to_camera(
     let screen_x = ((half_width as f32) * (1.0 + (transform_x / transform_y))) as i32;
 
     // to control the pitch/jump
-    let v_move_screen =
-        position.pitch + ((position.z as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
+    let v_move_screen = position.pitch
+        + ((position.z * height as f32) / (transform_y * (aspect_ratio * 2.0))) as i32;
 
     let y_height_before_adjustment = (half_width as f32 / (transform_y)) as i32;
     // since each sprite has a certain height (e.g. 1.1 of the 1 normal height), we multiply by that
@@ -1145,27 +1143,25 @@ pub fn draw_background_image_prescaled(
 pub fn move_vertical(
     x: f32,                // Player's world x coordinate.
     y: f32,                // Player's world y coordinate.
-    z: f32,                // Feet height in canvas-scaled units.
-    height: i32,           // Canvas height; one world unit in z units.
-    distance: f32,         // Requested vertical travel in z units; positive means up.
+    z: f32,                // Feet height in world units.
+    distance: f32,         // Requested vertical travel in world units; positive means up.
     fall_distance: f32,    // Downward travel to apply when gravity is active.
     jetpack_active: bool,  // Hover instead of applying gravity while airborne.
     map_array: *const u64, // Packed world grid in WASM memory.
     map_width: usize,      // Grid width used to find the current cell.
 ) -> Float32Array {
     let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
-    let world_height = height as f32;
-    let roof = roof_height_at(x, y, grid, map_width) * world_height;
+    let roof = roof_height_at(x, y, grid, map_width);
     // A roof supports feet above it; underneath it, the walking surface is ground.
-    let support = if z >= world_height - 0.001 { roof } else { 0.0 };
+    let support = if z >= 1.0 - 0.000001 { roof } else { 0.0 };
     let mut next_z = (z + distance).max(support);
     if !jetpack_active && distance > 0.0 {
-        // Preserve the D-key jump limit: 300 z units above the ground or roof.
-        next_z = next_z.min(support + 300.0);
+        // D-key jumping reaches half a world unit above the ground or roof.
+        next_z = next_z.min(support + 0.5);
     }
     if support == 0.0 && roof > 0.0 {
         // Eyes sit 0.5 units above feet; leave a gap below the ceiling at height 1.
-        next_z = next_z.min(world_height * 0.49);
+        next_z = next_z.min(0.49);
     }
     let landed = distance < 0.0 && next_z <= support;
     if !jetpack_active || landed {
@@ -1195,18 +1191,17 @@ pub fn walk(
     plane_x: f32,
     plane_y: f32,
     pitch: i32,
-    z: i32,
+    z: f32,
     plane_y_initial: f32,
     distance: f32,
     map_array: *mut u64,
     map_width: i32,
     width: i32,
-    height: i32, // One world unit in position.z units; also the wall-top height.
     range: i8,
     wall_texture_width: i32,
 ) -> Float32Array {
     // Feet at or above wall tops can move over walls instead of colliding with them.
-    if z >= height {
+    if z >= 1.0 {
         return Float32Array::from(&[x + dir_x * distance, y + dir_y * distance][..]);
     }
     let position = Position {

@@ -8,7 +8,7 @@ import { GridMap } from "./gridMap";
 export interface Position {
   x: number; // pos x of player
   y: number; // pos y of player
-  z: number; // pos z of player
+  z: number; // Feet height in world units; ground is 0, wall tops are 1.
   dir_x: number; // x component of direction vector
   dir_y: number; // y component of direction vector
   plane_x: number; // x component of camera plane
@@ -87,7 +87,6 @@ export class Player {
       this.camera.mapRef.ptr,
       map.size,
       this.camera.width,
-      this.camera.height,
       this.camera.range,
       map.wallTexture.width
     );
@@ -95,18 +94,18 @@ export class Player {
     this.position.y = y;
   };
 
-  public jumpUp = (frameTime: number) => this.moveVertical(400 * frameTime, frameTime);
+  // D/F move at 2/3 world unit per second, independent of canvas size.
+  public jumpUp = (frameTime: number) => this.moveVertical((2 / 3) * frameTime, frameTime);
 
-  public jumpDown = (frameTime: number) => this.moveVertical(-400 * frameTime, frameTime);
+  public jumpDown = (frameTime: number) => this.moveVertical((-2 / 3) * frameTime, frameTime);
 
   private moveVertical = (distance: number, frameTime: number) => {
     const [z, landed] = move_vertical(
       this.position.x,
       this.position.y,
       this.position.z,
-      this.camera.height,
       distance,
-      100 * frameTime, // Fall distance at the existing gravity speed.
+      frameTime / 6, // Gravity lowers feet by 1/6 world unit per second.
       this.jetpackActive,
       this.camera.mapRef.ptr,
       this.camera.map.size
@@ -133,8 +132,8 @@ export class Player {
       this.jetpackActive = true;
       // Opposite flight keys cancel; releasing both keeps hovering active.
       const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
-      // Flight travels one world unit per second, converted to position.z units.
-      this.moveVertical(direction * this.camera.height * frameTime, frameTime);
+      // Flight travels one world unit per second.
+      this.moveVertical(direction * frameTime, frameTime);
     } else if (!this.jetpackActive && controls.jumpDown) {
       this.jumpDown(frameTime);
     } else if (!this.jetpackActive && controls.jumpUp) {
