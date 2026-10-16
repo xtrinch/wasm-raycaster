@@ -82,17 +82,56 @@ pub fn render(
         .get_map()
         .get(&(TextureType::WALL as i32))
         .unwrap();
+    let wall_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::WALL as i32, 0))
+        .unwrap();
 
-    // Pair a surface's texture pixels with their width and height.
-    let surface_texture = |kind: TextureType| {
-        let key = kind as i32;
-        let meta = sprites_texture_meta_map.get(key).unwrap();
-        Texture {
-            data: sprites_texture_map.get_map().get(&(key, 0)).unwrap(),
-            width: meta.width,
-            height: meta.height,
-        }
-    };
+    let ceiling_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::CEILING as i32))
+        .unwrap();
+    let ceiling_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::CEILING as i32, 0))
+        .unwrap();
+
+    let floor_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::FLOOR as i32))
+        .unwrap();
+    let floor_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::FLOOR as i32, 0))
+        .unwrap();
+
+    let road_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::ROAD as i32))
+        .unwrap();
+    let road_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::ROAD as i32, 0))
+        .unwrap();
+
+    let door_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::DOOR as i32))
+        .unwrap();
+    let door_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::DOOR as i32, 0))
+        .unwrap();
+
+    let roof_texture_meta = sprites_texture_meta_map
+        .get_map()
+        .get(&(TextureType::ROOF as i32))
+        .unwrap();
+    let roof_texture = sprites_texture_map
+        .get_map()
+        .get(&(TextureType::ROOF as i32, 0))
+        .unwrap();
+
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
@@ -102,15 +141,30 @@ pub fn render(
             height: 0.0,
             facing: Facing::Up,
             cells: 2 | 8, // Ground covers floor cells (bit 1) and road cells (bit 3).
-            texture: surface_texture(TextureType::FLOOR),
-            alternate: Some((8, surface_texture(TextureType::ROAD))),
+            texture: Texture {
+                data: floor_texture,
+                width: floor_texture_meta.width,
+                height: floor_texture_meta.height,
+            },
+            alternate: Some((
+                8,
+                Texture {
+                    data: road_texture,
+                    width: road_texture_meta.width,
+                    height: road_texture_meta.height,
+                },
+            )),
             wall_tops: None,
         },
         FloorPlane {
             height: 1.0,
             facing: Facing::Down,
             cells: 2, // Building floor cells also have a ceiling.
-            texture: surface_texture(TextureType::CEILING),
+            texture: Texture {
+                data: ceiling_texture,
+                width: ceiling_texture_meta.width,
+                height: ceiling_texture_meta.height,
+            },
             alternate: None,
             wall_tops: None,
         },
@@ -118,9 +172,17 @@ pub fn render(
             height: 1.0,
             facing: Facing::Up,
             cells: 2, // The same building footprint has a roof above its ceiling.
-            texture: surface_texture(TextureType::ROOF),
+            texture: Texture {
+                data: roof_texture,
+                width: roof_texture_meta.width,
+                height: roof_texture_meta.height,
+            },
             alternate: None,
-            wall_tops: Some(surface_texture(TextureType::ROOF)),
+            wall_tops: Some(Texture {
+                data: roof_texture,
+                width: roof_texture_meta.width,
+                height: roof_texture_meta.height,
+            }),
         },
     ];
     draw_ceiling_floor_raycast(
