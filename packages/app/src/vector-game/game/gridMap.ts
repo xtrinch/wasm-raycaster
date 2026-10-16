@@ -22,6 +22,7 @@ import lady8Texture from "../../assets/woman/woman8.png";
 
 import { TextureType } from "../../../wasm";
 import { Bitmap } from "./bitmap";
+import roofConcrete from "../../assets/roof-concrete.jpg";
 
 export interface Point {
   x: number; // x coordinate on the grid
@@ -53,9 +54,11 @@ export class GridMap {
   public windowTexture: Bitmap;
   public ladyTextures: Bitmap[];
   public light: number;
+  public roofTexture: Bitmap;
 
   constructor(size: number) {
     this.size = size;
+    this.roofTexture = new Bitmap(roofConcrete, 256, 256);
     this.wallGrid = new BigUint64Array(size * size);
     this.skybox = new Bitmap(panorama, 2000, 750);
     this.windowTexture = new Bitmap(windowTexture, 1024, 1024);
@@ -193,6 +196,9 @@ export class GridMap {
     let texture: Bitmap;
 
     switch (spriteType) {
+      case TextureType.ROOF:
+        texture = this.roofTexture;
+        break;
       case TextureType.WALL:
         texture = this.wallTexture;
         break;
@@ -242,6 +248,7 @@ export class GridMap {
     let angles = 1;
 
     switch (spriteType) {
+      case TextureType.ROOF:
       case TextureType.WALL:
       case TextureType.CEILING:
       case TextureType.FLOOR:
