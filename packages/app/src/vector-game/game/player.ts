@@ -136,17 +136,7 @@ export class Player {
     if (this.position.pitch > 200) this.position.pitch = 200;
   };
 
-  public update = (
-    controls: ControlStates,
-    map: GridMap,
-    frameTime: number
-  ) => {
-    if (controls.left) this.rotate(frameTime, 1);
-    else if (controls.right) this.rotate(frameTime, -1);
-
-    if (controls.forward) this.walk(3 * frameTime, map);
-    else if (controls.backward) this.walk(-3 * frameTime, map);
-
+  private updateHeight = (controls: ControlStates, frameTime: number) => {
     const support = this.supportHeight();
     if (controls.jetpackUp || controls.jetpackDown) {
       this.jetpackActive = true;
@@ -166,6 +156,26 @@ export class Player {
       // Eyes sit 0.5 units above feet; leave a small gap below the ceiling at 1.
       this.position.z = Math.min(this.position.z, this.camera.height * 0.49);
     }
+  };
+
+  private applyGravity = (frameTime: number) => {
+    // Gravity stops at the current walking surface and is disabled while hovering.
+    if (!this.jetpackActive)
+      this.position.z = Math.max(this.supportHeight(), this.position.z - 100 * frameTime);
+  };
+
+  public update = (
+    controls: ControlStates,
+    map: GridMap,
+    frameTime: number
+  ) => {
+    if (controls.left) this.rotate(frameTime, 1);
+    else if (controls.right) this.rotate(frameTime, -1);
+
+    if (controls.forward) this.walk(3 * frameTime, map);
+    else if (controls.backward) this.walk(-3 * frameTime, map);
+
+    this.updateHeight(controls, frameTime);
 
     if (controls.lookDown) this.lookDown(frameTime);
     else if (controls.lookUp) this.lookUp(frameTime);
@@ -179,8 +189,6 @@ export class Player {
         Math.min(0, this.position.pitch + 100 * frameTime)
       );
 
-    // Gravity stops at the current walking surface and is disabled while hovering.
-    if (!this.jetpackActive)
-      this.position.z = Math.max(this.supportHeight(), this.position.z - 100 * frameTime);
+    this.applyGravity(frameTime);
   };
 }
