@@ -73,12 +73,6 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
-    // Feet at wall-top height can pass over walls; allow for rounding error.
-    if (this.position.z >= this.camera.height - 0.001) {
-      this.position.x += this.position.dir_x * distance;
-      this.position.y += this.position.dir_y * distance;
-      return;
-    }
     const [x, y] = walk(
       this.position.x,
       this.position.y,
@@ -93,6 +87,7 @@ export class Player {
       this.camera.mapRef.ptr,
       map.size,
       this.camera.width,
+      this.camera.height,
       this.camera.range,
       map.wallTexture.width
     );

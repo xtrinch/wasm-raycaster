@@ -1183,9 +1183,14 @@ pub fn walk(
     map_array: *mut u64,
     map_width: i32,
     width: i32,
+    height: i32, // One world unit in position.z units; also the wall-top height.
     range: i8,
     wall_texture_width: i32,
 ) -> Float32Array {
+    // Feet at or above wall tops can move over walls instead of colliding with them.
+    if z >= height {
+        return Float32Array::from(&[x + dir_x * distance, y + dir_y * distance][..]);
+    }
     let position = Position {
         x,
         y,
