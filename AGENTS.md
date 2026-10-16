@@ -21,6 +21,9 @@
   shared by Rust rendering and movement queries, including thin-wall tops.
 - World walls are one unit high. Player `position.z` is an offset in renderer
   units: one world unit equals the canvas height. Roofs meet wall tops at z=1.
+- Derive horizontal surfaces from `STORY_COUNT` (currently 1): ground at 0,
+  floor/ceiling boundaries between stories, and the overhead ceiling/roof at N.
+  Do not maintain a separate list of plane configurations.
 - Generated bindings live in `packages/app/wasm/` (gitignored). Rebuild them
   whenever a Rust export changes; do not hand-edit generated files.
 

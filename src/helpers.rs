@@ -418,20 +418,8 @@ pub struct Texture<'a> {
     pub height: i32,
 }
 
-#[derive(Clone, Copy)]
-pub enum Facing {
-    Up,
-    Down,
-}
-
-pub struct FloorPlane<'a> {
-    pub height: f32,                           // World height of this floor or ceiling
-    pub facing: Facing,                        // Visible side of the plane
-    pub cells: u64,                            // Grid flags marking where the plane exists
-    pub texture: Texture<'a>,                  // Default surface material
-    pub alternate: Option<(u64, Texture<'a>)>, // Optional material selected by a grid flag
-    pub wall_tops: Option<Texture<'a>>,        // Material for exposed wall tops at this height
-}
+// Current map has one story: ground at 0, ceiling and overhead roof at 1.
+pub const STORY_COUNT: usize = 1;
 
 pub const FIXED_SHIFT: usize = 20;
 pub const FIXED_SHIFT_LARGE: usize = 8;

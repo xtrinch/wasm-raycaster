@@ -1,9 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Facing, FloorPlane,
-    Position, Sprite, SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap,
-    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Position, Sprite,
+    SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap, WasmTextureMap,
+    WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT, STORY_COUNT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -135,61 +135,30 @@ pub fn render(
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
-    // Floors at any height use the same projection, coverage and depth rules.
-    let planes = [
-        FloorPlane {
-            height: 0.0,
-            facing: Facing::Up,
-            cells: 2 | 8, // Ground covers floor cells (bit 1) and road cells (bit 3).
-            texture: Texture {
-                data: floor_texture,
-                width: floor_texture_meta.width,
-                height: floor_texture_meta.height,
-            },
-            alternate: Some((
-                8,
-                Texture {
-                    data: road_texture,
-                    width: road_texture_meta.width,
-                    height: road_texture_meta.height,
-                },
-            )),
-            wall_tops: None,
-        },
-        FloorPlane {
-            height: 1.0,
-            facing: Facing::Down,
-            cells: 2, // Building floor cells also have a ceiling.
-            texture: Texture {
-                data: ceiling_texture,
-                width: ceiling_texture_meta.width,
-                height: ceiling_texture_meta.height,
-            },
-            alternate: None,
-            wall_tops: None,
-        },
-        FloorPlane {
-            height: 1.0,
-            facing: Facing::Up,
-            cells: 2, // The same building footprint has a roof above its ceiling.
-            texture: Texture {
-                data: roof_texture,
-                width: roof_texture_meta.width,
-                height: roof_texture_meta.height,
-            },
-            alternate: None,
-            wall_tops: Some(Texture {
-                data: roof_texture,
-                width: roof_texture_meta.width,
-                height: roof_texture_meta.height,
-            }),
-        },
-    ];
     draw_ceiling_floor_raycast(
         &position,
         img_slice,
         surface_depth,
-        &planes,
+        Texture {
+            data: floor_texture,
+            width: floor_texture_meta.width,
+            height: floor_texture_meta.height,
+        },
+        Texture {
+            data: ceiling_texture,
+            width: ceiling_texture_meta.width,
+            height: ceiling_texture_meta.height,
+        },
+        Texture {
+            data: road_texture,
+            width: road_texture_meta.width,
+            height: road_texture_meta.height,
+        },
+        Texture {
+            data: roof_texture,
+            width: roof_texture_meta.width,
+            height: roof_texture_meta.height,
+        },
         map_data,
         map_width,
         width,
@@ -701,7 +670,10 @@ pub fn draw_ceiling_floor_raycast(
     position: &Position,
     pixels: &mut [u8],
     depth: &mut [f32],
-    planes: &[FloorPlane<'_>],
+    floor_texture: Texture<'_>,
+    ceiling_texture: Texture<'_>,
+    road_texture: Texture<'_>,
+    roof_texture: Texture<'_>,
     grid: &[u64],
     size: usize,
     width: i32,
@@ -721,18 +693,16 @@ pub fn draw_ceiling_floor_raycast(
             zrow.fill(f32::INFINITY);
             // Sample pixel centers relative to the pitched horizon.
             let screen_offset = y as f32 + 0.5 - middle;
-            // Nearer planes are normally declared last; depth also makes order safe.
-            for plane in planes.iter().rev() {
-                // Floor/roof tops face up; ceilings face down.
-                let visible = match plane.facing {
-                    Facing::Up => eye > plane.height,
-                    Facing::Down => eye < plane.height,
-                };
-                if !visible {
+            // N stories have horizontal boundaries at 0..N; N is the overhead roof.
+            for level in (0..=STORY_COUNT).rev() {
+                let surface_height = level as f32;
+                let looking_at_top = eye > surface_height;
+                // Ground has no underside; upper boundaries are ceilings from below.
+                if level == 0 && !looking_at_top {
                     continue;
                 }
-                // A flat plane has the same forward depth across an entire screen row.
-                let distance = (eye - plane.height) * width as f32 * 0.5 / screen_offset;
+                // A flat surface has the same forward depth across an entire screen row.
+                let distance = (eye - surface_height) * width as f32 * 0.5 / screen_offset;
                 let ray_distance = distance / position.plane_y_initial;
                 // Skip the horizon and intersections behind or too close to the camera.
                 if !distance.is_finite() || ray_distance <= 0.02 {
@@ -763,20 +733,31 @@ pub fn draw_ceiling_floor_raycast(
                     );
                     // A nearer plane may already cover this pixel.
                     if distance < *z {
-                        let texture = if value & plane.cells != 0 {
-                            Some(match &plane.alternate {
-                                Some((flag, texture)) if value & flag != 0 => texture,
-                                _ => &plane.texture,
+                        let is_ground = level == 0;
+                        let is_roof = level == STORY_COUNT && looking_at_top;
+                        // Only ground includes outdoor road cells; stories use building cells.
+                        let cells = if is_ground { 2 | 8 } else { 2 };
+                        let texture = if value & cells != 0 {
+                            Some(if is_ground && value & 8 != 0 {
+                                &road_texture
+                            } else if !looking_at_top {
+                                &ceiling_texture
+                            } else if is_roof {
+                                &roof_texture
+                            } else {
+                                &floor_texture
                             })
+                        } else if is_roof
+                            && inside_wall(
+                                value,
+                                (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                                (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                            )
+                        {
+                            // Outside full roof cells, concrete covers just the wall footprint.
+                            Some(&roof_texture)
                         } else {
-                            // Without a full roof cell, draw only the actual wall footprint.
-                            plane.wall_tops.as_ref().filter(|_| {
-                                inside_wall(
-                                    value,
-                                    (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
-                                    (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
-                                )
-                            })
+                            None
                         };
                         if let Some(texture) = texture {
                             // Fractional world coordinates repeat the texture once per cell.
