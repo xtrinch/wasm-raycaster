@@ -138,33 +138,25 @@ pub fn render(
     draw_ceiling_floor_raycast(
         &position,
         img_slice,
-        surface_depth,
-        Texture {
-            data: floor_texture,
-            width: floor_texture_meta.width,
-            height: floor_texture_meta.height,
-        },
-        Texture {
-            data: ceiling_texture,
-            width: ceiling_texture_meta.width,
-            height: ceiling_texture_meta.height,
-        },
-        Texture {
-            data: road_texture,
-            width: road_texture_meta.width,
-            height: road_texture_meta.height,
-        },
-        Texture {
-            data: roof_texture,
-            width: roof_texture_meta.width,
-            height: roof_texture_meta.height,
-        },
-        map_data,
-        map_width,
+        floor_texture,
+        ceiling_texture,
+        road_texture,
         width,
         height,
         light_range,
         map_light,
+        floor_texture_meta.width,
+        floor_texture_meta.height,
+        ceiling_texture_meta.width,
+        ceiling_texture_meta.height,
+        road_texture_meta.width,
+        road_texture_meta.height,
+        map_data,
+        map_width,
+        roof_texture,
+        roof_texture_meta.width,
+        roof_texture_meta.height,
+        surface_depth,
     );
     draw_walls_raycast(
         &position,
@@ -668,23 +660,52 @@ fn inside_wall(value: u64, x: f32, y: f32) -> bool {
 
 pub fn draw_ceiling_floor_raycast(
     position: &Position,
-    pixels: &mut [u8],
-    depth: &mut [f32],
-    floor_texture: Texture<'_>,
-    ceiling_texture: Texture<'_>,
-    road_texture: Texture<'_>,
-    roof_texture: Texture<'_>,
-    grid: &[u64],
-    size: usize,
+    img_slice: &mut [u8],
+    floor_texture_array: &[u8],
+    ceiling_texture_array: &[u8],
+    road_texture_array: &[u8],
     width: i32,
     height: i32,
     light_range: i32,
     map_light: i32,
+    floor_texture_width: i32,
+    floor_texture_height: i32,
+    ceiling_texture_width: i32,
+    ceiling_texture_height: i32,
+    road_texture_width: i32,
+    road_texture_height: i32,
+    map_data: &[u64],
+    map_width: usize,
+    roof_texture_array: &[u8], // Concrete pixels for roofs and wall tops.
+    roof_texture_width: i32,
+    roof_texture_height: i32,
+    depth: &mut [f32], // Nearest horizontal surface per screen pixel.
 ) {
+    let road_texture_data = Texture {
+        data: road_texture_array,
+        width: road_texture_width,
+        height: road_texture_height,
+    };
+    let ceiling_texture_data = Texture {
+        data: ceiling_texture_array,
+        width: ceiling_texture_width,
+        height: ceiling_texture_height,
+    };
+    let floor_texture_data = Texture {
+        data: floor_texture_array,
+        width: floor_texture_width,
+        height: floor_texture_height,
+    };
+    let roof_texture_data = Texture {
+        data: roof_texture_array,
+        width: roof_texture_width,
+        height: roof_texture_height,
+    };
+
     // Convert feet to world units and add the fixed half-unit eye height.
     let eye = 0.5 + position.z as f32 / height as f32;
     let middle = height as f32 * 0.5 + position.pitch as f32;
-    pixels
+    img_slice
         .par_chunks_mut(width as usize * 4)
         .zip(depth.par_chunks_mut(width as usize))
         .enumerate()
@@ -728,8 +749,8 @@ pub fn draw_ceiling_floor_raycast(
                     let value = get_grid_value(
                         (world_x >> FIXED_SHIFT) as i32,
                         (world_y >> FIXED_SHIFT) as i32,
-                        size as i32,
-                        grid,
+                        map_width as i32,
+                        map_data,
                     );
                     // A nearer plane may already cover this pixel.
                     if distance < *z {
@@ -739,13 +760,13 @@ pub fn draw_ceiling_floor_raycast(
                         let cells = if is_ground { 2 | 8 } else { 2 };
                         let texture = if value & cells != 0 {
                             Some(if is_ground && value & 8 != 0 {
-                                &road_texture
+                                &road_texture_data
                             } else if !looking_at_top {
-                                &ceiling_texture
+                                &ceiling_texture_data
                             } else if is_roof {
-                                &roof_texture
+                                &roof_texture_data
                             } else {
-                                &floor_texture
+                                &floor_texture_data
                             })
                         } else if is_roof
                             && inside_wall(
@@ -755,7 +776,7 @@ pub fn draw_ceiling_floor_raycast(
                             )
                         {
                             // Outside full roof cells, concrete covers just the wall footprint.
-                            Some(&roof_texture)
+                            Some(&roof_texture_data)
                         } else {
                             None
                         };
