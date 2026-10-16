@@ -631,7 +631,8 @@ pub fn draw_walls_raycast(
     }
 }
 
-fn inside_wall(value: u64, x: f32, y: f32) -> bool {
+// Check whether a point lies on a wall's top footprint, using cell-local coordinates.
+fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
     // Coordinates are local to this cell; value 1 fills the whole cell.
     if value == 1 {
         return true;
@@ -771,7 +772,7 @@ pub fn draw_ceiling_floor_raycast(
                                 &floor_texture_data
                             })
                         } else if is_roof
-                            && inside_wall(
+                            && inside_wall_footprint(
                                 value,
                                 (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
                                 (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
@@ -1177,7 +1178,7 @@ pub fn move_vertical(
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     let value = get_grid_value(x.floor() as i32, y.floor() as i32, size as i32, grid);
     // Bit 1 covers the building's roof; other walls support feet only on their tops.
-    if value & 2 != 0 || inside_wall(value, x - x.floor(), y - y.floor()) {
+    if value & 2 != 0 || inside_wall_footprint(value, x - x.floor(), y - y.floor()) {
         1.0
     } else {
         0.0
