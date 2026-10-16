@@ -1,9 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Position, Sprite,
-    SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap, WasmTextureMap,
-    WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Facing, FloorPlane,
+    Position, Sprite, SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap,
+    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -666,21 +666,6 @@ pub fn draw_walls_raycast(
         };
         found_sprites.extend((*window_sprites).clone());
     }
-}
-
-#[derive(Clone, Copy)]
-pub enum Facing {
-    Up,
-    Down,
-}
-
-pub struct FloorPlane<'a> {
-    pub height: f32,                           // World height of this floor or ceiling
-    pub facing: Facing,                        // Visible side of the plane
-    pub cells: u64,                            // Grid flags marking where the plane exists
-    pub texture: Texture<'a>,                  // Default surface material
-    pub alternate: Option<(u64, Texture<'a>)>, // Optional material selected by a grid flag
-    pub wall_tops: Option<Texture<'a>>,        // Material for exposed wall tops at this height
 }
 
 fn inside_wall(value: u64, x: f32, y: f32) -> bool {
