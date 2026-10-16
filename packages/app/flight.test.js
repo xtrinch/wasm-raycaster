@@ -4,6 +4,7 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
+// Load TypeScript without a browser; replace WASM and image loading with test stubs.
 function load(file, wasm) {
   const source = readFileSync(new URL(`./src/vector-game/game/${file}.ts`, import.meta.url), "utf8");
   const js = ts.transpileModule(source, { compilerOptions: {

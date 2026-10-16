@@ -179,7 +179,7 @@ export class Camera {
     if (
       !this.skyTextureRef ||
       !this.backgroundRef ||
-      this.spriteTextureHashMap.count_cells() < 20 // including angles and roof
+      this.spriteTextureHashMap.count_cells() < 20 // Wait for 19 existing texture entries plus the roof.
     ) {
       return;
     }

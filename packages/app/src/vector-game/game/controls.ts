@@ -23,8 +23,8 @@ export class Controls {
     83: "lookDown", // s
     68: "jumpUp", // d
     70: "jumpDown", // f
-    71: "jetpackUp", // g
-    72: "jetpackDown", // h
+    71: "jetpackUp", // g: ascend, then hover on release
+    72: "jetpackDown", // h: descend; landing ends hovering
   };
   public states: ControlStates = {
     left: false,

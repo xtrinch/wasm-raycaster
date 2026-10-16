@@ -22,6 +22,7 @@ export class Player {
   public paces: number;
   public position: Position;
   public camera: Camera;
+  // Stay hovering after G/H is released; landing switches gravity back on.
   public jetpackActive = false;
 
   constructor(
@@ -72,11 +73,13 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
+    // Check collision at most every 0.05 world units, even after a slow frame.
     const steps = Math.max(1, Math.ceil(Math.abs(distance) / 0.05));
     for (let i = 0; i < steps; i++) this.walkStep(distance / steps, map);
   };
 
   private walkStep = (distance: number, map: GridMap) => {
+    // Feet at wall-top height can pass over walls; allow for rounding error.
     if (this.position.z >= this.camera.height - 0.001) {
       this.position.x += this.position.dir_x * distance;
       this.position.y += this.position.dir_y * distance;
@@ -105,20 +108,24 @@ export class Player {
 
   public jumpUp = (frameTime: number) => {
     this.position.z += 400 * frameTime;
+    // Keep the existing D-key height limit relative to the ground or roof.
     const support = this.supportHeight();
     if (this.position.z > support + 300) this.position.z = support + 300;
   };
 
   public jumpDown = (frameTime: number) => {
+    // Find the landing surface before lowering the feet past it.
     const support = this.supportHeight();
     this.position.z -= 400 * frameTime;
     if (this.position.z < support) this.position.z = support;
   };
 
+  // Convert Rust's world height to the canvas-scaled units used by position.z.
   private roofHeight = () => roof_height(
     this.position.x, this.position.y, this.camera.mapRef.ptr, this.camera.map.size
   ) * this.camera.height;
 
+  // A roof supports feet above it; underneath it, the walking surface is ground.
   private supportHeight = () => this.position.z >= this.camera.height - 0.001
     ? this.roofHeight() : 0;
 
@@ -139,6 +146,7 @@ export class Player {
     map: GridMap,
     frameTime: number
   ) => {
+    // Limit movement after a pause or a delayed animation frame.
     frameTime = Math.min(frameTime, 0.1);
     if (controls.left) this.rotate(frameTime, 1);
     else if (controls.right) this.rotate(frameTime, -1);
@@ -149,9 +157,11 @@ export class Player {
     const support = this.supportHeight();
     if (controls.jetpackUp || controls.jetpackDown) {
       this.jetpackActive = true;
+      // Opposite flight keys cancel; speed is one world unit per second.
       const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
       this.position.z = Math.max(support,
         this.position.z + direction * this.camera.height * frameTime);
+      // Landing ends hovering so walking off an edge causes a fall.
       if (direction < 0 && this.position.z <= support) this.jetpackActive = false;
     } else if (!this.jetpackActive) {
       if (controls.jumpDown) this.jumpDown(frameTime);
@@ -160,6 +170,7 @@ export class Player {
 
     // A roof overhead blocks ascent from inside the building.
     if (support === 0 && this.roofHeight() > 0) {
+      // Eyes sit 0.5 units above feet; leave a small gap below the ceiling at 1.
       this.position.z = Math.min(this.position.z, this.camera.height * 0.49);
     }
 
@@ -175,6 +186,7 @@ export class Player {
         Math.min(0, this.position.pitch + 100 * frameTime)
       );
 
+    // Gravity stops at the current walking surface and is disabled while hovering.
     if (!this.jetpackActive)
       this.position.z = Math.max(this.supportHeight(), this.position.z - 100 * frameTime);
   };

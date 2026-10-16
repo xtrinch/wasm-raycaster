@@ -84,6 +84,7 @@ pub fn render(
         .get(&(TextureType::WALL as i32))
         .unwrap();
 
+    // Pair a surface's texture pixels with their width and height.
     let surface_texture = |kind: TextureType| {
         let key = kind as i32;
         let meta = sprites_texture_meta_map.get(key).unwrap();
@@ -101,7 +102,7 @@ pub fn render(
         floors::FloorPlane {
             height: 0.0,
             facing: floors::Facing::Up,
-            cells: 2 | 8,
+            cells: 2 | 8, // Ground covers floor cells (bit 1) and road cells (bit 3).
             texture: surface_texture(TextureType::FLOOR),
             alternate: Some((8, surface_texture(TextureType::ROAD))),
             wall_tops: None,
@@ -109,7 +110,7 @@ pub fn render(
         floors::FloorPlane {
             height: 1.0,
             facing: floors::Facing::Down,
-            cells: 2,
+            cells: 2, // Building floor cells also have a ceiling.
             texture: surface_texture(TextureType::CEILING),
             alternate: None,
             wall_tops: None,
@@ -117,7 +118,7 @@ pub fn render(
         floors::FloorPlane {
             height: 1.0,
             facing: floors::Facing::Up,
-            cells: 2,
+            cells: 2, // The same building footprint has a roof above its ceiling.
             texture: surface_texture(TextureType::ROOF),
             alternate: None,
             wall_tops: Some(surface_texture(TextureType::ROOF)),
@@ -145,7 +146,7 @@ pub fn render(
         wall_texture_meta.width,
         sprites_map,
         &mut found_sprites,
-        z >= height / 2,
+        z >= height / 2, // Eyes are above wall tops once feet reach half a world unit.
     );
     draw_sprites_wasm(
         &position,
@@ -173,7 +174,7 @@ pub fn raycast_column(
     sprites_map: Option<&HashMap<(i32, i32), Vec<Sprite>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
-    above_walls: bool,
+    above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
     let mut met_coords: Vec<(i32, i32)> = Vec::new();
     let mut window_sprites: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
@@ -498,6 +499,7 @@ pub fn raycast_column(
         if hit && !above_walls {
             break;
         }
+        // From above, a wall hit must not stop the ray's search through farther cells.
         if above_walls {
             hit = false;
         }
@@ -595,6 +597,7 @@ pub fn draw_walls_raycast(
     });
 
     for (idx, (perp_wall_dist, _, _, window_sprites)) in data.iter().enumerate() {
+        // Above walls, per-pixel roof depth replaces whole-column wall occlusion.
         zbuffer[idx] = if above_walls {
             f32::INFINITY
         } else {
@@ -690,9 +693,11 @@ pub fn draw_sprites_wasm(
                 aspect_ratio,
                 inv_det,
             );
+            // Reject sprites behind the camera or too small to draw safely.
             if projection.distance <= 0.02 || projection.full_height <= 0 {
                 return None;
             }
+            // Only inspect rows where the sprite actually reaches the screen.
             let visible_start = projection.screen_y_ceiling.max(0) as usize;
             let visible_end =
                 (projection.screen_y_ceiling + projection.full_height).clamp(0, height) as usize;
@@ -711,8 +716,7 @@ pub fn draw_sprites_wasm(
                 || sprite.r#type == TextureType::DOOR as i32
                 || sprite.r#type == TextureType::WALL as i32
             {
-                // Roof views discover walls on both sides of the building.
-                // Drop fully hidden stripes before the row-by-sprite draw loop.
+                // Skip wall stripes fully hidden by nearer floors or roofs.
                 if (visible_start..visible_end).all(|y| {
                     surface_depth[y * width as usize + sprite.column as usize]
                         <= projection.distance
@@ -853,8 +857,7 @@ pub fn draw_sprites_wasm(
 
                     let x = sprite.sprite_left_x as i32 + dx;
                     let idx = (x * 4) as usize;
-                    // Surface depth is per pixel: a roof may hide only the lower
-                    // part of a tree or a wall stripe, unlike the column buffer.
+                    // A roof can hide only part of a tree or wall, so check each pixel.
                     if sprite.depth >= surface_depth[y as usize * width as usize + x as usize] {
                         continue;
                     }
@@ -912,8 +915,7 @@ pub fn draw_background_image_prescaled(
         .par_chunks_mut((width * 4) as usize)
         .enumerate()
         .for_each(|(y, row)| {
-            // Pitch can reveal rows beyond the panorama. Extend its edge rows
-            // so uncovered floor/roof edges never retain last frame's pixels.
+            // Extend panorama edges when pitching so no pixels retain the previous frame.
             let screen_y_pitch = (y as i32 - position.pitch).clamp(0, height - 1);
 
             let row_start = screen_y_pitch as usize * sky_w_bytes;
@@ -949,6 +951,7 @@ pub fn roof_height(x: f32, y: f32, map_array: *const u64, map_width: usize) -> f
 
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     let value = get_grid_value(x.floor() as i32, y.floor() as i32, size as i32, grid);
+    // Bit 1 covers the building's roof; other walls support feet only on their tops.
     if value & 2 != 0 || floors::inside_wall(value, x - x.floor(), y - y.floor()) {
         1.0
     } else {

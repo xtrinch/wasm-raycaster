@@ -20,15 +20,18 @@ pub struct FloorPlane<'a> {
 }
 
 pub(super) fn inside_wall(value: u64, x: f32, y: f32) -> bool {
+    // Coordinates are local to this cell; value 1 fills the whole cell.
     if value == 1 {
         return true;
     }
     for index in 0..get_bits(value, 12).min(3) {
+        // Each wall footprint uses four 4-bit fields, measured in tenths of a cell.
         let shift = 16 + index * 16;
         let primary = (get_bits(value, shift) % 11) as f32 / 10.0;
         let thickness = (get_bits(value, shift + 4) % 11) as f32 / 10.0;
         let length = (get_bits(value, shift + 8) % 11) as f32 / 10.0;
         let secondary = (get_bits(value, shift + 12) % 11) as f32 / 10.0;
+        // These are the existing orientation bits for the cell's three wall slots.
         let (along, across) = if has_bit_set(value, [6, 7, 2][index as usize]) {
             (x, y)
         } else {
@@ -57,6 +60,7 @@ pub fn draw(
     light_range: i32,
     map_light: i32,
 ) {
+    // Convert feet to world units and add the fixed half-unit eye height.
     let eye = 0.5 + position.z as f32 / height as f32;
     let middle = height as f32 * 0.5 + position.pitch as f32;
     pixels
@@ -64,10 +68,13 @@ pub fn draw(
         .zip(depth.par_chunks_mut(width as usize))
         .enumerate()
         .for_each(|(y, (row, zrow))| {
+            // Start each frame with no horizontal surface hiding this row.
             zrow.fill(f32::INFINITY);
+            // Sample pixel centers relative to the pitched horizon.
             let screen_offset = y as f32 + 0.5 - middle;
             // Nearer planes are normally declared last; depth also makes order safe.
             for plane in planes.iter().rev() {
+                // Floor/roof tops face up; ceilings face down.
                 let visible = match plane.facing {
                     Facing::Up => eye > plane.height,
                     Facing::Down => eye < plane.height,
@@ -75,8 +82,10 @@ pub fn draw(
                 if !visible {
                     continue;
                 }
+                // A flat plane has the same forward depth across an entire screen row.
                 let distance = (eye - plane.height) * width as f32 * 0.5 / screen_offset;
                 let ray_distance = distance / position.plane_y_initial;
+                // Skip the horizon and intersections behind or too close to the camera.
                 if !distance.is_finite() || ray_distance <= 0.02 {
                     continue;
                 }
@@ -103,6 +112,7 @@ pub fn draw(
                         size as i32,
                         grid,
                     );
+                    // A nearer plane may already cover this pixel.
                     if distance < *z {
                         let texture = if value & plane.cells != 0 {
                             Some(match &plane.alternate {
@@ -110,6 +120,7 @@ pub fn draw(
                                 _ => &plane.texture,
                             })
                         } else {
+                            // Without a full roof cell, draw only the actual wall footprint.
                             plane.wall_tops.as_ref().filter(|_| {
                                 inside_wall(
                                     value,
@@ -119,6 +130,7 @@ pub fn draw(
                             })
                         };
                         if let Some(texture) = texture {
+                            // Fractional world coordinates repeat the texture once per cell.
                             let tx = (texture.width as usize
                                 * (world_x & (FIXED_ONE as i64 - 1)) as usize)
                                 >> FIXED_SHIFT;
