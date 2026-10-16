@@ -22,9 +22,8 @@
 - Player x/y/z and movement distances use world units: one cell is 1 by 1,
   ground is z=0 and existing wall/roof tops are z=1. Scale z by canvas height
   only during rendering projection; collision must not depend on canvas size.
-- Derive horizontal surfaces from `STORY_COUNT` (currently 1): ground at 0,
-  floor/ceiling boundaries between stories, and the overhead ceiling/roof at N.
-  Do not maintain a separate list of plane configurations.
+- Only one story is supported: ground at 0 and ceiling/roof at wall-top height 1.
+  Do not add multi-story configuration or rendering paths ahead of that feature.
 - Generated bindings live in `packages/app/wasm/` (gitignored). Rebuild them
   whenever a Rust export changes; do not hand-edit generated files.
 

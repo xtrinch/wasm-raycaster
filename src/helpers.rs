@@ -418,9 +418,6 @@ pub struct Texture<'a> {
     pub height: i32,
 }
 
-// Current map has one story: ground at 0, ceiling and overhead roof at 1.
-pub const STORY_COUNT: usize = 1;
-
 pub const FIXED_SHIFT: usize = 20;
 pub const FIXED_SHIFT_LARGE: usize = 8;
 pub const FIXED_ONE: i32 = 1 << FIXED_SHIFT;

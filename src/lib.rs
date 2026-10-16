@@ -3,7 +3,7 @@
 use helpers::{
     get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm, Position,
     Sprite, SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap,
-    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT, STORY_COUNT,
+    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -724,14 +724,13 @@ pub fn draw_ceiling_floor_raycast(
             zrow.fill(f32::INFINITY);
             // Sample pixel centers relative to the pitched horizon.
             let p = y as f32 + 0.5 - middle_view_y;
-            // N stories have horizontal boundaries at 0..N; N is the overhead roof.
-            for level in (0..=STORY_COUNT).rev() {
-                let surface_height = level as f32;
+            // Current geometry has only ground at 0 and ceiling/roof at wall-top height 1.
+            for surface_height in [1.0, 0.0] {
                 let is_floor = eye > surface_height;
-                let is_ground = level == 0;
-                let is_roof = level == STORY_COUNT && is_floor;
+                let is_ground = surface_height == 0.0;
+                let is_roof = !is_ground && is_floor;
                 // Ground has no underside; upper boundaries are ceilings from below.
-                if level == 0 && !is_floor {
+                if is_ground && !is_floor {
                     continue;
                 }
                 // A flat surface has the same forward depth across an entire screen row.
