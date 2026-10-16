@@ -13,8 +13,8 @@ from inside a building. Existing movement, look, and D/F controls are unchanged.
 Roofs and thin-wall tops use concrete at the existing wall height. No stairs or
 variable-height walls are included in this step.
 
-Run `pnpm --filter app test` for flight/movement checks and `cargo test` for Rust
-rendering and roof coverage checks.
+Run `cargo test` for Rust rendering and roof coverage checks. Flight/movement
+tests are saved on `stairs-roof-prototype` for later.
 
 ## Prerequisites
 

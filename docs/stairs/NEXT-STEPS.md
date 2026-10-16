@@ -45,6 +45,8 @@ version, then build the underlying features in small, separately reviewable step
 
 ## Later cleanup
 
+- [ ] Bring back the flight/movement tests saved on `stairs-roof-prototype`.
+
 - [ ] Add broader floor-rendering tests for plane heights, visibility, depth order,
       gaps and thin-wall tops alongside the later renderer work.
 - [ ] Move `draw_ceiling_floor_raycast` and its supporting types from `src/lib.rs`

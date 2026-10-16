@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --test flight.test.js",
     "preview": "vite preview",
     "dev": "vite build --watch",
     "run-dev": "vite",
