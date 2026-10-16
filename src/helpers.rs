@@ -431,6 +431,12 @@ pub fn to_fixed(f: f32) -> i32 {
     (f * (FIXED_ONE as f32)) as i32
 }
 
+// Keep distant floor coordinates from overflowing the 32-bit fixed-point range.
+#[inline(always)]
+pub fn to_fixed_i64(f: f32) -> i64 {
+    (f * (FIXED_ONE as f32)) as i64
+}
+
 #[inline(always)]
 pub fn to_fixed_large(f: f32) -> i32 {
     (f * (FIXED_ONE_LARGE as f32)) as i32

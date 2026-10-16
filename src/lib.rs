@@ -1,9 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Position, Sprite,
-    SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap, WasmTextureMap,
-    WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT, STORY_COUNT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm, Position,
+    Sprite, SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap,
+    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT, STORY_COUNT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -686,6 +686,10 @@ pub fn draw_ceiling_floor_raycast(
 ) {
     let ray_dir_x0 = position.dir_x - position.plane_x;
     let ray_dir_y0 = position.dir_y - position.plane_y;
+    let ray_dir_x1 = position.dir_x + position.plane_x;
+    let ray_dir_y1 = position.dir_y + position.plane_y;
+    let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
+    let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
     // Eyes sit half a world unit above the player's feet.
     let eye = 0.5 + position.z;
     let middle_view_y = height as f32 * 0.5 + position.pitch as f32;
@@ -741,16 +745,14 @@ pub fn draw_ceiling_floor_raycast(
                     .clamp(0.0, 1.0)
                     * 256.0) as u16;
                 // Wide fixed coordinates avoid overflow near the horizon on large views.
-                let floor_step_x = (row_distance * 2.0 * position.plane_x / width as f32
-                    * FIXED_ONE as f32) as i64;
-                let floor_step_y = (row_distance * 2.0 * position.plane_y / width as f32
-                    * FIXED_ONE as f32) as i64;
-                let base_x = ((position.x
-                    + row_distance * (ray_dir_x0 + position.plane_x / width as f32))
-                    * FIXED_ONE as f32) as i64;
-                let base_y = ((position.y
-                    + row_distance * (ray_dir_y0 + position.plane_y / width as f32))
-                    * FIXED_ONE as f32) as i64;
+                let floor_step_x = to_fixed_i64(row_distance * ray_dir_x_dist / width as f32);
+                let floor_step_y = to_fixed_i64(row_distance * ray_dir_y_dist / width as f32);
+                let base_x = to_fixed_i64(
+                    position.x + row_distance * (ray_dir_x0 + position.plane_x / width as f32),
+                );
+                let base_y = to_fixed_i64(
+                    position.y + row_distance * (ray_dir_y0 + position.plane_y / width as f32),
+                );
                 let mut world_x = base_x;
                 let mut world_y = base_y;
 
