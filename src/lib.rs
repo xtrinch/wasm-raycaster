@@ -168,7 +168,7 @@ pub fn render(
         wall_texture_meta.width,
         sprites_map,
         &mut found_sprites,
-        z >= height / 2, // Eyes are above wall tops once feet reach half a world unit.
+        height,
     );
     draw_sprites_wasm(
         &position,
@@ -572,8 +572,10 @@ pub fn draw_walls_raycast(
     wall_texture_width: i32,
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
-    above_walls: bool,
+    height: i32, // Canvas height converts position.z into world height.
 ) {
+    // Eyes are above wall tops once feet reach half a world unit.
+    let above_walls = position.z >= height / 2;
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
