@@ -17,6 +17,10 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod helpers;
 mod line_intersection;
+#[cfg(test)]
+#[path = "tests/render.rs"]
+mod render_tests;
+mod stairs;
 use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
@@ -53,7 +57,9 @@ pub fn render(
     sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
-    surface_depth_array: *mut f32, // Nearest floor, ceiling or roof depth per pixel
+    surface_depth_array: *mut f32, // Nearest floor, ceiling or stair depth per pixel
+    stair_boxes_array: *const f32, // Grid-derived stair boxes: x0, y0, x1, y1, bottom, top
+    stair_box_count: usize,        // Number of boxes in stair_boxes_array
 ) {
     let position = Position {
         x,
@@ -77,6 +83,7 @@ pub fn render(
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
     let surface_depth =
         unsafe { from_raw_parts_mut(surface_depth_array, width as usize * height as usize) };
+    let stair_boxes = unsafe { from_raw_parts(stair_boxes_array, stair_box_count * 6) };
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
@@ -146,6 +153,17 @@ pub fn render(
         sprites_map,
         &mut found_sprites,
         z >= height / 2, // Eyes are above wall tops once feet reach half a world unit.
+    );
+    stairs::draw(
+        &position,
+        img_slice,
+        surface_depth,
+        stair_boxes,
+        width,
+        height,
+        surface_texture(TextureType::STAIRS),
+        light_range,
+        map_light,
     );
     draw_sprites_wasm(
         &position,
@@ -262,6 +280,8 @@ pub fn raycast_column(
 
     while !hit && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
+        // Stair cells (bit 10) have zero walls; their upper bits are flight
+        // metadata, not wall segments. TypeScript derives their surface boxes.
         let num_walls = get_bits(value, 12);
 
         // if wall bit is set
@@ -1251,3 +1271,7 @@ pub fn rotate_view(
     // Avoid heap allocation by creating a fixed-size array
     Float32Array::from(&[new_dir_x, new_dir_y, new_plane_x, new_plane_y][..])
 }
+
+#[cfg(test)]
+#[path = "tests/floors.rs"]
+mod floor_tests;

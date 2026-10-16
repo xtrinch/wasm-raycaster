@@ -13,6 +13,7 @@ import {
   WasmUint8Array,
 } from "../../../wasm";
 import { Bitmap } from "./bitmap";
+import { buildStairBoxes } from "./elevation";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
 import { SpriteMap } from "./spriteMap";
@@ -39,8 +40,11 @@ export class Camera {
   public skyTextureRef: WasmUint8Array;
   // Wall depth per screen column.
   public zBufferRef: WasmFloat32Array;
-  // Nearest floor, ceiling or roof depth per pixel.
+  // Floor, ceiling and stair depth per pixel, allowing partial occlusion.
   public surfaceDepthRef: WasmFloat32Array;
+  // WASM copy of grid-derived stair boxes: [x0, y0, x1, y1, bottom, top].
+  public stairBoxesRef: WasmFloat32Array;
+  private readonly stairBoxCount: number;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
   public spriteHashMap: WasmStripePerCoordMap; // sprites per coordinate
@@ -81,6 +85,11 @@ export class Camera {
 
     this.zBufferRef = new WasmFloat32Array(this.width);
     this.surfaceDepthRef = new WasmFloat32Array(this.width * this.height);
+    const { stairs } = buildStairBoxes(map.wallGrid, map.size);
+    this.stairBoxCount = stairs.length;
+    const stairBoxes = new Float32Array(stairs.flat());
+    this.stairBoxesRef = new WasmFloat32Array(stairBoxes.length);
+    this.stairBoxesRef.set(stairBoxes);
 
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
@@ -179,7 +188,7 @@ export class Camera {
     if (
       !this.skyTextureRef ||
       !this.backgroundRef ||
-      this.spriteTextureHashMap.count_cells() < 20 // Wait for 19 existing texture entries plus the roof.
+      this.spriteTextureHashMap.count_cells() < 21 // including angles, roof and stairs
     ) {
       return;
     }
@@ -207,7 +216,9 @@ export class Camera {
       this.spriteHashMap,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
-      this.surfaceDepthRef.ptr
+      this.surfaceDepthRef.ptr,
+      this.stairBoxesRef.ptr,
+      this.stairBoxCount
     );
 
     this.drawWeapon(player.weapon, player.paces);

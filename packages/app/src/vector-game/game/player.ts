@@ -5,6 +5,7 @@ import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
 import { ControlStates } from "./controls";
 import { GridMap } from "./gridMap";
+import { STEP_HEIGHT } from "./elevation";
 export interface Position {
   x: number; // pos x of player
   y: number; // pos y of player
@@ -73,10 +74,29 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
-    // Feet at wall-top height can pass over walls; allow for rounding error.
-    if (this.position.z >= this.camera.height - 0.001) {
-      this.position.x += this.position.dir_x * distance;
-      this.position.y += this.position.dir_y * distance;
+    // Small steps keep a delayed animation frame from crossing a riser or wall.
+    const steps = Math.max(1, Math.ceil(Math.abs(distance) / 0.05));
+    for (let i = 0; i < steps; i++) this.walkStep(distance / steps, map);
+  };
+
+  private walkStep = (distance: number, map: GridMap) => {
+    const feet = this.position.z / this.camera.height;
+    const nextX = this.position.x + this.position.dir_x * distance;
+    const nextY = this.position.y + this.position.dir_y * distance;
+    const stair = map.stairHeight(nextX, nextY);
+    // The high side of the stairs cannot be entered from ground level.
+    if (stair !== undefined && stair > feet + STEP_HEIGHT + 0.001) return;
+    const onStairs = map.stairHeight(this.position.x, this.position.y) !== undefined;
+    const support = Math.max(map.supportHeight(nextX, nextY, feet), feet >= 1 - 0.001 ? roof_height(nextX, nextY, this.camera.mapRef.ptr, map.size) : 0);
+    const previousSupport = this.supportHeight() / this.camera.height;
+    const supported = Math.abs(feet - previousSupport) < 0.002;
+    const nextZ = supported && Math.abs(support - feet) <= STEP_HEIGHT + 0.001
+      ? support * this.camera.height
+      : Math.max(this.position.z, support * this.camera.height);
+    if ((stair !== undefined && (onStairs || stair <= STEP_HEIGHT)) || feet >= 1 - 0.001) {
+      this.position.x = nextX;
+      this.position.y = nextY;
+      this.position.z = nextZ;
       return;
     }
     const [x, y] = walk(
@@ -98,6 +118,10 @@ export class Player {
     );
     this.position.x = x;
     this.position.y = y;
+    const actualSupport = map.supportHeight(x, y, feet);
+    this.position.z = supported && Math.abs(actualSupport - feet) <= STEP_HEIGHT + 0.001
+      ? actualSupport * this.camera.height
+      : Math.max(this.position.z, actualSupport * this.camera.height);
   };
 
   public jumpUp = (frameTime: number) => {
@@ -119,9 +143,11 @@ export class Player {
     this.position.x, this.position.y, this.camera.mapRef.ptr, this.camera.map.size
   ) * this.camera.height;
 
-  // A roof supports feet above it; underneath it, the walking surface is ground.
-  private supportHeight = () => this.position.z >= this.camera.height - 0.001
-    ? this.roofHeight() : 0;
+  private supportHeight = () => Math.max(
+    this.camera.map.supportHeight(this.position.x, this.position.y,
+      this.position.z / this.camera.height) * this.camera.height,
+    this.position.z >= this.camera.height - 0.001 ? this.roofHeight() : 0
+  );
 
   public lookDown = (frameTime: number) => {
     // look down
@@ -163,8 +189,7 @@ export class Player {
     }
 
     // A roof overhead blocks ascent from inside the building.
-    if (support === 0 && this.roofHeight() > 0) {
-      // Eyes sit 0.5 units above feet; leave a small gap below the ceiling at 1.
+    if (this.position.z < this.camera.height && this.roofHeight() > 0) {
       this.position.z = Math.min(this.position.z, this.camera.height * 0.49);
     }
 

@@ -23,6 +23,8 @@ import lady8Texture from "../../assets/woman/woman8.png";
 import { TextureType } from "../../../wasm";
 import { Bitmap } from "./bitmap";
 import roofConcrete from "../../assets/roof-concrete.jpg";
+import stairConcrete from "../../assets/stair-concrete.jpg";
+import { stairCell, gridSupportHeight, stairHeightAt } from "./elevation";
 
 export interface Point {
   x: number; // x coordinate on the grid
@@ -55,10 +57,12 @@ export class GridMap {
   public ladyTextures: Bitmap[];
   public light: number;
   public roofTexture: Bitmap;
+  public stairTexture: Bitmap;
 
   constructor(size: number) {
     this.size = size;
     this.roofTexture = new Bitmap(roofConcrete, 256, 256);
+    this.stairTexture = new Bitmap(stairConcrete, 256, 256);
     this.wallGrid = new BigUint64Array(size * size);
     this.skybox = new Bitmap(panorama, 2000, 750);
     this.windowTexture = new Bitmap(windowTexture, 1024, 1024);
@@ -104,12 +108,16 @@ export class GridMap {
     // 0x39 - thin door - east with road (bit 0, 3, 4, 5)
     // 0x37 - thin door - east with wall & floor (bit 0, 1, 2, 4, 5)
     // 0x71 - thin door - north (bit 0, 4, 5, 6)
+    // 0x400 - stair cell (bit 10); bits 16-17 are uphill direction, bit 18 is upper/lower.
+    // Dimensions are shared constants in elevation.ts; stair cells have no wall segments.
 
+    // Stairs are declared at (4,0) and (4,1), ascending south.
+    // The two shed cells are (5,0) and (6,0). No runtime placement pass.
     // prettier-ignore
     this.wallGrid = new BigUint64Array([
       /*       0,            1,            2,            3,            4,            5,            6,            7,            8,            9,            10,           11           */
-      /* 0  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 1  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
+      /* 0  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, stairCell("south", "lower"), 0x0A190A100A103087n, 0x0A190A100A193087n, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
+      /* 1  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, stairCell("south", "upper"), 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
       /* 2  */ 0x0000000000000008, 0x000000000A191059, 0x00000A100A102087, 0x000000000A001157, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x00000110191020A9, 0x0000000000000008,
       /* 3  */ 0x0000000000000008, 0x000000000A101037, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x00000A100A192087, 0x0000000000000008,
       /* 4  */ 0x0000000000000008, 0x000000000A101059, 0x0000000019001117, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x000000000A191057, 0x000000000A191157, 0x000000000A191057, 0x00000A190A192087, 0x0000000000000008,
@@ -129,6 +137,14 @@ export class GridMap {
 
   hash(x: number, y: number) {
     return ((x * 73856093) ^ (y * 19349663)) % 100;
+  }
+
+  public supportHeight(x: number, y: number, feet: number) {
+    return gridSupportHeight(this.wallGrid, this.size, x, y, feet);
+  }
+
+  public stairHeight(x: number, y: number) {
+    return stairHeightAt(this.wallGrid, this.size, x, y);
   }
 
   public update = (seconds: number) => {
@@ -199,6 +215,9 @@ export class GridMap {
       case TextureType.ROOF:
         texture = this.roofTexture;
         break;
+      case TextureType.STAIRS:
+        texture = this.stairTexture;
+        break;
       case TextureType.WALL:
         texture = this.wallTexture;
         break;
@@ -249,6 +268,7 @@ export class GridMap {
 
     switch (spriteType) {
       case TextureType.ROOF:
+      case TextureType.STAIRS:
       case TextureType.WALL:
       case TextureType.CEILING:
       case TextureType.FLOOR:

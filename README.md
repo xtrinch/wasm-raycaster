@@ -4,23 +4,27 @@ This project is a raycaster written in Rust WASM.
 See it live at https://xtrinch.github.io/wasm-raycaster/.
 It's also paralellized with rayon (uses a nightly Rust build).
 
+## Stairs and roof access
+
+See the [stairs README](docs/stairs/README.md) for controls, geometry, movement,
+rendering, concrete materials, performance, testing and troubleshooting.
+
 ## Flight and roofs
 
 Use **G** to ascend and **H** to descend. Release both to hover. Land on a roof
 to resume walking; walking off an edge makes you fall. Ceilings block ascent
 from inside a building. Existing movement, look, and D/F controls are unchanged.
 
-Roofs and thin-wall tops use concrete at the existing wall height. No stairs or
-variable-height walls are included in this step.
+Roofs and thin-wall tops use concrete at the existing wall height. This prototype also contains stairs; variable-height walls remain future work.
 
-Run `cargo test` for Rust rendering and roof coverage checks. Flight/movement
-tests are saved on `stairs-roof-prototype` for later.
+Run `pnpm --filter app test` for flight and stairs movement checks, and
+`cargo test` for Rust rendering and roof coverage checks.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 - [Rust](https://www.rust-lang.org/tools/install)
-- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/)
 - [Node.js](https://nodejs.org/)
 - [pnpm](https://pnpm.io/installation)
 

@@ -18,6 +18,7 @@ pub enum TextureType {
     LADY = 11,
     WINDOW = 12,
     ROOF = 13,
+    STAIRS = 14,
 }
 
 #[wasm_bindgen]
