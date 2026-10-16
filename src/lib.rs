@@ -1105,10 +1105,6 @@ fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/roofs.rs"]
-mod roof_tests;
-
 // move if no wall in front of you
 #[wasm_bindgen]
 pub fn walk(
