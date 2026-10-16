@@ -1275,3 +1275,7 @@ pub fn rotate_view(
 #[cfg(test)]
 #[path = "tests/floors.rs"]
 mod floor_tests;
+
+#[cfg(test)]
+#[path = "tests/roofs.rs"]
+mod roof_tests;
