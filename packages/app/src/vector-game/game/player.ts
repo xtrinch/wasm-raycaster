@@ -140,8 +140,6 @@ export class Player {
     map: GridMap,
     frameTime: number
   ) => {
-    // Limit movement after a pause or a delayed animation frame.
-    frameTime = Math.min(frameTime, 0.1);
     if (controls.left) this.rotate(frameTime, 1);
     else if (controls.right) this.rotate(frameTime, -1);
 
