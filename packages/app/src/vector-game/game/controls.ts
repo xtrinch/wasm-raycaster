@@ -9,6 +9,8 @@ export interface ControlStates {
   lookDown: boolean;
   jumpUp: boolean;
   jumpDown: boolean;
+  jetpackUp: boolean;
+  jetpackDown: boolean;
 }
 
 export class Controls {
@@ -21,6 +23,8 @@ export class Controls {
     83: "lookDown", // s
     68: "jumpUp", // d
     70: "jumpDown", // f
+    71: "jetpackUp", // g
+    72: "jetpackDown", // h
   };
   public states: ControlStates = {
     left: false,
@@ -31,6 +35,8 @@ export class Controls {
     lookDown: false,
     jumpUp: false,
     jumpDown: false,
+    jetpackUp: false,
+    jetpackDown: false,
   };
 
   constructor() {

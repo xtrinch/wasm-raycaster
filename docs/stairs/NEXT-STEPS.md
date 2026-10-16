@@ -12,10 +12,10 @@ version, then build the underlying features in small, separately reviewable step
 
 ## 1. Flight and roof movement
 
-- [ ] Add simple jetpack controls for ascending and descending; existing D/F keys
-      are candidates. Allow hovering so roof rendering can be inspected easily.
-- [ ] Make roofs render correctly at the tops of the existing fixed-height walls.
-- [ ] Fly onto a roof, land and walk on it, block entry through wall sides, and
+- [x] Add G/H jetpack controls for ascending and descending. Release both to hover;
+      landing turns flight off. Preserve the existing D/F controls.
+- [x] Render roofs at the tops of the existing fixed-height walls with concrete.
+- [x] Fly onto a roof, land and walk on it, block entry through wall sides, and
       fall when walking off an edge.
 - [ ] Check views from below, above, and beside roofs, including looking down at
       thin wall tops. Check occlusion and the previously observed edge smearing.

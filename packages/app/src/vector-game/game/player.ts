@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { rotate_view, walk } from "../../../wasm";
+import { roof_height, rotate_view, walk } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
@@ -22,6 +22,7 @@ export class Player {
   public paces: number;
   public position: Position;
   public camera: Camera;
+  public jetpackActive = false;
 
   constructor(
     x: number,
@@ -71,6 +72,16 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
+    const steps = Math.max(1, Math.ceil(Math.abs(distance) / 0.05));
+    for (let i = 0; i < steps; i++) this.walkStep(distance / steps, map);
+  };
+
+  private walkStep = (distance: number, map: GridMap) => {
+    if (this.position.z >= this.camera.height - 0.001) {
+      this.position.x += this.position.dir_x * distance;
+      this.position.y += this.position.dir_y * distance;
+      return;
+    }
     const [x, y] = walk(
       this.position.x,
       this.position.y,
@@ -94,13 +105,22 @@ export class Player {
 
   public jumpUp = (frameTime: number) => {
     this.position.z += 400 * frameTime;
-    if (this.position.z > 300) this.position.z = 300;
+    const support = this.supportHeight();
+    if (this.position.z > support + 300) this.position.z = support + 300;
   };
 
   public jumpDown = (frameTime: number) => {
+    const support = this.supportHeight();
     this.position.z -= 400 * frameTime;
-    if (this.position.z < 0) this.position.z = 0;
+    if (this.position.z < support) this.position.z = support;
   };
+
+  private roofHeight = () => roof_height(
+    this.position.x, this.position.y, this.camera.mapRef.ptr, this.camera.map.size
+  ) * this.camera.height;
+
+  private supportHeight = () => this.position.z >= this.camera.height - 0.001
+    ? this.roofHeight() : 0;
 
   public lookDown = (frameTime: number) => {
     // look down
@@ -119,14 +139,29 @@ export class Player {
     map: GridMap,
     frameTime: number
   ) => {
+    frameTime = Math.min(frameTime, 0.1);
     if (controls.left) this.rotate(frameTime, 1);
     else if (controls.right) this.rotate(frameTime, -1);
 
     if (controls.forward) this.walk(3 * frameTime, map);
     else if (controls.backward) this.walk(-3 * frameTime, map);
 
-    if (controls.jumpDown) this.jumpDown(frameTime);
-    else if (controls.jumpUp) this.jumpUp(frameTime);
+    const support = this.supportHeight();
+    if (controls.jetpackUp || controls.jetpackDown) {
+      this.jetpackActive = true;
+      const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
+      this.position.z = Math.max(support,
+        this.position.z + direction * this.camera.height * frameTime);
+      if (direction < 0 && this.position.z <= support) this.jetpackActive = false;
+    } else if (!this.jetpackActive) {
+      if (controls.jumpDown) this.jumpDown(frameTime);
+      else if (controls.jumpUp) this.jumpUp(frameTime);
+    }
+
+    // A roof overhead blocks ascent from inside the building.
+    if (support === 0 && this.roofHeight() > 0) {
+      this.position.z = Math.min(this.position.z, this.camera.height * 0.49);
+    }
 
     if (controls.lookDown) this.lookDown(frameTime);
     else if (controls.lookUp) this.lookUp(frameTime);
@@ -140,7 +175,7 @@ export class Player {
         Math.min(0, this.position.pitch + 100 * frameTime)
       );
 
-    if (this.position.z > 0)
-      this.position.z = Math.max(0, this.position.z - 100 * frameTime);
+    if (!this.jetpackActive)
+      this.position.z = Math.max(this.supportHeight(), this.position.z - 100 * frameTime);
   };
 }

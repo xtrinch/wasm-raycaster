@@ -17,6 +17,7 @@ pub enum TextureType {
     TREE_COLUMNAR = 10,
     LADY = 11,
     WINDOW = 12,
+    ROOF = 13,
 }
 
 #[wasm_bindgen]
@@ -370,6 +371,7 @@ pub struct TranslationResult {
 
 #[derive(Serialize, Clone, Copy)]
 pub struct SpritePart<'a> {
+    pub depth: f32,
     pub sprite_type: i32, // TODO: u8?
     pub sprite_left_x: u32,
     pub width: i32,

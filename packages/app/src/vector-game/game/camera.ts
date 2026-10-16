@@ -37,7 +37,10 @@ export class Camera {
   public pixelsClampedArray: Uint8ClampedArray;
   public columnsRef: WasmInt32Array;
   public skyTextureRef: WasmUint8Array;
+  // Wall depth per screen column.
   public zBufferRef: WasmFloat32Array;
+  // Nearest floor, ceiling or roof depth per pixel.
+  public surfaceDepthRef: WasmFloat32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
   public spriteHashMap: WasmStripePerCoordMap; // sprites per coordinate
@@ -77,6 +80,7 @@ export class Camera {
     this.columnsRef = new WasmInt32Array(this.width * 8 * 8);
 
     this.zBufferRef = new WasmFloat32Array(this.width);
+    this.surfaceDepthRef = new WasmFloat32Array(this.width * this.height);
 
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
@@ -175,7 +179,7 @@ export class Camera {
     if (
       !this.skyTextureRef ||
       !this.backgroundRef ||
-      this.spriteTextureHashMap.count_cells() < 19 // including angles; TODO: dynamicize
+      this.spriteTextureHashMap.count_cells() < 20 // including angles and roof
     ) {
       return;
     }
@@ -202,7 +206,8 @@ export class Camera {
       this.backgroundRef,
       this.spriteHashMap,
       this.spriteTextureHashMap,
-      this.spriteTextureMetaHashMap
+      this.spriteTextureMetaHashMap,
+      this.surfaceDepthRef.ptr
     );
 
     this.drawWeapon(player.weapon, player.paces);

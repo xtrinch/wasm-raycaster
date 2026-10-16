@@ -1,9 +1,9 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    fixed_mul, get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_large,
-    BackgroundImageWasm, Position, Sprite, SpritePart, Texture, TextureType, TranslationResult,
-    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, BackgroundImageWasm, Position, Sprite,
+    SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap, WasmTextureMap,
+    WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -15,6 +15,7 @@ use rayon::prelude::*;
 #[cfg(feature = "parallel")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+mod floors;
 mod helpers;
 mod line_intersection;
 use geo::{Coord, Distance, Euclidean, Line};
@@ -53,6 +54,7 @@ pub fn render(
     sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
+    surface_depth_array: *mut f32, // Nearest floor, ceiling or roof depth per pixel
 ) {
     let position = Position {
         x,
@@ -74,73 +76,64 @@ pub fn render(
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
+    let surface_depth =
+        unsafe { from_raw_parts_mut(surface_depth_array, width as usize * height as usize) };
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
         .get(&(TextureType::WALL as i32))
         .unwrap();
-    let wall_texture = sprites_texture_map
-        .get_map()
-        .get(&(TextureType::WALL as i32, 0))
-        .unwrap();
 
-    let ceiling_texture_meta = sprites_texture_meta_map
-        .get_map()
-        .get(&(TextureType::CEILING as i32))
-        .unwrap();
-    let ceiling_texture = sprites_texture_map
-        .get_map()
-        .get(&(TextureType::CEILING as i32, 0))
-        .unwrap();
-
-    let floor_texture_meta = sprites_texture_meta_map
-        .get_map()
-        .get(&(TextureType::FLOOR as i32))
-        .unwrap();
-    let floor_texture = sprites_texture_map
-        .get_map()
-        .get(&(TextureType::FLOOR as i32, 0))
-        .unwrap();
-
-    let road_texture_meta = sprites_texture_meta_map
-        .get_map()
-        .get(&(TextureType::ROAD as i32))
-        .unwrap();
-    let road_texture = sprites_texture_map
-        .get_map()
-        .get(&(TextureType::ROAD as i32, 0))
-        .unwrap();
-
-    let door_texture_meta = sprites_texture_meta_map
-        .get_map()
-        .get(&(TextureType::DOOR as i32))
-        .unwrap();
-    let door_texture = sprites_texture_map
-        .get_map()
-        .get(&(TextureType::DOOR as i32, 0))
-        .unwrap();
-
+    let surface_texture = |kind: TextureType| {
+        let key = kind as i32;
+        let meta = sprites_texture_meta_map.get(key).unwrap();
+        Texture {
+            data: sprites_texture_map.get_map().get(&(key, 0)).unwrap(),
+            width: meta.width,
+            height: meta.height,
+        }
+    };
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
-    draw_ceiling_floor_raycast(
+    // Floors at any height use the same projection, coverage and depth rules.
+    let planes = [
+        floors::FloorPlane {
+            height: 0.0,
+            facing: floors::Facing::Up,
+            cells: 2 | 8,
+            texture: surface_texture(TextureType::FLOOR),
+            alternate: Some((8, surface_texture(TextureType::ROAD))),
+            wall_tops: None,
+        },
+        floors::FloorPlane {
+            height: 1.0,
+            facing: floors::Facing::Down,
+            cells: 2,
+            texture: surface_texture(TextureType::CEILING),
+            alternate: None,
+            wall_tops: None,
+        },
+        floors::FloorPlane {
+            height: 1.0,
+            facing: floors::Facing::Up,
+            cells: 2,
+            texture: surface_texture(TextureType::ROOF),
+            alternate: None,
+            wall_tops: Some(surface_texture(TextureType::ROOF)),
+        },
+    ];
+    floors::draw(
         &position,
         img_slice,
-        floor_texture,
-        ceiling_texture,
-        road_texture,
+        surface_depth,
+        &planes,
+        map_data,
+        map_width,
         width,
         height,
         light_range,
         map_light,
-        floor_texture_meta.width,
-        floor_texture_meta.height,
-        ceiling_texture_meta.width,
-        ceiling_texture_meta.height,
-        road_texture_meta.width,
-        road_texture_meta.height,
-        map_data,
-        map_width,
     );
     draw_walls_raycast(
         &position,
@@ -152,6 +145,7 @@ pub fn render(
         wall_texture_meta.width,
         sprites_map,
         &mut found_sprites,
+        z >= height / 2,
     );
     draw_sprites_wasm(
         &position,
@@ -164,6 +158,7 @@ pub fn render(
         sprites_texture_map,
         sprites_texture_meta_map,
         &mut found_sprites,
+        surface_depth,
     );
 }
 
@@ -178,6 +173,7 @@ pub fn raycast_column(
     sprites_map: Option<&HashMap<(i32, i32), Vec<Sprite>>>,
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
+    above_walls: bool,
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
     let mut met_coords: Vec<(i32, i32)> = Vec::new();
     let mut window_sprites: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
@@ -266,7 +262,7 @@ pub fn raycast_column(
 
     while !hit && remaining_range >= 0 {
         let value: u64 = get_grid_value(map_x, map_y, map_width as i32, map_data);
-        let num_walls = get_bits(value, 12); // since the upper two are reserves we can afford this
+        let num_walls = get_bits(value, 12);
 
         // if wall bit is set
         if num_walls > 0 {
@@ -479,7 +475,7 @@ pub fn raycast_column(
                     }
                 }
             }
-            if hit {
+            if hit && !above_walls {
                 side_dist_x += delta_dist_x * distance_multiplier;
                 side_dist_y += delta_dist_y * distance_multiplier;
             }
@@ -499,8 +495,11 @@ pub fn raycast_column(
         }
 
         // don't do any more coordinate increments if hit
-        if hit {
+        if hit && !above_walls {
             break;
+        }
+        if above_walls {
+            hit = false;
         }
 
         // jump to next map square, either in x-direction, or in y-direction;
@@ -549,6 +548,7 @@ pub fn draw_walls_raycast(
     wall_texture_width: i32,
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
+    above_walls: bool,
 ) {
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
@@ -564,6 +564,7 @@ pub fn draw_walls_raycast(
                 Some(&sprites_map.get_map()),
                 false,
                 false,
+                above_walls,
             );
 
             (perp_wall_dist, col_data, met_coords, window_sprites)
@@ -594,152 +595,13 @@ pub fn draw_walls_raycast(
     });
 
     for (idx, (perp_wall_dist, _, _, window_sprites)) in data.iter().enumerate() {
-        zbuffer[idx] = *perp_wall_dist;
+        zbuffer[idx] = if above_walls {
+            f32::INFINITY
+        } else {
+            *perp_wall_dist
+        };
         found_sprites.extend((*window_sprites).clone());
     }
-}
-
-#[inline(never)]
-#[no_mangle]
-pub fn draw_ceiling_floor_raycast(
-    position: &Position,
-    img_slice: &mut [u8],
-    floor_texture_array: &[u8],
-    ceiling_texture_array: &[u8],
-    road_texture_array: &[u8],
-    width: i32,
-    height: i32,
-    light_range: i32,
-    map_light: i32,
-    floor_texture_width: i32,
-    floor_texture_height: i32,
-    ceiling_texture_width: i32,
-    ceiling_texture_height: i32,
-    road_texture_width: i32,
-    road_texture_height: i32,
-    map_data: &[u64],
-    map_width: usize,
-) {
-    let ray_dir_x0 = position.dir_x - position.plane_x;
-    let ray_dir_y0 = position.dir_y - position.plane_y;
-    let ray_dir_x1 = position.dir_x + position.plane_x;
-    let ray_dir_y1 = position.dir_y + position.plane_y;
-    let ray_dir_x_dist = ray_dir_x1 - ray_dir_x0;
-    let ray_dir_y_dist = ray_dir_y1 - ray_dir_y0;
-
-    let half_height = (height / 2) as i32;
-    let floor_cam_z = half_height + position.z as i32;
-    let ceiling_cam_z = half_height - position.z as i32;
-    let middle_view_y = half_height + position.pitch;
-
-    // if we're above the ceiling
-    let mut is_above_ceiling = false;
-    if ceiling_cam_z < 0 {
-        is_above_ceiling = true;
-        // move the floor up so it appears as a ceiling from the top
-        // floor_cam_z -= height as i32;
-    }
-
-    let height_ratio = height as f32 / width as f32;
-    let distance_divider = (2.0 * height_ratio) * position.plane_y_initial;
-
-    let road_texture_data = Texture {
-        data: road_texture_array,
-        width: road_texture_width,
-        height: road_texture_height,
-    };
-    let ceiling_texture_data = Texture {
-        data: ceiling_texture_array,
-        width: ceiling_texture_width,
-        height: ceiling_texture_height,
-    };
-    let floor_texture_data = Texture {
-        data: floor_texture_array,
-        width: floor_texture_width,
-        height: floor_texture_height,
-    };
-    let map_light_fixed = map_light << FIXED_SHIFT;
-
-    img_slice
-        .par_chunks_mut((width * 4) as usize)
-        .enumerate()
-        .for_each(|(y, row)| {
-            let y = y as i32;
-
-            // if we're drawing the bottom half of the screen
-            let is_floor = y > middle_view_y;
-
-            if !is_floor && is_above_ceiling {
-                return;
-            }
-            let p = if is_floor {
-                -(middle_view_y) + y
-            } else {
-                middle_view_y - y
-            };
-            let cam_z = if is_floor { floor_cam_z } else { ceiling_cam_z };
-
-            let row_distance = cam_z as f32 / (p as f32 * distance_divider);
-            let row_distance_fixed = to_fixed(row_distance);
-
-            let alpha_fixed =
-                (FIXED_ONE - ((row_distance_fixed / light_range) - map_light_fixed)).max(0);
-            let alpha = fixed_mul(alpha_fixed, 256);
-
-            // let alpha_f32 = 1.0 - (row_distance / light_range as f32 - map_light as f32);
-            // let alpha = (alpha_f32 * 256.0) as u8;
-
-            let floor_step_x = to_fixed(row_distance * ray_dir_x_dist / width as f32);
-            let floor_step_y = to_fixed(row_distance * ray_dir_y_dist / width as f32);
-
-            let base_x = to_fixed(position.x + row_distance * ray_dir_x0);
-            let base_y = to_fixed(position.y + row_distance * ray_dir_y0);
-
-            let mut world_x = base_x;
-            let mut world_y = base_y;
-
-            row.chunks_exact_mut(4).for_each(|pixel| {
-                // let step = x as i32;
-                // let world_x = base_x + fixed_mul(floor_step_x, step << FIXED_SHIFT);
-                // let world_y = base_y + fixed_mul(floor_step_y, step << FIXED_SHIFT);
-
-                world_x += floor_step_x;
-                world_y += floor_step_y;
-
-                let map_x = world_x >> FIXED_SHIFT;
-                let map_y = world_y >> FIXED_SHIFT;
-
-                let value = get_grid_value(map_x, map_y, map_width as i32, map_data);
-                let has_ceiling = has_bit_set(value, 1);
-                let has_road = has_bit_set(value, 3);
-
-                let tex = match (is_floor, has_road, has_ceiling) {
-                    (true, false, true) => Some(&floor_texture_data),
-                    (false, _, true) => Some(&ceiling_texture_data),
-                    (true, true, _) => Some(&road_texture_data),
-                    _ => None,
-                };
-
-                if let Some(tex) = tex {
-                    let frac_x = (world_x & (FIXED_ONE - 1)) as usize;
-                    let frac_y = (world_y & (FIXED_ONE - 1)) as usize;
-
-                    let tx = (tex.width as usize * frac_x) >> FIXED_SHIFT;
-                    let ty = (tex.height as usize * frac_y) >> FIXED_SHIFT;
-
-                    let tex_idx = (ty * tex.width as usize + tx) * 4;
-                    let texel = unsafe { tex.data.get_unchecked(tex_idx..tex_idx + 3) };
-
-                    // let r = (texel[0] as u16 * alpha as u16) >> 8;
-                    // let g = (texel[1] as u16 * alpha as u16) >> 8;
-                    // let b = (texel[2] as u16 * alpha as u16) >> 8;
-
-                    pixel[0] = (texel[0] as u16 * alpha as u16 >> 8) as u8;
-                    pixel[1] = (texel[1] as u16 * alpha as u16 >> 8) as u8;
-                    pixel[2] = (texel[2] as u16 * alpha as u16 >> 8) as u8;
-                }
-            });
-        });
 }
 
 pub fn translate_coordinate_to_camera(
@@ -798,6 +660,7 @@ pub fn draw_sprites_wasm(
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
+    surface_depth: &[f32],
 ) {
     found_sprites.iter_mut().for_each(|sprite| {
         let dx = sprite.x - position.x;
@@ -816,7 +679,7 @@ pub fn draw_sprites_wasm(
 
     let sprite_parts_collected: Vec<SpritePart> = found_sprites
         .into_iter()
-        .map(|sprite| {
+        .filter_map(|sprite| {
             let projection = translate_coordinate_to_camera(
                 position,
                 sprite.dx,
@@ -827,6 +690,15 @@ pub fn draw_sprites_wasm(
                 aspect_ratio,
                 inv_det,
             );
+            if projection.distance <= 0.02 || projection.full_height <= 0 {
+                return None;
+            }
+            let visible_start = projection.screen_y_ceiling.max(0) as usize;
+            let visible_end =
+                (projection.screen_y_ceiling + projection.full_height).clamp(0, height) as usize;
+            if visible_start >= visible_end {
+                return None;
+            }
 
             let alpha = projection.distance / light_range as f32 - map_light as f32;
 
@@ -839,6 +711,14 @@ pub fn draw_sprites_wasm(
                 || sprite.r#type == TextureType::DOOR as i32
                 || sprite.r#type == TextureType::WALL as i32
             {
+                // Roof views discover walls on both sides of the building.
+                // Drop fully hidden stripes before the row-by-sprite draw loop.
+                if (visible_start..visible_end).all(|y| {
+                    surface_depth[y * width as usize + sprite.column as usize]
+                        <= projection.distance
+                }) {
+                    return None;
+                }
                 let texture_data = sprites_texture_map
                     .get_map()
                     .get(&(sprite.r#type, 0))
@@ -848,7 +728,8 @@ pub fn draw_sprites_wasm(
 
                 let inv_sprite_height = texture_meta.height * FIXED_ONE / projection.full_height;
                 let inv_sprite_width = 1 * FIXED_ONE / (1);
-                return SpritePart {
+                return Some(SpritePart {
+                    depth: projection.distance,
                     sprite_type: sprite.r#type,
                     sprite_left_x: sprite.column,
                     width: 1,
@@ -863,7 +744,7 @@ pub fn draw_sprites_wasm(
                     full_texture_data: texture_data,
                     inv_sprite_height,
                     inv_sprite_width,
-                };
+                });
             }
 
             let angle = atan2(sprite.dx as f64, sprite.dy as f64);
@@ -885,9 +766,15 @@ pub fn draw_sprites_wasm(
             let texture_aspect_ratio = texture_meta.width as f32 / texture_meta.height as f32;
 
             let sprite_width = (projection.full_height as f32 * texture_aspect_ratio as f32) as i32;
+            if sprite_width <= 0 {
+                return None;
+            }
 
             let mut draw_start_x = (-sprite_width / 2 + projection.screen_x).max(0);
             let mut draw_end_x = (sprite_width / 2 + projection.screen_x).min(width - 1);
+            if draw_start_x >= draw_end_x {
+                return None;
+            }
 
             // advance the non-visible parts
             let mut idx_start = draw_start_x;
@@ -914,7 +801,8 @@ pub fn draw_sprites_wasm(
 
             let inv_sprite_height = texture_meta.height * FIXED_ONE / projection.full_height;
             let inv_sprite_width = tex_width * FIXED_ONE / (draw_end_x - draw_start_x).max(1);
-            SpritePart {
+            Some(SpritePart {
+                depth: projection.distance,
                 sprite_type: sprite.r#type,
                 sprite_left_x: draw_start_x as u32,
                 width: draw_end_x - draw_start_x,
@@ -929,7 +817,7 @@ pub fn draw_sprites_wasm(
                 full_texture_data: texture_data,
                 inv_sprite_height,
                 inv_sprite_width,
-            }
+            })
         })
         .collect();
 
@@ -965,6 +853,11 @@ pub fn draw_sprites_wasm(
 
                     let x = sprite.sprite_left_x as i32 + dx;
                     let idx = (x * 4) as usize;
+                    // Surface depth is per pixel: a roof may hide only the lower
+                    // part of a tree or a wall stripe, unlike the column buffer.
+                    if sprite.depth >= surface_depth[y as usize * width as usize + x as usize] {
+                        continue;
+                    }
 
                     // alpha blending
                     if a != 255 {
@@ -1019,34 +912,53 @@ pub fn draw_background_image_prescaled(
         .par_chunks_mut((width * 4) as usize)
         .enumerate()
         .for_each(|(y, row)| {
-            let screen_y_pitch = y as i32 - position.pitch;
-            if screen_y_pitch < 0 || screen_y_pitch >= height {
-                return;
-            }
+            // Pitch can reveal rows beyond the panorama. Extend its edge rows
+            // so uncovered floor/roof edges never retain last frame's pixels.
+            let screen_y_pitch = (y as i32 - position.pitch).clamp(0, height - 1);
 
             let row_start = screen_y_pitch as usize * sky_w_bytes;
 
             let idx_start = row_start + start;
             if end <= sky_w_bytes {
                 let idx_end = row_start + end;
-                if idx_end < pre_scaled_len {
+                if idx_end <= pre_scaled_len {
                     row.copy_from_slice(&pre_scaled[idx_start..idx_end]);
                 }
             } else {
                 let first_part = sky_w_bytes - start;
                 let idx_end1 = row_start + sky_w_bytes;
-                if idx_end1 < pre_scaled_len {
+                if idx_end1 <= pre_scaled_len {
                     row[..first_part].copy_from_slice(&pre_scaled[idx_start..idx_end1]);
                 }
 
                 let idx_start2 = row_start;
                 let idx_end2 = row_start + (screen_w_bytes - first_part);
-                if idx_end2 < pre_scaled_len {
+                if idx_end2 <= pre_scaled_len {
                     row[first_part..].copy_from_slice(&pre_scaled[idx_start2..idx_end2]);
                 }
             }
         });
 }
+
+// Roof coverage matches the floor renderer, including exposed thin-wall tops.
+#[wasm_bindgen]
+pub fn roof_height(x: f32, y: f32, map_array: *const u64, map_width: usize) -> f32 {
+    let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
+    roof_height_at(x, y, grid, map_width)
+}
+
+fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
+    let value = get_grid_value(x.floor() as i32, y.floor() as i32, size as i32, grid);
+    if value & 2 != 0 || floors::inside_wall(value, x - x.floor(), y - y.floor()) {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/roofs.rs"]
+mod roof_tests;
 
 // move if no wall in front of you
 #[wasm_bindgen]
@@ -1103,6 +1015,7 @@ pub fn walk(
         None,
         true,
         true,
+        false,
     );
 
     let mut x = position.x;
@@ -1133,6 +1046,7 @@ pub fn walk(
         None,
         true,
         true,
+        false,
     );
     if perp_wall_dist_x > 0.2 {
         x += position.dir_x * distance;
@@ -1157,6 +1071,7 @@ pub fn walk(
         None,
         true,
         true,
+        false,
     );
     if perp_wall_dist_y > 0.2 {
         y += position.dir_y * distance;

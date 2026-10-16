@@ -8,8 +8,10 @@
   window and floor/ceiling bit layout; see the comments in `gridMap.ts`.
 - World geometry belongs in the grid; do not author independent geometry lists.
 - The previous stairs/roof prototype is saved on `stairs-roof-prototype`.
-  Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement; prototype
-  features are not implemented on this branch yet.
+  Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement. This branch
+  implements flight and fixed-height roofs; stairs remain on the prototype branch.
+- G/H ascend and descend; releasing both hovers until landing. Roof coverage is
+  shared by Rust rendering and movement queries, including thin-wall tops.
 - World walls are one unit high. Player `position.z` is an offset in renderer
   units: one world unit equals the canvas height. Roofs meet wall tops at z=1.
 - Generated bindings live in `packages/app/wasm/` (gitignored). Rebuild them
