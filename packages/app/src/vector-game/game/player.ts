@@ -73,12 +73,6 @@ export class Player {
 
   // move if no wall in front of you
   public walk = (distance: number, map: GridMap) => {
-    // Check collision at most every 0.05 world units, even after a slow frame.
-    const steps = Math.max(1, Math.ceil(Math.abs(distance) / 0.05));
-    for (let i = 0; i < steps; i++) this.walkStep(distance / steps, map);
-  };
-
-  private walkStep = (distance: number, map: GridMap) => {
     // Feet at wall-top height can pass over walls; allow for rounding error.
     if (this.position.z >= this.camera.height - 0.001) {
       this.position.x += this.position.dir_x * distance;
