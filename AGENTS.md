@@ -14,6 +14,8 @@
 - `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,
   window and floor/ceiling bit layout; see the comments in `gridMap.ts`.
 - World geometry belongs in the grid; do not author independent geometry lists.
+- Floor bit 1 controls the ground floor; ceiling bit 2 controls both the ceiling
+  underside and roof top. Wall bottoms and tops use the same wall footprint check.
 - The previous stairs/roof prototype is saved on `stairs-roof-prototype`.
   Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement. This branch
   implements flight and fixed-height roofs; stairs remain on the prototype branch.

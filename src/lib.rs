@@ -629,7 +629,7 @@ pub fn draw_walls_raycast(
     }
 }
 
-// Check whether a point lies on a wall's top footprint, using cell-local coordinates.
+// Check the shared wall-bottom/top footprint using cell-local coordinates.
 fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
     // Coordinates are local to this cell; value 1 fills the whole cell.
     if value == 1 {
@@ -762,24 +762,23 @@ pub fn draw_ceiling_floor_raycast(
                     // A nearer plane may already cover this pixel.
                     if distance < *z {
                         let has_floor = has_bit_set(value, 1);
+                        let has_ceiling = has_bit_set(value, 2);
                         let has_road = has_bit_set(value, 3);
-                        let tex = match (is_floor, has_road, has_floor) {
-                            (true, _, true) if is_roof => Some(&roof_texture_data),
-                            (true, _, false)
-                                if is_roof
-                                    && inside_wall_footprint(
-                                        value,
-                                        (world_x & (FIXED_ONE as i64 - 1)) as f32
-                                            / FIXED_ONE as f32,
-                                        (world_y & (FIXED_ONE as i64 - 1)) as f32
-                                            / FIXED_ONE as f32,
-                                    ) =>
-                            {
-                                Some(&roof_texture_data)
-                            }
-                            (true, true, _) if is_ground => Some(&road_texture_data),
-                            (true, _, true) => Some(&floor_texture_data),
-                            (false, _, true) => Some(&ceiling_texture_data),
+                        // Wall bottoms and tops share one footprint; full-cell surfaces need no check.
+                        let on_wall = ((is_ground && !has_floor && !has_road)
+                            || (is_roof && !has_ceiling))
+                            && inside_wall_footprint(
+                                value,
+                                (world_x & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                                (world_y & (FIXED_ONE as i64 - 1)) as f32 / FIXED_ONE as f32,
+                            );
+                        let tex = match (is_floor, has_road, has_floor, has_ceiling) {
+                            (true, _, _, true) if is_roof => Some(&roof_texture_data),
+                            (true, _, _, _) if is_roof && on_wall => Some(&roof_texture_data),
+                            (false, _, _, true) => Some(&ceiling_texture_data),
+                            (true, true, _, _) if is_ground => Some(&road_texture_data),
+                            (true, _, true, _) if is_ground => Some(&floor_texture_data),
+                            (true, _, _, _) if is_ground && on_wall => Some(&floor_texture_data),
                             _ => None,
                         };
                         if let Some(tex) = tex {
@@ -1174,8 +1173,8 @@ pub fn move_vertical(
 
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     let value = get_grid_value(x.floor() as i32, y.floor() as i32, size as i32, grid);
-    // Bit 1 covers the building's roof; other walls support feet only on their tops.
-    if value & 2 != 0 || inside_wall_footprint(value, x - x.floor(), y - y.floor()) {
+    // Ceiling bit 2 covers the roof; uncovered walls support feet on their own tops.
+    if has_bit_set(value, 2) || inside_wall_footprint(value, x - x.floor(), y - y.floor()) {
         1.0
     } else {
         0.0
