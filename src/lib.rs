@@ -442,9 +442,10 @@ pub fn raycast_column(
                     // take the shortest of the two paths
                     let local_distance =
                         Euclidean.distance(local_intersection_coord, position_coord);
-                    if local_distance < distance {
+                    // Above wall tops, farther segments in this cell can still be visible.
+                    if local_distance < distance || above_walls {
                         // we'll only use this data if we're stopping at a window or it's not a window
-                        if !is_window || stop_at_window {
+                        if (!is_window || stop_at_window) && local_distance < distance {
                             distance = local_distance;
                             side = local_side;
                             hit = true;
