@@ -21,6 +21,9 @@ Grid floor bit 1 and ceiling bit 2 are independent. The ceiling is drawn with
 ceiling texture underneath and concrete roof texture on top. Wall bottoms and
 tops use the same footprint, including thin walls.
 
+Wall direction flags use bits 6/7/8, and window flags use bits 9/10. Ceiling
+bit 2 is independent, including cells containing a third wall. Cells remain 64 bits.
+
 Run `cargo test` for Rust rendering and roof coverage checks. Flight/movement
 tests are saved on `stairs-roof-prototype` for later.
 

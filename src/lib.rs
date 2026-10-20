@@ -303,7 +303,7 @@ pub fn raycast_column(
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 12);
                         is_door = has_bit_set(value, 5);
                         is_east = !has_bit_set(value, 6);
-                        is_window = has_bit_set(value, 8);
+                        is_window = has_bit_set(value, 9);
                     }
                     1 => {
                         bit_width = get_bits(value, initial_bit_offset + 24);
@@ -312,7 +312,7 @@ pub fn raycast_column(
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 28);
                         is_door = has_bit_set(value, 4);
                         is_east = !has_bit_set(value, 7);
-                        is_window = has_bit_set(value, 9);
+                        is_window = has_bit_set(value, 10);
                     }
                     2 => {
                         bit_width = get_bits(value, initial_bit_offset + 40);
@@ -320,7 +320,7 @@ pub fn raycast_column(
                         bit_thickness = get_bits(value, initial_bit_offset + 36);
                         bit_offset_secondary = get_bits(value, initial_bit_offset + 44);
                         is_door = has_bit_set(value, 4);
-                        is_east = !has_bit_set(value, 2);
+                        is_east = !has_bit_set(value, 8);
                         is_window = false;
                     }
                     _ => (),
@@ -644,7 +644,7 @@ fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
         let length = (get_bits(value, shift + 8) % 11) as f32 / 10.0;
         let secondary = (get_bits(value, shift + 12) % 11) as f32 / 10.0;
         // These are the existing orientation bits for the cell's three wall slots.
-        let (along, across) = if has_bit_set(value, [6, 7, 2][index as usize]) {
+        let (along, across) = if has_bit_set(value, [6, 7, 8][index as usize]) {
             (x, y)
         } else {
             (y, x)

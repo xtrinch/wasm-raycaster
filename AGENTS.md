@@ -16,6 +16,8 @@
 - World geometry belongs in the grid; do not author independent geometry lists.
 - Floor bit 1 controls the ground floor; ceiling bit 2 controls both the ceiling
   underside and roof top. Wall bottoms and tops use the same wall footprint check.
+- Wall directions 1/2/3 use consecutive bits 6/7/8; window flags 1/2 use bits
+  9/10. Bit 11 is reserved; wall count and geometry stay at bits 12-63.
 - The previous stairs/roof prototype is saved on `stairs-roof-prototype`.
   Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement. This branch
   implements flight and fixed-height roofs; stairs remain on the prototype branch.
