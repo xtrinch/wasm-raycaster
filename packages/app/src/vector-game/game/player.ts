@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { rotate_view, walk } from "../../../wasm";
+import { move_vertical, rotate_view, walk } from "../../../wasm";
 import knifeHand from "../../assets/knife_hand.png";
 import { Bitmap } from "./bitmap";
 import { Camera } from "./camera";
@@ -8,7 +8,7 @@ import { GridMap } from "./gridMap";
 export interface Position {
   x: number; // pos x of player
   y: number; // pos y of player
-  z: number; // pos z of player
+  z: number; // Feet height in world units; ground is 0, wall tops are 1.
   dir_x: number; // x component of direction vector
   dir_y: number; // y component of direction vector
   plane_x: number; // x component of camera plane
@@ -22,6 +22,8 @@ export class Player {
   public paces: number;
   public position: Position;
   public camera: Camera;
+  // Stay hovering after G/H is released; landing switches gravity back on.
+  public jetpackActive = false;
 
   constructor(
     x: number,
@@ -92,14 +94,25 @@ export class Player {
     this.position.y = y;
   };
 
-  public jumpUp = (frameTime: number) => {
-    this.position.z += 400 * frameTime;
-    if (this.position.z > 300) this.position.z = 300;
-  };
+  // D/F move at 2/3 world unit per second, independent of canvas size.
+  public jumpUp = (frameTime: number) => this.moveVertical((2 / 3) * frameTime, frameTime);
 
-  public jumpDown = (frameTime: number) => {
-    this.position.z -= 400 * frameTime;
-    if (this.position.z < 0) this.position.z = 0;
+  public jumpDown = (frameTime: number) => this.moveVertical((-2 / 3) * frameTime, frameTime);
+
+  private moveVertical = (distance: number, frameTime: number) => {
+    const [z, landed] = move_vertical(
+      this.position.x,
+      this.position.y,
+      this.position.z,
+      distance,
+      frameTime / 6, // Gravity lowers feet by 1/6 world unit per second.
+      this.jetpackActive,
+      this.camera.mapRef.ptr,
+      this.camera.map.size
+    );
+    this.position.z = z;
+    // Rust reports landing; stop hovering so walking off an edge causes a fall.
+    if (landed) this.jetpackActive = false;
   };
 
   public lookDown = (frameTime: number) => {
@@ -114,6 +127,22 @@ export class Player {
     if (this.position.pitch > 200) this.position.pitch = 200;
   };
 
+  private updateHeight = (controls: ControlStates, frameTime: number) => {
+    if (controls.jetpackUp || controls.jetpackDown) {
+      this.jetpackActive = true;
+      // Opposite flight keys cancel; releasing both keeps hovering active.
+      const direction = Number(controls.jetpackUp) - Number(controls.jetpackDown);
+      // Flight travels one world unit per second.
+      this.moveVertical(direction * frameTime, frameTime);
+    } else if (!this.jetpackActive && controls.jumpDown) {
+      this.jumpDown(frameTime);
+    } else if (!this.jetpackActive && controls.jumpUp) {
+      this.jumpUp(frameTime);
+    } else {
+      this.moveVertical(0, frameTime);
+    }
+  };
+
   public update = (
     controls: ControlStates,
     map: GridMap,
@@ -125,8 +154,7 @@ export class Player {
     if (controls.forward) this.walk(3 * frameTime, map);
     else if (controls.backward) this.walk(-3 * frameTime, map);
 
-    if (controls.jumpDown) this.jumpDown(frameTime);
-    else if (controls.jumpUp) this.jumpUp(frameTime);
+    this.updateHeight(controls, frameTime);
 
     if (controls.lookDown) this.lookDown(frameTime);
     else if (controls.lookUp) this.lookUp(frameTime);
@@ -140,7 +168,5 @@ export class Player {
         Math.min(0, this.position.pitch + 100 * frameTime)
       );
 
-    if (this.position.z > 0)
-      this.position.z = Math.max(0, this.position.z - 100 * frameTime);
   };
 }
