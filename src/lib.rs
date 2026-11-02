@@ -53,9 +53,8 @@ pub fn render(
     sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
-    surface_depth_array: *mut f32, // Nearest floor, ceiling or roof depth per pixel
-    mesh_depth_array: *mut f32,    // Nearest mesh depth per pixel; sprites test against it
-    mesh_array: *const f32,        // World-space mesh triangles, MESH_TRIANGLE_STRIDE floats each
+    depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
+    mesh_array: *const f32, // World-space mesh triangles, MESH_TRIANGLE_STRIDE floats each
     mesh_len: usize,
 ) {
     let position = Position {
@@ -78,14 +77,11 @@ pub fn render(
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
-    let surface_depth =
-        unsafe { from_raw_parts_mut(surface_depth_array, width as usize * height as usize) };
-    let mesh_depth =
-        unsafe { from_raw_parts_mut(mesh_depth_array, width as usize * height as usize) };
+    // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
+    // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
+    // sprite pass then skips wall, window and sprite pixels behind either.
+    let depth = unsafe { from_raw_parts_mut(depth_array, width as usize * height as usize) };
     let mesh_data = unsafe { from_raw_parts(mesh_array, mesh_len) };
-    mesh_depth
-        .par_iter_mut()
-        .for_each(|depth| *depth = f32::INFINITY);
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
@@ -166,7 +162,7 @@ pub fn render(
         roof_texture,
         roof_texture_meta.width,
         roof_texture_meta.height,
-        surface_depth,
+        depth,
     );
     draw_walls_raycast(
         &position,
@@ -196,8 +192,7 @@ pub fn render(
         width,
         height,
         &visible_meshes,
-        surface_depth,
-        mesh_depth,
+        depth,
         light_range,
         map_light,
     );
@@ -212,8 +207,7 @@ pub fn render(
         sprites_texture_map,
         sprites_texture_meta_map,
         &mut found_sprites,
-        surface_depth,
-        mesh_depth,
+        depth,
     );
 }
 
@@ -898,8 +892,7 @@ pub fn draw_sprites_wasm(
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
-    surface_depth: &[f32],
-    mesh_depth: &[f32],
+    depth: &[f32], // floor, ceiling, roof and mesh depth per pixel
 ) {
     found_sprites.iter_mut().for_each(|sprite| {
         let dx = sprite.x - position.x;
@@ -952,10 +945,9 @@ pub fn draw_sprites_wasm(
                 || sprite.r#type == TextureType::DOOR as i32
                 || sprite.r#type == TextureType::WALL as i32
             {
-                // Skip wall stripes fully hidden by nearer floors or roofs.
+                // Skip wall stripes fully hidden by nearer floors, roofs or meshes.
                 if (visible_start..visible_end).all(|y| {
-                    surface_depth[y * width as usize + sprite.column as usize]
-                        <= projection.distance
+                    depth[y * width as usize + sprite.column as usize] <= projection.distance
                 }) {
                     return None;
                 }
@@ -1095,7 +1087,7 @@ pub fn draw_sprites_wasm(
                     let idx = (x * 4) as usize;
                     // A roof or mesh can hide only part of a tree or wall, so check each pixel.
                     let pixel = y as usize * width as usize + x as usize;
-                    if sprite.depth >= surface_depth[pixel] || sprite.depth >= mesh_depth[pixel] {
+                    if sprite.depth >= depth[pixel] {
                         continue;
                     }
 
@@ -1177,7 +1169,8 @@ fn faces_away_from(t: &[f32], eye: [f32; 3]) -> bool {
 }
 
 // Project world-space triangles with the sprite camera transform and fill them per pixel.
-// Runs before draw_sprites_wasm, which skips wall and sprite pixels behind mesh_depth.
+// Tests and writes the shared depth buffer, which already holds floors, ceilings and roofs;
+// draw_sprites_wasm runs after it and skips wall and sprite pixels behind any of them.
 #[inline(never)]
 pub fn draw_meshes(
     position: &Position,
@@ -1185,8 +1178,7 @@ pub fn draw_meshes(
     width: i32,
     height: i32,
     meshes: &[&[f32]], // each a run of triangles in MESH_TRIANGLE_STRIDE layout
-    surface_depth: &[f32],
-    mesh_depth: &mut [f32],
+    depth_buffer: &mut [f32], // per-pixel depth of floors, ceilings and roofs; meshes add theirs
     light_range: i32,
     map_light: i32,
 ) {
@@ -1320,7 +1312,7 @@ pub fn draw_meshes(
     let width = width as usize;
     img_slice
         .par_chunks_mut(4 * width * MESH_BAND_ROWS)
-        .zip(mesh_depth.par_chunks_mut(width * MESH_BAND_ROWS))
+        .zip(depth_buffer.par_chunks_mut(width * MESH_BAND_ROWS))
         .zip(bands.par_iter())
         .enumerate()
         .for_each(|(band, ((pixels, depths), triangles))| {
@@ -1351,7 +1343,6 @@ pub fn draw_meshes(
                     let first_x = (left - 0.5).ceil() as usize;
                     let last_x = ((right - 0.5).floor() as usize).min(width - 1);
                     let row_start = (y - band_top) * width;
-                    let surface_row = &surface_depth[y * width..(y + 1) * width];
                     let inv_depth_row = tri.inv_depth[1] * py + tri.inv_depth[2];
                     let shade_row = tri.shade[1] * py + tri.shade[2];
                     for x in first_x..=last_x {
@@ -1359,9 +1350,7 @@ pub fn draw_meshes(
                         // Hidden when depth >= d, i.e. inv_depth * d <= 1, so hidden pixels skip
                         // the division. An infinite d (nothing drawn there yet) never hides.
                         let inv_depth = tri.inv_depth[0] * px + inv_depth_row;
-                        if inv_depth * surface_row[x] <= 1.0
-                            || inv_depth * depths[row_start + x] <= 1.0
-                        {
+                        if inv_depth * depths[row_start + x] <= 1.0 {
                             continue;
                         }
                         let depth = 1.0 / inv_depth;

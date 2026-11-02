@@ -47,16 +47,14 @@ fn wall_quad(y: f32) -> Vec<f32> {
 
 struct Frame {
     image: Vec<u8>,
-    surface_depth: Vec<f32>,
-    mesh_depth: Vec<f32>,
+    depth: Vec<f32>, // floor, ceiling, roof and mesh depth per pixel
 }
 
 fn frame() -> Frame {
     let pixels = (WIDTH * HEIGHT) as usize;
     Frame {
         image: vec![0; pixels * 4],
-        surface_depth: vec![f32::INFINITY; pixels],
-        mesh_depth: vec![f32::INFINITY; pixels],
+        depth: vec![f32::INFINITY; pixels],
     }
 }
 
@@ -67,8 +65,7 @@ fn draw(frame: &mut Frame, triangles: &[f32]) {
         WIDTH,
         HEIGHT,
         &[triangles],
-        &frame.surface_depth,
-        &mut frame.mesh_depth,
+        &mut frame.depth,
         1000,
         0,
     );
@@ -109,7 +106,7 @@ fn quad_matches_sprite_projection() {
         "bottom {bottom} vs sprite {}",
         sprite.screen_y_ceiling + sprite.full_height
     );
-    let depth = frame.mesh_depth[(HEIGHT / 2 * WIDTH + column) as usize];
+    let depth = frame.depth[(HEIGHT / 2 * WIDTH + column) as usize];
     assert!(
         (depth - sprite.distance).abs() < 1e-3,
         "depth {depth} vs sprite {}",
@@ -121,7 +118,7 @@ fn quad_matches_sprite_projection() {
 fn nearer_floors_hide_the_mesh() {
     let mut frame = frame();
     let floor_pixel = ((HEIGHT / 2 + 1) * WIDTH + WIDTH / 2) as usize;
-    frame.surface_depth[floor_pixel] = 1.0;
+    frame.depth[floor_pixel] = 1.0;
     draw(&mut frame, &wall_quad(3.0));
 
     assert!(!drawn(&frame, WIDTH / 2, HEIGHT / 2 + 1));
@@ -165,8 +162,7 @@ fn mesh_then_stripe(mesh_y: f32, texture: TextureType, alpha: u8) -> [u8; 3] {
         &textures,
         &texture_meta,
         &mut stripes,
-        &frame.surface_depth,
-        &frame.mesh_depth,
+        &frame.depth,
     );
 
     let pixel = ((HEIGHT / 2 * WIDTH + WIDTH / 2) * 4) as usize;
@@ -228,10 +224,7 @@ fn triangles_crossing_behind_the_camera_are_clipped() {
     draw(&mut frame, &triangles);
 
     assert!((0..HEIGHT).any(|y| drawn(&frame, WIDTH / 2, y)));
-    assert!(frame
-        .mesh_depth
-        .iter()
-        .all(|d| *d >= MESH_NEAR_DEPTH * 0.99));
+    assert!(frame.depth.iter().all(|d| *d >= MESH_NEAR_DEPTH * 0.99));
 }
 
 #[test]

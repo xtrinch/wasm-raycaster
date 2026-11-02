@@ -5,7 +5,6 @@ import {
   render,
   TextureType,
   WasmFloat32Array,
-  WasmInt32Array,
   WasmStripePerCoordMap,
   WasmTextureMap,
   WasmTextureMetaMap,
@@ -35,13 +34,11 @@ export class Camera {
   public map: GridMap;
   public ceilingFloorPixelsRef: WasmUint8Array;
   public pixelsClampedArray: Uint8ClampedArray;
-  public columnsRef: WasmInt32Array;
   public skyTextureRef: WasmUint8Array;
   // Wall depth per screen column.
   public zBufferRef: WasmFloat32Array;
   // Nearest floor, ceiling or roof depth per pixel.
-  public surfaceDepthRef: WasmFloat32Array;
-  public meshDepthRef: WasmFloat32Array;
+  public depthRef: WasmFloat32Array; // nearest floor, ceiling, roof or model depth per pixel
   public meshRef: WasmFloat32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
@@ -79,11 +76,9 @@ export class Camera {
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
     this.pixelsClampedArray = new Uint8ClampedArray(length);
-    this.columnsRef = new WasmInt32Array(this.width * 8 * 8);
 
     this.zBufferRef = new WasmFloat32Array(this.width);
-    this.surfaceDepthRef = new WasmFloat32Array(this.width * this.height);
-    this.meshDepthRef = new WasmFloat32Array(this.width * this.height);
+    this.depthRef = new WasmFloat32Array(this.width * this.height);
 
     // Static model geometry is uploaded once.
     this.meshRef = new WasmFloat32Array(map.meshTriangles.length);
@@ -216,8 +211,7 @@ export class Camera {
       this.spriteHashMap,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
-      this.surfaceDepthRef.ptr,
-      this.meshDepthRef.ptr,
+      this.depthRef.ptr,
       this.meshRef.ptr,
       this.map.meshTriangles.length
     );
