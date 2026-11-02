@@ -22,7 +22,7 @@ import lady8Texture from "../../assets/woman/woman8.png";
 
 import { TextureType } from "../../../wasm";
 import { Bitmap } from "./bitmap";
-import { cell, door, wall, window } from "./mapBuilder";
+import { level } from "./level";
 import roofConcrete from "../../assets/roof-concrete.jpg";
 
 export interface Point {
@@ -115,199 +115,13 @@ export class GridMap {
     // Examples:
     //   0x0000000000000008 - road only
     //   0x0000000000000006 - floor and ceiling (indoors)
-    //   0x000000000A101057 - indoors, 1 north wall: offset 0, thickness 0.1, full length
-    //   0x000000000A101037 - indoors, 1 east door: offset 0, thickness 0.1, full length
-    //   0x000000000A001217 - indoors, 1 east window: offset 0, thickness 0, full length
+    //   0x000000000A101047 - indoors, 1 north wall: offset 0, thickness 0.1, full length
+    //   0x000000000A101027 - indoors, 1 east door: offset 0, thickness 0.1, full length
+    //   0x000000000A001207 - indoors, 1 east window: offset 0, thickness 0, full length
     //
-    // Cells are written with cell() from mapBuilder.ts, which packs these bits;
-    // cell({ segments }) stores segments[i] in slot i.
-
-    // prettier-ignore
-    this.wallGrid = new BigUint64Array([
-      // row 0
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ road: true }),
-      /*  3 */ cell({ road: true }),
-      /*  4 */ cell({ road: true }),
-      /*  5 */ cell({ road: true }),
-      /*  6 */ cell({ road: true }),
-      /*  7 */ cell({ road: true }),
-      /*  8 */ cell({ road: true }),
-      /*  9 */ cell({ road: true }),
-      /* 10 */ cell({ road: true }),
-      /* 11 */ cell({ road: true }),
-      /* 12 */ cell({ road: true }),
-      // row 1
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ road: true }),
-      /*  3 */ cell({ road: true }),
-      /*  4 */ cell({ road: true }),
-      /*  5 */ cell({ road: true }),
-      /*  6 */ cell({ road: true }),
-      /*  7 */ cell({ road: true }),
-      /*  8 */ cell({ road: true }),
-      /*  9 */ cell({ road: true }),
-      /* 10 */ cell({ road: true }),
-      /* 11 */ cell({ road: true }),
-      /* 12 */ cell({ road: true }),
-      // row 2
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" }), wall({ direction: "north" })] }),
-      /*  3 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north" })] }),
-      /*  4 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" }), wall({ direction: "east", offset: 2, thickness: 2, start: 3, length: 2 })] }), // CHANGED: pillar (one thin wall, segment 1), x 4.2-4.4, y 2.3-2.5, 1.5 in front of and 0.2 left of player start
-      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /* 11 */ cell({ road: true, segments: [door({ direction: "east", length: 9, start: 1 }), wall({ direction: "north", length: 1 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 3
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "east" })] }),
-      /*  2 */ cell({ floor: true, ceiling: true }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }),
-      /*  5 */ cell({ floor: true, ceiling: true }),
-      /*  6 */ cell({ floor: true, ceiling: true }),
-      /*  7 */ cell({ floor: true, ceiling: true }),
-      /*  8 */ cell({ floor: true, ceiling: true }),
-      /*  9 */ cell({ floor: true, ceiling: true }),
-      /* 10 */ cell({ floor: true, ceiling: true }),
-      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north" })] }),
-      /* 12 */ cell({ road: true }),
-      // row 4
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true, segments: [wall({ direction: "north" })] }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east", length: 9, start: 1 })] }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }), // player start (4, 4) facing north, see gameLoop.ts
-      /*  5 */ cell({ floor: true, ceiling: true }),
-      /*  6 */ cell({ floor: true, ceiling: true }),
-      /*  7 */ cell({ floor: true, ceiling: true }),
-      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  9 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", offset: 9, thickness: 1 })] }),
-      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north", offset: 9 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 5
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east" })] }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }),
-      /*  5 */ cell({ floor: true, ceiling: true }),
-      /*  6 */ cell({ floor: true, ceiling: true }),
-      /*  7 */ cell({ floor: true, ceiling: true }),
-      /*  8 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 }), door({ direction: "east", length: 9 })] }),
-      /*  9 */ cell({ road: true }),
-      /* 10 */ cell({ road: true }),
-      /* 11 */ cell({ road: true }),
-      /* 12 */ cell({ road: true }),
-      // row 6
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east" })] }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }),
-      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
-      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
-      /*  7 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", length: 5, start: 5 }), wall({ direction: "north", length: 5 })] }),
-      /*  8 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 }), door({ direction: "east", length: 9 })] }),
-      /*  9 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 10 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 11 */ cell({ road: true, segments: [window({ direction: "north", offset: 10, length: 9 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 7
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" })] }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }),
-      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
-      /*  6 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "north", offset: 9 })] }),
-      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 8
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" })] }),
-      /*  3 */ cell({ floor: true, ceiling: true }),
-      /*  4 */ cell({ floor: true, ceiling: true }),
-      /*  5 */ cell({ floor: true, ceiling: true }),
-      /*  6 */ cell({ floor: true, ceiling: true }),
-      /*  7 */ cell({ floor: true, ceiling: true }),
-      /*  8 */ cell({ floor: true, ceiling: true }),
-      /*  9 */ cell({ floor: true, ceiling: true }),
-      /* 10 */ cell({ floor: true, ceiling: true }),
-      /* 11 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "east", offset: 9 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 9
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" }), wall({ direction: "north", offset: 9 }), wall({ direction: "east", offset: 9 })] }),
-      /*  3 */ cell({ road: true, segments: [door({ direction: "north" })] }),
-      /*  4 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", offset: 10 }), window({ direction: "east", length: 9, start: 1 })] }),
-      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
-      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north", offset: 9 })] }),
-      /* 12 */ cell({ road: true }),
-      // row 10
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ road: true }),
-      /*  3 */ cell({ road: true }),
-      /*  4 */ cell({ road: true }),
-      /*  5 */ cell({ road: true }),
-      /*  6 */ cell({ road: true }),
-      /*  7 */ cell({ road: true }),
-      /*  8 */ cell({ road: true }),
-      /*  9 */ cell({ road: true }),
-      /* 10 */ cell({ road: true }),
-      /* 11 */ cell({ road: true }),
-      /* 12 */ cell({ road: true }),
-      // row 11
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({ road: true }),
-      /*  2 */ cell({ road: true }),
-      /*  3 */ cell({ road: true }),
-      /*  4 */ cell({ road: true }),
-      /*  5 */ cell({ road: true }),
-      /*  6 */ cell({ road: true }),
-      /*  7 */ cell({ road: true }),
-      /*  8 */ cell({ road: true }),
-      /*  9 */ cell({ road: true }),
-      /* 10 */ cell({ road: true }),
-      /* 11 */ cell({ road: true }),
-      /* 12 */ cell({ road: true }),
-      // row 12
-      /*  0 */ cell({ road: true }),
-      /*  1 */ cell({}),
-      /*  2 */ cell({}),
-      /*  3 */ cell({}),
-      /*  4 */ cell({}),
-      /*  5 */ cell({}),
-      /*  6 */ cell({}),
-      /*  7 */ cell({}),
-      /*  8 */ cell({}),
-      /*  9 */ cell({}),
-      /* 10 */ cell({}),
-      /* 11 */ cell({}),
-      /* 12 */ cell({}),
-    ]);
-    this.size = Math.sqrt(this.wallGrid.length);
+    // The grid is compiled from the placements in level.ts by levelBuilder.ts.
+    this.wallGrid = level.wallGrid;
+    this.size = level.size;
 
     makeAutoObservable(this);
   }
