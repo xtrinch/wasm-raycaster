@@ -17,6 +17,7 @@ pub enum TextureType {
     TREE_COLUMNAR = 10,
     LADY = 11,
     WINDOW = 12,
+    ROOF = 13,
 }
 
 #[wasm_bindgen]
@@ -333,7 +334,7 @@ pub struct Position {
     pub plane_x: f32,
     pub plane_y: f32,
     pub pitch: i32,
-    pub z: i32,
+    pub z: f32, // Feet height in world units, like x and y.
     pub plane_y_initial: f32,
 }
 
@@ -370,6 +371,7 @@ pub struct TranslationResult {
 
 #[derive(Serialize, Clone, Copy)]
 pub struct SpritePart<'a> {
+    pub depth: f32,
     pub sprite_type: i32, // TODO: u8?
     pub sprite_left_x: u32,
     pub width: i32,
@@ -424,6 +426,12 @@ pub const FIXED_ONE_LARGE: i32 = 1 << FIXED_SHIFT_LARGE;
 #[inline(always)]
 pub fn to_fixed(f: f32) -> i32 {
     (f * (FIXED_ONE as f32)) as i32
+}
+
+// Keep distant floor coordinates from overflowing the 32-bit fixed-point range.
+#[inline(always)]
+pub fn to_fixed_i64(f: f32) -> i64 {
+    (f * (FIXED_ONE as f32)) as i64
 }
 
 #[inline(always)]

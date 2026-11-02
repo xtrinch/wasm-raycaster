@@ -2,16 +2,32 @@
 
 ## Architecture
 - Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
+- Keep rendering data structs and enums in `src/helpers.rs`, alongside the existing
+  types; keep rendering behavior in `src/lib.rs` unless a separate move is requested.
+- Keep movement physics and collision decisions in Rust: wall blocking, roof
+  support, ceiling limits, landing and gravity. TypeScript handles input, hover
+  state and applying Rust's returned position; do not duplicate collision rules there.
+- Calculate requested movement distances from speed and frame time in TypeScript;
+  pass distances into Rust, as with `walk`, rather than passing frame time.
 - `packages/app/src/vector-game/game/` owns the TypeScript game state, input,
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
 - `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,
   window and floor/ceiling bit layout; see the comments in `gridMap.ts`.
 - World geometry belongs in the grid; do not author independent geometry lists.
+- Floor bit 1 controls the ground floor; ceiling bit 2 controls both the ceiling
+  underside and roof top. Wall bottoms and tops use the same wall footprint check.
+- Wall directions 1/2/3 use consecutive bits 6/7/8; window flags 1/2 use bits
+  9/10. Bit 11 is reserved; wall count and geometry stay at bits 12-63.
 - The previous stairs/roof prototype is saved on `stairs-roof-prototype`.
-  Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement; prototype
-  features are not implemented on this branch yet.
-- World walls are one unit high. Player `position.z` is an offset in renderer
-  units: one world unit equals the canvas height. Roofs meet wall tops at z=1.
+  Follow `docs/stairs/NEXT-STEPS.md` for the incremental replacement. This branch
+  implements flight and fixed-height roofs; stairs remain on the prototype branch.
+- G/H ascend and descend; releasing both hovers until landing. Roof coverage is
+  shared by Rust rendering and movement queries, including thin-wall tops.
+- Player x/y/z and movement distances use world units: one cell is 1 by 1,
+  ground is z=0 and existing wall/roof tops are z=1. Scale z by canvas height
+  only during rendering projection; collision must not depend on canvas size.
+- Only one story is supported: ground at 0 and ceiling/roof at wall-top height 1.
+  Do not add multi-story configuration or rendering paths ahead of that feature.
 - Generated bindings live in `packages/app/wasm/` (gitignored). Rebuild them
   whenever a Rust export changes; do not hand-edit generated files.
 

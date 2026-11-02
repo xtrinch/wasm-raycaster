@@ -4,6 +4,29 @@ This project is a raycaster written in Rust WASM.
 See it live at https://xtrinch.github.io/wasm-raycaster/.
 It's also paralellized with rayon (uses a nightly Rust build).
 
+## Flight and roofs
+
+Use **G** to ascend and **H** to descend. Release both to hover. Land on a roof
+to resume walking; walking off an edge makes you fall. Ceilings block ascent
+from inside a building. Existing movement, look, and D/F controls are unchanged.
+
+Roofs and thin-wall tops use concrete at the existing wall height. No stairs or
+variable-height walls are included in this step.
+
+Player x/y/z use world units: one grid cell is 1 by 1, ground is z=0 and roofs
+are z=1. G/H travel at 1 unit/second; D/F at 2/3 unit/second, with a half-unit
+jump limit. Falling uses 1/6 unit/second. Canvas size only affects projection.
+
+Grid floor bit 1 and ceiling bit 2 are independent. The ceiling is drawn with
+ceiling texture underneath and concrete roof texture on top. Wall bottoms and
+tops use the same footprint, including thin walls.
+
+Wall direction flags use bits 6/7/8, and window flags use bits 9/10. Ceiling
+bit 2 is independent, including cells containing a third wall. Cells remain 64 bits.
+
+Run `cargo test` for Rust rendering and roof coverage checks. Flight/movement
+tests are saved on `stairs-roof-prototype` for later.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
