@@ -41,6 +41,8 @@ export class Camera {
   public zBufferRef: WasmFloat32Array;
   // Nearest floor, ceiling or roof depth per pixel.
   public surfaceDepthRef: WasmFloat32Array;
+  public meshDepthRef: WasmFloat32Array;
+  public meshRef: WasmFloat32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
   public spriteHashMap: WasmStripePerCoordMap; // sprites per coordinate
@@ -81,6 +83,11 @@ export class Camera {
 
     this.zBufferRef = new WasmFloat32Array(this.width);
     this.surfaceDepthRef = new WasmFloat32Array(this.width * this.height);
+    this.meshDepthRef = new WasmFloat32Array(this.width * this.height);
+
+    // Static model geometry is uploaded once.
+    this.meshRef = new WasmFloat32Array(map.meshTriangles.length);
+    this.meshRef.set(map.meshTriangles);
 
     this.mapRef = new WasmUInt64Array(map.size * map.size);
     this.mapRef.set(map.wallGrid);
@@ -92,6 +99,8 @@ export class Camera {
     );
     this.spriteHashMap = new WasmStripePerCoordMap();
     this.spriteHashMap.populateFromArray(allSprites);
+    // 3D models are registered in the cells they cover, so rays find them like sprites.
+    this.spriteHashMap.populateModels(map.models);
 
     this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
@@ -207,7 +216,10 @@ export class Camera {
       this.spriteHashMap,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
-      this.surfaceDepthRef.ptr
+      this.surfaceDepthRef.ptr,
+      this.meshDepthRef.ptr,
+      this.meshRef.ptr,
+      this.map.meshTriangles.length
     );
 
     this.drawWeapon(player.weapon, player.paces);
