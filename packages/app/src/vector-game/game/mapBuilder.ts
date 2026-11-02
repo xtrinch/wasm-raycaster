@@ -1,20 +1,17 @@
-// Readable descriptions of GridMap.wallGrid cells, packed into the u64 layout
-// documented in gridMap.ts. Geometry values are tenths of a cell (0-10).
+// Encodes and decodes single GridMap.wallGrid cells in the u64 layout documented
+// in gridMap.ts. Geometry values are tenths of a cell (0-10).
 
 export type SegmentDirection = "east" | "north";
 export type SegmentKind = "wall" | "door" | "window";
 
-export interface SegmentGeometry {
-  direction: SegmentDirection; // east runs along y, north runs along x
-  offset?: number; // across the segment, from the cell's low x/y edge (default 0)
-  thickness?: number; // size across the segment (default 1 for walls and doors, 0 for windows)
-  length?: number; // size along the segment (default 10)
-  start?: number; // along the segment, from the cell's low x/y edge (default 0)
-}
-
-// A wall, door or window; segments[i] of a cell is stored in slot i.
-export interface Segment extends Required<SegmentGeometry> {
+// A wall, door or window inside one cell; segments[i] of a cell is stored in slot i.
+export interface Segment {
   kind: SegmentKind;
+  direction: SegmentDirection; // east runs along y, north runs along x
+  offset: number; // across the segment, from the cell's low x/y edge
+  thickness: number; // size across the segment
+  length: number; // size along the segment
+  start: number; // along the segment, from the cell's low x/y edge
 }
 
 export interface CellSpec {
@@ -31,24 +28,7 @@ const SLOT_WINDOW_BITS = [9, 10];
 const SEGMENT_COUNT_SHIFT = 12;
 const SLOT_SHIFTS = [16, 32, 48];
 
-const segment = (kind: SegmentKind, geometry: SegmentGeometry): Segment => ({
-  kind,
-  direction: geometry.direction,
-  offset: geometry.offset ?? 0,
-  thickness: geometry.thickness ?? 1,
-  length: geometry.length ?? 10,
-  start: geometry.start ?? 0,
-});
-
-export const wall = (geometry: SegmentGeometry) => segment("wall", geometry);
-export const door = (geometry: SegmentGeometry) => segment("door", geometry);
-// Windows default to flat planes (thickness 0).
-export const window = (geometry: SegmentGeometry) =>
-  segment("window", { ...geometry, thickness: geometry.thickness ?? 0 });
-
-export const solid = (): CellSpec => ({ solid: true });
-
-export const cell = (spec: CellSpec): bigint => encodeCell(spec);
+const solid = (): CellSpec => ({ solid: true });
 
 const bit = (index: number) => 1n << BigInt(index);
 

@@ -13,7 +13,8 @@
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
 - `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,
   window and floor/ceiling bit layout; see the comments in `gridMap.ts`.
-- World geometry belongs in the grid; do not author independent geometry lists.
+- Author geometry and sprites as placements in `level.ts`; `levelBuilder.ts` compiles
+  them into the grid, which is the only runtime geometry. Do not hand-edit grid cells.
 - Floor bit 1 controls the ground floor; ceiling bit 2 controls both the ceiling
   underside and roof top. Wall bottoms and tops use the same wall footprint check.
 - Wall directions 1/2/3 use consecutive bits 6/7/8; window flags 1/2 use bits
