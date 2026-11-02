@@ -22,6 +22,7 @@ import lady8Texture from "../../assets/woman/woman8.png";
 
 import { TextureType } from "../../../wasm";
 import { Bitmap } from "./bitmap";
+import { cell, door, wall, window } from "./mapBuilder";
 import roofConcrete from "../../assets/roof-concrete.jpg";
 
 export interface Point {
@@ -84,47 +85,228 @@ export class GridMap {
     ];
     this.light = 0;
 
-    // 64 bits, 8 bytes
-    //     offset_secondary3  width3     thickness3 offset_primary3    offset_secondary2  width2     thickness2 offset_primary2    offset_secondary  width     thickness offset_primary   reserve1 reserve2 num_walls1 num_walls0 reserved window2  window1  north3      north2  north  door  door23   road   ceiling floor         wall
-    // BIN 0000               0000       0000       0000               0000               0000       0000       0000               0000              0000      0000      0000             0        0        0          0          0        0        0        0           0       0      0     0        0      0       0              0
-
-    // - offset primary would be from east / north, and secondary for east would be north, and for north it will be east
-    // 0x1 - wall (bit 0)
-    // 0x2 - floor (bit 1)
-    // 0x4 - ceiling/roof (bit 2)
-    // 0x6 - ceiling / floor (bit 1, 2)
-    // 0x8 - road (bit 3)
-    // 0x11 - thin wall (bit 0, 4)
-    // 0x51 - thin wall - north (bit 0, 4, 6)
-    // 0x57 - thin wall with ceiling / floor - north (bit 0, 1, 2, 4, 6)
-    // 0x17 - thin wall with ceiling / floor (bit 0, 1, 2, 4)
-    // 0x19 - thin wall with road (bit 0, 3, 4)
-    // 0x59 - thin wall with road - north (bit 0, 3, 4, 6)
-    // 0x31 - thin door - east (bit 0, 4, 5)
-    // 0x39 - thin door - east with road (bit 0, 3, 4, 5)
-    // 0x37 - thin door - east with wall & floor (bit 0, 1, 2, 4, 5)
-    // 0x71 - thin door - north (bit 0, 4, 5, 6)
-
-    // Wall directions 1/2/3 use bits 6/7/8; windows 1/2 use bits 9/10.
-    // Ceiling bit 2 is independent of all wall directions.
+    // Each cell is one u64, row-major (index = y * size + x). Decoded in src/lib.rs.
+    //
+    // Flags (bits 0-11):
+    //   bit 0     - cell has segments (minimap colour); exactly 0x1 is a solid full-cell block
+    //   bit 1     - floor
+    //   bit 2     - ceiling underside and roof top
+    //   bit 3     - road
+    //   bit 4     - segment slots 1 and 2 are doors (one shared bit)
+    //   bit 5     - segment slot 0 is a door
+    //   bits 6-8  - segment slot 0/1/2 direction: clear = east (runs along y),
+    //               set = north (runs along x)
+    //   bits 9-10 - segment slot 0/1 is a window (slot 2 cannot be a window)
+    //   bit 11    - reserved
+    //
+    // Segment count and geometry (bits 12-63):
+    //   bits 12-15 - number of segment slots used (0-3)
+    //   bits 16-31 - slot 0, bits 32-47 - slot 1, bits 48-63 - slot 2
+    //   each slot holds four 4-bit fields, low to high, in tenths of a cell (0-10):
+    //     offset    - position across the segment, from the cell's low x/y edge
+    //     thickness - size across the segment
+    //     length    - size along the segment
+    //     start     - position along the segment, from the cell's low x/y edge
+    //
+    // Segment kinds: a slot is a plain wall unless its door bit (5, or shared 4) or its
+    // window bit (9/10) is set. Doors and windows use the slot's geometry above, and
+    // the door bit wins if both are set. Only slots 0 and 1 can be windows.
+    //
+    // Examples:
+    //   0x0000000000000008 - road only
+    //   0x0000000000000006 - floor and ceiling (indoors)
+    //   0x000000000A101057 - indoors, 1 north wall: offset 0, thickness 0.1, full length
+    //   0x000000000A101037 - indoors, 1 east door: offset 0, thickness 0.1, full length
+    //   0x000000000A001217 - indoors, 1 east window: offset 0, thickness 0, full length
+    //
+    // Cells are written with cell() from mapBuilder.ts, which packs these bits;
+    // cell({ segments }) stores segments[i] in slot i.
 
     // prettier-ignore
     this.wallGrid = new BigUint64Array([
-      /*       0,            1,            2,            3,            4,            5,            6,            7,            8,            9,            10,           11           */
-      /* 0  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 1  */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 2  */ 0x0000000000000008, 0x000000000A191059, 0x00000A100A102087, 0x000000000A001257, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x000000000A101057, 0x00000110191020A9, 0x0000000000000008,
-      /* 3  */ 0x0000000000000008, 0x000000000A101037, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x00000A100A192087, 0x0000000000000008,
-      /* 4  */ 0x0000000000000008, 0x000000000A101059, 0x0000000019001217, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x000000000A191057, 0x000000000A191257, 0x000000000A191057, 0x00000A190A192087, 0x0000000000000008,
-      /* 5  */ 0x0000000000000008, 0x0000000000000008, 0x000000000A001217, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x000009100A192059, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 6  */ 0x0000000000000008, 0x0000000000000008, 0x000000000A001217, 0x0000000000000006, 0x0000000000000006, 0x000000000A191017, 0x000000000A101057, 0x00000510550022C7, 0x000009100A192059, 0x000000000A191058, 0x000000000A191058, 0x00000000090A1259, 0x0000000000000008,
-      /* 7  */ 0x0000000000000008, 0x0000000000000008, 0x000000000A101017, 0x0000000000000006, 0x0000000000000006, 0x000000000A191017, 0x000000000A191077, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x000000000A191017, 0x0000000000000008,
-      /* 8  */ 0x0000000000000008, 0x0000000000000008, 0x000000000A101017, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x0000000000000006, 0x000000000A191037, 0x0000000000000008,
-      /* 9  */ 0x0000000000000008, 0x0000000000000008, "0x0A190A190A103087", 0x000000000A101079, 0x000019000A0A2647, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x000000000A191057, 0x00000A190A192087, 0x0000000000000008,
-      /* 10 */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 12 */ 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008,
-      /* 13 */ 0x0000000000000008, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    ].map(val=>BigInt(val)));
+      // row 0
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ road: true }),
+      /*  3 */ cell({ road: true }),
+      /*  4 */ cell({ road: true }),
+      /*  5 */ cell({ road: true }),
+      /*  6 */ cell({ road: true }),
+      /*  7 */ cell({ road: true }),
+      /*  8 */ cell({ road: true }),
+      /*  9 */ cell({ road: true }),
+      /* 10 */ cell({ road: true }),
+      /* 11 */ cell({ road: true }),
+      /* 12 */ cell({ road: true }),
+      // row 1
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ road: true }),
+      /*  3 */ cell({ road: true }),
+      /*  4 */ cell({ road: true }),
+      /*  5 */ cell({ road: true }),
+      /*  6 */ cell({ road: true }),
+      /*  7 */ cell({ road: true }),
+      /*  8 */ cell({ road: true }),
+      /*  9 */ cell({ road: true }),
+      /* 10 */ cell({ road: true }),
+      /* 11 */ cell({ road: true }),
+      /* 12 */ cell({ road: true }),
+      // row 2
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" }), wall({ direction: "north" })] }),
+      /*  3 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north" })] }),
+      /*  4 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" }), wall({ direction: "east", offset: 2, thickness: 2, start: 3, length: 2 })] }), // CHANGED: pillar (one thin wall, segment 1), x 4.2-4.4, y 2.3-2.5, 1.5 in front of and 0.2 left of player start
+      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /* 11 */ cell({ road: true, segments: [door({ direction: "east", length: 9, start: 1 }), wall({ direction: "north", length: 1 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 3
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "east" })] }),
+      /*  2 */ cell({ floor: true, ceiling: true }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }),
+      /*  5 */ cell({ floor: true, ceiling: true }),
+      /*  6 */ cell({ floor: true, ceiling: true }),
+      /*  7 */ cell({ floor: true, ceiling: true }),
+      /*  8 */ cell({ floor: true, ceiling: true }),
+      /*  9 */ cell({ floor: true, ceiling: true }),
+      /* 10 */ cell({ floor: true, ceiling: true }),
+      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north" })] }),
+      /* 12 */ cell({ road: true }),
+      // row 4
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true, segments: [wall({ direction: "north" })] }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east", length: 9, start: 1 })] }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }), // player start (4, 4) facing north, see gameLoop.ts
+      /*  5 */ cell({ floor: true, ceiling: true }),
+      /*  6 */ cell({ floor: true, ceiling: true }),
+      /*  7 */ cell({ floor: true, ceiling: true }),
+      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  9 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", offset: 9, thickness: 1 })] }),
+      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north", offset: 9 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 5
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east" })] }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }),
+      /*  5 */ cell({ floor: true, ceiling: true }),
+      /*  6 */ cell({ floor: true, ceiling: true }),
+      /*  7 */ cell({ floor: true, ceiling: true }),
+      /*  8 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 }), door({ direction: "east", length: 9 })] }),
+      /*  9 */ cell({ road: true }),
+      /* 10 */ cell({ road: true }),
+      /* 11 */ cell({ road: true }),
+      /* 12 */ cell({ road: true }),
+      // row 6
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "east" })] }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }),
+      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
+      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north" })] }),
+      /*  7 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", length: 5, start: 5 }), wall({ direction: "north", length: 5 })] }),
+      /*  8 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 }), door({ direction: "east", length: 9 })] }),
+      /*  9 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 10 */ cell({ road: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 11 */ cell({ road: true, segments: [window({ direction: "north", offset: 10, length: 9 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 7
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" })] }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }),
+      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
+      /*  6 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "north", offset: 9 })] }),
+      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 8
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" })] }),
+      /*  3 */ cell({ floor: true, ceiling: true }),
+      /*  4 */ cell({ floor: true, ceiling: true }),
+      /*  5 */ cell({ floor: true, ceiling: true }),
+      /*  6 */ cell({ floor: true, ceiling: true }),
+      /*  7 */ cell({ floor: true, ceiling: true }),
+      /*  8 */ cell({ floor: true, ceiling: true }),
+      /*  9 */ cell({ floor: true, ceiling: true }),
+      /* 10 */ cell({ floor: true, ceiling: true }),
+      /* 11 */ cell({ floor: true, ceiling: true, segments: [door({ direction: "east", offset: 9 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 9
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east" }), wall({ direction: "north", offset: 9 }), wall({ direction: "east", offset: 9 })] }),
+      /*  3 */ cell({ road: true, segments: [door({ direction: "north" })] }),
+      /*  4 */ cell({ floor: true, ceiling: true, segments: [window({ direction: "north", offset: 10 }), window({ direction: "east", length: 9, start: 1 })] }),
+      /*  5 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  6 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  7 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  8 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /*  9 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 10 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "north", offset: 9 })] }),
+      /* 11 */ cell({ floor: true, ceiling: true, segments: [wall({ direction: "east", offset: 9 }), wall({ direction: "north", offset: 9 })] }),
+      /* 12 */ cell({ road: true }),
+      // row 10
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ road: true }),
+      /*  3 */ cell({ road: true }),
+      /*  4 */ cell({ road: true }),
+      /*  5 */ cell({ road: true }),
+      /*  6 */ cell({ road: true }),
+      /*  7 */ cell({ road: true }),
+      /*  8 */ cell({ road: true }),
+      /*  9 */ cell({ road: true }),
+      /* 10 */ cell({ road: true }),
+      /* 11 */ cell({ road: true }),
+      /* 12 */ cell({ road: true }),
+      // row 11
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({ road: true }),
+      /*  2 */ cell({ road: true }),
+      /*  3 */ cell({ road: true }),
+      /*  4 */ cell({ road: true }),
+      /*  5 */ cell({ road: true }),
+      /*  6 */ cell({ road: true }),
+      /*  7 */ cell({ road: true }),
+      /*  8 */ cell({ road: true }),
+      /*  9 */ cell({ road: true }),
+      /* 10 */ cell({ road: true }),
+      /* 11 */ cell({ road: true }),
+      /* 12 */ cell({ road: true }),
+      // row 12
+      /*  0 */ cell({ road: true }),
+      /*  1 */ cell({}),
+      /*  2 */ cell({}),
+      /*  3 */ cell({}),
+      /*  4 */ cell({}),
+      /*  5 */ cell({}),
+      /*  6 */ cell({}),
+      /*  7 */ cell({}),
+      /*  8 */ cell({}),
+      /*  9 */ cell({}),
+      /* 10 */ cell({}),
+      /* 11 */ cell({}),
+      /* 12 */ cell({}),
+    ]);
     this.size = Math.sqrt(this.wallGrid.length);
 
     makeAutoObservable(this);
