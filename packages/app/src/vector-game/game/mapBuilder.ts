@@ -7,7 +7,7 @@ export type SegmentKind = "wall" | "door" | "window";
 export interface SegmentGeometry {
   direction: SegmentDirection; // east runs along y, north runs along x
   offset?: number; // across the segment, from the cell's low x/y edge (default 0)
-  thickness?: number; // size across the segment (default 1 for walls, 0 for doors and windows)
+  thickness?: number; // size across the segment (default 1 for walls and doors, 0 for windows)
   length?: number; // size along the segment (default 10)
   start?: number; // along the segment, from the cell's low x/y edge (default 0)
 }
@@ -41,9 +41,8 @@ const segment = (kind: SegmentKind, geometry: SegmentGeometry): Segment => ({
 });
 
 export const wall = (geometry: SegmentGeometry) => segment("wall", geometry);
-// Doors and windows default to flat planes (thickness 0).
-export const door = (geometry: SegmentGeometry) =>
-  segment("door", { ...geometry, thickness: geometry.thickness ?? 0 });
+export const door = (geometry: SegmentGeometry) => segment("door", geometry);
+// Windows default to flat planes (thickness 0).
 export const window = (geometry: SegmentGeometry) =>
   segment("window", { ...geometry, thickness: geometry.thickness ?? 0 });
 
