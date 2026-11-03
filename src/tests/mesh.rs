@@ -1,5 +1,5 @@
 use super::*;
-use crate::world::{Mesh, Model};
+use crate::world_helpers::{Mesh, Model};
 
 const WIDTH: i32 = 64;
 const HEIGHT: i32 = 48;

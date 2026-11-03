@@ -80,7 +80,7 @@ each widened by the player radius of 0.2. Doors stay passable. A blocked step sl
 or y instead, and feet at or above a box's top pass over it. `move_vertical` lets feet land on
 a solid model's top. Models without `solid` are drawn only.
 
-## 3. Baking: `bake_model` in `src/world.rs`
+## 3. Baking: `bake_model` in `src/world_helpers.rs`
 
 When a model is added or moved, `bake_model` turns it into world-space triangles:
 
@@ -99,7 +99,7 @@ corner 3:  x y z  nx ny nz
 colour:    r g b                0-1
 ```
 
-`MESH_TRIANGLE_STRIDE = 21` in `lib.rs` and `TRIANGLE_FLOATS` in `world.rs` must match this
+`MESH_TRIANGLE_STRIDE = 21` in `lib.rs` and `TRIANGLE_FLOATS` in `world_helpers.rs` must match this
 layout. The model's footprint (min x, min y, max x, max y) is computed at the same time.
 
 ## 4. Registration (in the world)

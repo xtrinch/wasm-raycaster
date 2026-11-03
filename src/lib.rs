@@ -20,6 +20,7 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 mod helpers;
 mod line_intersection;
 mod world;
+mod world_helpers;
 use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;

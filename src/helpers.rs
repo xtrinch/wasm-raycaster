@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
-use crate::world::{Mesh, Placement, World};
+use crate::world::World;
+use crate::world_helpers::{Mesh, Placement};
 
 #[wasm_bindgen]
 pub enum TextureType {
