@@ -5,7 +5,7 @@ import {
   render,
   TextureType,
   WasmFloat32Array,
-  WasmStripePerCoordMap,
+  WasmRenderCells,
   WasmTextureMap,
   WasmTextureMetaMap,
   WasmUInt64Array,
@@ -43,7 +43,7 @@ export class Camera {
   public meshRef: WasmFloat32Array;
   public mapRef: WasmUInt64Array;
   public initialized: boolean;
-  public spriteHashMap: WasmStripePerCoordMap; // sprites per coordinate
+  public renderCells: WasmRenderCells; // billboards and models per cell
   public spriteTextureHashMap: WasmTextureMap;
   public backgroundRef: BackgroundImageWasm;
   public spriteTextureMetaHashMap: WasmTextureMetaMap;
@@ -93,10 +93,10 @@ export class Camera {
         spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
       )
     );
-    this.spriteHashMap = new WasmStripePerCoordMap();
-    this.spriteHashMap.populateFromArray(allSprites);
-    // 3D models are registered in the cells they cover, so rays find them like sprites.
-    this.spriteHashMap.populateModels(map.models);
+    this.renderCells = new WasmRenderCells();
+    this.renderCells.populateBillboards(allSprites);
+    // 3D models are registered in the cells they cover, so rays find them like billboards.
+    this.renderCells.populateModels(map.models);
 
     this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
@@ -209,7 +209,7 @@ export class Camera {
       this.range,
       this.map.light,
       this.backgroundRef,
-      this.spriteHashMap,
+      this.renderCells,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
       this.depthRef.ptr,

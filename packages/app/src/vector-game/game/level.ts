@@ -1,13 +1,24 @@
+import bedMtl from "../../assets/models/bed.mtl?raw";
+import bedObj from "../../assets/models/bed.obj?raw";
+import chairMtl from "../../assets/models/chair.mtl?raw";
+import chairObj from "../../assets/models/chair.obj?raw";
 import peasantMtl from "../../assets/models/woman-peasant.mtl?raw";
 import peasantObj from "../../assets/models/woman-peasant.obj?raw";
 import rangerMtl from "../../assets/models/woman-ranger.mtl?raw";
 import rangerObj from "../../assets/models/woman-ranger.obj?raw";
+import tableMtl from "../../assets/models/table.mtl?raw";
+import tableObj from "../../assets/models/table.obj?raw";
 import { TextureType } from "../../../wasm";
 import { area, compileLevel, door, model, pillar, sprite, wall, window } from "./levelBuilder";
 import { parseMtl, parseObj } from "./objModel";
 
 const peasant = parseObj(peasantObj, parseMtl(peasantMtl));
 const ranger = parseObj(rangerObj, parseMtl(rangerMtl));
+const bed = parseObj(bedObj, parseMtl(bedMtl));
+const chair = parseObj(chairObj, parseMtl(chairMtl));
+const table = parseObj(tableObj, parseMtl(tableMtl));
+// Furniture files are in metres; this matches the women, 1.78 m tall at height 0.8.
+const FURNITURE_SCALE = 0.45;
 
 // The player starts at (4, 4) facing north (-y); see gameLoop.ts.
 export const level = compileLevel(13, [
@@ -70,6 +81,11 @@ export const level = compileLevel(13, [
   sprite({ x: -2, y: 4, height: 1, texture: TextureType.TREE_VASE }),
   model({ mesh: peasant, x: 2.4, y: 4.2, angle: 270, height: 0.8 }),
   model({ mesh: ranger, x: 0.8, y: 3.2, angle: 90, height: 0.8 }),
+  // Bed against the west wall of the small room at x 6-8, y 6-8, headboard to the north.
+  model({ mesh: bed, x: 6.23, y: 6.57, scale: FURNITURE_SCALE, solid: true }),
+  // Table by the west window of the hall, with the chair facing it from the south.
+  model({ mesh: table, x: 2.75, y: 5.7, scale: FURNITURE_SCALE, solid: true }),
+  model({ mesh: chair, x: 2.75, y: 6.05, angle: 180, scale: FURNITURE_SCALE, solid: true }),
   sprite({ x: 4, y: 7, height: 0.7, texture: TextureType.PILLAR }),
   sprite({ x: 5, y: 5, height: 0.7, texture: TextureType.PILLAR }),
   sprite({ x: 14, y: 8.5, height: 0.5, texture: TextureType.PILLAR }),

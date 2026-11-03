@@ -36,7 +36,7 @@ export interface SpritePlacement {
   angle: number; // 0-360
 }
 
-// A 3D model; it is drawn only and does not block movement.
+// A 3D model; it blocks movement only when solid.
 export interface ModelPlacement {
   type: "model";
   mesh: Mesh;
@@ -47,6 +47,7 @@ export interface ModelPlacement {
   height?: number; // scale the model to exactly this tall, in world units
   angle: number; // degrees around the vertical axis; 0 faces the file's front (+Z) towards +y
   color: Color; // 0-1, for triangles without a material colour
+  solid: boolean; // block movement with the model's bounding box; feet can stand on its top
 }
 
 export type Placement = AreaPlacement | SegmentPlacement | SpritePlacement | ModelPlacement;
@@ -90,14 +91,15 @@ export const sprite = (options: Omit<SpritePlacement, "type" | "angle"> & { angl
 });
 
 export const model = (
-  options: Omit<ModelPlacement, "type" | "z" | "scale" | "angle" | "color"> &
-    Partial<Pick<ModelPlacement, "z" | "scale" | "angle" | "color">>
+  options: Omit<ModelPlacement, "type" | "z" | "scale" | "angle" | "color" | "solid"> &
+    Partial<Pick<ModelPlacement, "z" | "scale" | "angle" | "color" | "solid">>
 ): ModelPlacement => ({
   type: "model",
   z: 0,
   scale: 1,
   angle: 0,
   color: [0.8, 0.8, 0.8],
+  solid: false,
   ...options,
 });
 
@@ -111,10 +113,12 @@ export interface Level {
   meshTriangles: Float32Array; // per vertex world x, y, z and normal, then r, g, b; see lib.rs
   // Per model: first triangle, triangle count, footprint min x, min y, max x, max y.
   models: Float32Array;
+  // Per solid model: bounding box min x, min y, max x, max y, then top height.
+  solids: Float32Array;
 }
 
 // OBJ files are Y up; the world is Z up with the ground on x/y.
-function bakeModel(p: ModelPlacement, out: number[]): number[] {
+function bakeModel(p: ModelPlacement, out: number[]): { footprint: number[]; top: number } {
   const { positions, triangles, normals } = p.mesh;
   const cos = Math.cos((p.angle * Math.PI) / 180);
   const sin = Math.sin((p.angle * Math.PI) / 180);
@@ -150,7 +154,10 @@ function bakeModel(p: ModelPlacement, out: number[]): number[] {
   // The placed footprint, for registering the model in the cells it covers.
   const halfWidth = ((max[0] - min[0]) / 2) * scale;
   const halfDepth = ((max[1] - min[1]) / 2) * scale;
-  return [p.x - halfWidth, p.y - halfDepth, p.x + halfWidth, p.y + halfDepth];
+  return {
+    footprint: [p.x - halfWidth, p.y - halfDepth, p.x + halfWidth, p.y + halfDepth],
+    top: p.z + (max[2] - min[2]) * scale,
+  };
 }
 
 const tenths = (value: number, name: string): number => {
@@ -185,6 +192,7 @@ export function compileLevel(size: number, placements: Placement[]): Level {
   const sprites: number[][] = [];
   const meshTriangles: number[] = [];
   const models: number[] = [];
+  const solids: number[] = [];
 
   const index = (x: number, y: number, what: string) => {
     if (x < 0 || y < 0 || x >= size || y >= size) {
@@ -196,8 +204,9 @@ export function compileLevel(size: number, placements: Placement[]): Level {
   for (const p of placements) {
     if (p.type === "model") {
       const first = meshTriangles.length / MESH_TRIANGLE_STRIDE;
-      const footprint = bakeModel(p, meshTriangles);
+      const { footprint, top } = bakeModel(p, meshTriangles);
       models.push(first, meshTriangles.length / MESH_TRIANGLE_STRIDE - first, ...footprint);
+      if (p.solid) solids.push(...footprint, top);
     } else if (p.type === "sprite") {
       sprites.push([p.x, p.y, p.angle, p.height, p.texture]);
     } else if (p.type === "area") {
@@ -264,5 +273,6 @@ export function compileLevel(size: number, placements: Placement[]): Level {
     sprites,
     meshTriangles: new Float32Array(meshTriangles),
     models: new Float32Array(models),
+    solids: new Float32Array(solids),
   };
 }

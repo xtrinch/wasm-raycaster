@@ -20,7 +20,7 @@ import lady6Texture from "../../assets/woman/woman6.png";
 import lady7Texture from "../../assets/woman/woman7.png";
 import lady8Texture from "../../assets/woman/woman8.png";
 
-import { TextureType } from "../../../wasm";
+import { TextureType, WasmCollisionCells } from "../../../wasm";
 import { Bitmap } from "./bitmap";
 import { level } from "./level";
 import roofConcrete from "../../assets/roof-concrete.jpg";
@@ -43,6 +43,7 @@ export class GridMap {
   public wallGrid: BigUint64Array;
   public meshTriangles: Float32Array;
   public models: Float32Array;
+  public collisionCells: WasmCollisionCells; // solid model boxes per cell, for movement
   public skybox: Bitmap;
   public wallTexture: Bitmap;
   public treeTexture: Bitmap;
@@ -126,6 +127,9 @@ export class GridMap {
     this.size = level.size;
     this.meshTriangles = level.meshTriangles;
     this.models = level.models;
+    // Solid models collide by their bounding boxes, alongside walls and windows.
+    this.collisionCells = new WasmCollisionCells();
+    this.collisionCells.populateSolids(level.solids);
 
     makeAutoObservable(this);
   }

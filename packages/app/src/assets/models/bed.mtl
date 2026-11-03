@@ -1,0 +1,9 @@
+# Single bed materials
+newmtl wood
+Kd 0.42 0.26 0.14
+newmtl sheet
+Kd 0.88 0.87 0.82
+newmtl blanket
+Kd 0.24 0.38 0.62
+newmtl pillow
+Kd 0.95 0.95 0.93

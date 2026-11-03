@@ -41,6 +41,12 @@ f  12//12  13//13  14//14        a face: corner numbers, each with an optional n
 The result is a `Mesh`: positions, three vertex indices per triangle, a normal per triangle
 corner, and an optional colour per triangle.
 
+The women are baked from rigged, textured glTF characters with
+[posebake](https://crates.io/crates/posebake): the recipes in `packages/app/models/` merge an
+outfit, a head and hair, lower the arms from the T-pose and sample one colour per triangle
+from the textures into the MTL. `packages/app/models/README.md` lists the source files, and
+`pnpm run bake:models` regenerates the OBJ and MTL files.
+
 ## 2. Placing a model
 
 Models are placed in `level.ts` with `model()` from `levelBuilder.ts`:
@@ -57,8 +63,16 @@ model({ mesh: peasant, x: 2.4, y: 4.2, angle: 270, height: 0.8 }),
 | `height` | Scale the model to exactly this tall; when unset, `scale` is used |
 | `scale` | Uniform scale; default 1 |
 | `color` | Colour for triangles without a material colour; default light grey |
+| `solid` | Block movement with the model's bounding box; default false |
 
-Models are drawn only. They do not block movement.
+A solid model collides as one box: its placed footprint, up to its top. `compileLevel` outputs
+these boxes in `solids` (min x, min y, max x, max y, top). `GridMap` loads them into a
+`WasmCollisionCells`, which stores each box once and lists its id in every cell it touches, so
+a box spanning several cells is still tested once. Rust's `walk` tests the whole step against
+the boxes of the cells around it: wall and window footprints from the grid, up to height 1, and solid model boxes,
+each widened by the player radius of 0.2. Doors stay passable. A blocked step slides along x
+or y instead, and feet at or above a box's top pass over it. `move_vertical` lets feet land on
+a solid model's top. Models without `solid` are drawn only.
 
 ## 3. Baking: `compileLevel`
 
@@ -91,9 +105,9 @@ first triangle, triangle count, footprint min x, min y, max x, max y
 
 - `meshTriangles` is copied into WASM memory once (`meshRef`) and passed to `render` each frame
   as a pointer and length.
-- `populateModels(models)` registers each model in `WasmStripePerCoordMap`, the same per-cell
-  registry the billboard sprites use. A model is listed in every grid cell its footprint
-  touches. A footprint ending exactly on a cell line does not reach the next cell.
+- `populateModels(models)` registers each model in `WasmRenderCells`, the same per-cell
+  registry the billboard sprites use. It keeps each model's triangle range by model id and
+  lists the id in every grid cell the model's footprint touches. A footprint ending exactly on a cell line does not reach the next cell.
 
 ## 5. Which models are drawn: per-cell visibility
 
@@ -101,7 +115,7 @@ Models use the sprites' visibility mechanism:
 
 1. `raycast_column` casts one ray per screen column through the grid. On every 5th column, it
    records each cell the ray passes through that holds a sprite or a model
-   (`WasmStripePerCoordMap::occupied`).
+   (`WasmRenderCells::occupied`).
 2. Rays stop at walls. Windows and doors let them continue.
 3. `draw_walls_raycast` collects the sprites and model ids from all recorded cells. A model in
    several reached cells is listed once.
@@ -239,7 +253,8 @@ distance: a model standing partly inside a tree is cut off sharply at that dista
 ## Limits
 
 - Models are coloured per triangle; textures are not sampled.
-- Models do not block movement.
+- A solid model collides as its whole bounding box, so a bed's headboard sets where feet
+  stand on the mattress.
 - Models are found through cells recorded on every 5th screen column, like sprites.
 - Model text is bundled with `?raw` and parsed at startup.
 

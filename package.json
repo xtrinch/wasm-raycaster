@@ -9,6 +9,7 @@
     "build-gh": "pnpm run build:wasm-gh && pnpm run build:app",
     "build:wasm-gh": "wasm-pack build --release --target web --out-dir packages/app/wasm --out-name index -- --features parallel",
     "build:app": "pnpm --filter app run build",
+    "bake:models": "posebake packages/app/models/woman-peasant.toml && posebake packages/app/models/woman-ranger.toml",
     "start": "pnpm --filter app run start",
     "dev": "pnpm --filter app run run-dev",
     "preview": "pnpm --filter app run preview"
