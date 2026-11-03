@@ -1,5 +1,5 @@
 use super::*;
-use crate::helpers::MeshRange;
+use crate::world::{Mesh, Model};
 
 const WIDTH: i32 = 64;
 const HEIGHT: i32 = 48;
@@ -228,26 +228,44 @@ fn triangles_crossing_behind_the_camera_are_clipped() {
     assert!(frame.depth.iter().all(|d| *d >= MESH_NEAR_DEPTH * 0.99));
 }
 
+// A model whose unrotated footprint is centred on x/y with the given half sizes; its mesh has
+// bounds only, no triangles.
+fn place_model(world: &mut World, x: f64, y: f64, half_x: f64, half_y: f64) -> u32 {
+    let mesh = world.add_mesh(Mesh {
+        positions: vec![-half_x, 0.0, -half_y, half_x, 1.0, half_y],
+        triangles: vec![],
+        normals: vec![],
+        colors: vec![],
+    });
+    world
+        .add_model(Model {
+            mesh,
+            x,
+            y,
+            z: 0.0,
+            scale: 1.0,
+            height: None,
+            angle: 0.0,
+            color: [0.8; 3],
+            solid: false,
+        })
+        .unwrap()
+}
+
 #[test]
 fn model_footprints_register_every_cell_they_touch() {
-    let mut cells = WasmRenderCells::new();
-    // first triangle, triangle count, footprint min x, min y, max x, max y
-    cells.populate_models(&[4.0, 2.0, 1.5, 2.5, 3.0, 3.2]);
+    let mut world = World::new(9);
+    // Footprint x 1.5..3, y 2.5..3.2.
+    let id = place_model(&mut world, 2.25, 2.85, 0.75, 0.35);
 
     for cell in [(1, 2), (1, 3), (2, 2), (2, 3)] {
-        assert_eq!(cells.models_at(&cell), &[0], "cell {cell:?}");
+        assert_eq!(world.models_at(&cell), &[id], "cell {cell:?}");
     }
     // x ends exactly on the line x = 3, so column 3 is not reached.
-    assert!(cells.models_at(&(3, 2)).is_empty() && cells.models_at(&(3, 3)).is_empty());
-    assert_eq!(
-        cells.model_mesh(0),
-        Some(MeshRange {
-            first_triangle: 4,
-            triangle_count: 2
-        })
-    );
-    assert_eq!(cells.model_mesh(1), None);
-    assert!(cells.occupied(&(2, 3)) && !cells.occupied(&(3, 3)));
+    assert!(world.models_at(&(3, 2)).is_empty() && world.models_at(&(3, 3)).is_empty());
+    assert!(world.model_triangles(id).is_some());
+    assert!(world.model_triangles(id + 1).is_none());
+    assert!(world.occupied(&(2, 3)) && !world.occupied(&(3, 3)));
 }
 
 #[test]
@@ -258,13 +276,11 @@ fn only_models_in_cells_the_rays_reach_are_found() {
     for x in 0..size {
         grid[2 * size + x] = 0x0A10_1041;
     }
-    let mut cells = WasmRenderCells::new();
-    cells.populate_models(&[
-        0.0, 1.0, 4.2, 3.2, 4.8, 3.8, // 0: in front of the camera
-        1.0, 1.0, 4.2, 1.2, 4.8, 1.8, // 1: behind the wall
-        2.0, 1.0, 4.2, 5.2, 4.8, 5.8, // 2: behind the camera
-        3.0, 1.0, 3.5, 3.0, 5.5, 3.9, // 3: spans three reached cells
-    ]);
+    let mut world = World::new(size);
+    let in_front = place_model(&mut world, 4.5, 3.5, 0.3, 0.3); // x 4.2..4.8, y 3.2..3.8
+    place_model(&mut world, 4.5, 1.5, 0.3, 0.3); // behind the wall
+    place_model(&mut world, 4.5, 5.5, 0.3, 0.3); // behind the camera
+    let spanning = place_model(&mut world, 4.5, 3.45, 1.0, 0.45); // x 3.5..5.5: three reached cells
 
     let mut position = camera();
     position.x = 4.5;
@@ -283,10 +299,10 @@ fn only_models_in_cells_the_rays_reach_are_found() {
         width,
         20,
         64,
-        &cells,
+        &world,
         &mut sprites,
         &mut found,
     );
 
-    assert_eq!(found, vec![0, 3]);
+    assert_eq!(found, vec![in_front, spanning]);
 }

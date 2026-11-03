@@ -20,9 +20,9 @@ import lady6Texture from "../../assets/woman/woman6.png";
 import lady7Texture from "../../assets/woman/woman7.png";
 import lady8Texture from "../../assets/woman/woman8.png";
 
-import { TextureType, WasmCollisionCells } from "../../../wasm";
+import { TextureType, WasmWorld } from "../../../wasm";
 import { Bitmap } from "./bitmap";
-import { level } from "./level";
+import { buildLevel } from "./level";
 import roofConcrete from "../../assets/roof-concrete.jpg";
 
 export interface Point {
@@ -40,10 +40,7 @@ export interface Point {
 
 export class GridMap {
   public size: number;
-  public wallGrid: BigUint64Array;
-  public meshTriangles: Float32Array;
-  public models: Float32Array;
-  public collisionCells: WasmCollisionCells; // solid model boxes per cell, for movement
+  public world: WasmWorld; // grid, sprites and models; rendering and movement read it
   public skybox: Bitmap;
   public wallTexture: Bitmap;
   public treeTexture: Bitmap;
@@ -63,7 +60,6 @@ export class GridMap {
   constructor(size: number) {
     this.size = size;
     this.roofTexture = new Bitmap(roofConcrete, 256, 256);
-    this.wallGrid = new BigUint64Array(size * size);
     this.skybox = new Bitmap(panorama, 2000, 750);
     this.windowTexture = new Bitmap(windowTexture, 1024, 1024);
     this.wallTexture = new Bitmap(wallTexture, 1024, 1024);
@@ -88,7 +84,8 @@ export class GridMap {
     ];
     this.light = 0;
 
-    // Each cell is one u64, row-major (index = y * size + x). Decoded in src/lib.rs.
+    // Each cell is one u64, row-major (index = y * size + x). Encoded in src/world.rs,
+    // decoded in src/lib.rs.
     //
     // Flags (bits 0-11):
     //   bit 0     - cell has segments (minimap colour); exactly 0x1 is a solid full-cell block
@@ -122,14 +119,10 @@ export class GridMap {
     //   0x000000000A101027 - indoors, 1 east door: offset 0, thickness 0.1, full length
     //   0x000000000A001207 - indoors, 1 east window: offset 0, thickness 0, full length
     //
-    // The grid is compiled from the placements in level.ts by levelBuilder.ts.
-    this.wallGrid = level.wallGrid;
-    this.size = level.size;
-    this.meshTriangles = level.meshTriangles;
-    this.models = level.models;
-    // Solid models collide by their bounding boxes, alongside walls and windows.
-    this.collisionCells = new WasmCollisionCells();
-    this.collisionCells.populateSolids(level.solids);
+    // The world compiles the placements in level.ts into the grid; change the level at
+    // runtime only through it (world.add, world.remove, world.move).
+    this.world = buildLevel();
+    this.size = this.world.size;
 
     makeAutoObservable(this);
   }

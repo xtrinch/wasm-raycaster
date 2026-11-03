@@ -1,20 +1,17 @@
-import { flatten, isNumber, range } from "lodash";
+import { isNumber, range } from "lodash";
 import { makeAutoObservable } from "mobx";
 import {
   BackgroundImageWasm,
   render,
   TextureType,
   WasmFloat32Array,
-  WasmRenderCells,
   WasmTextureMap,
   WasmTextureMetaMap,
-  WasmUInt64Array,
   WasmUint8Array,
 } from "../../../wasm";
 import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
-import { SpriteMap } from "./spriteMap";
 
 export interface Sprite {
   x: number;
@@ -40,15 +37,12 @@ export class Camera {
   public zBufferRef: WasmFloat32Array;
   // Nearest floor, ceiling or roof depth per pixel.
   public depthRef: WasmFloat32Array; // nearest floor, ceiling, roof or model depth per pixel
-  public meshRef: WasmFloat32Array;
-  public mapRef: WasmUInt64Array;
   public initialized: boolean;
-  public renderCells: WasmRenderCells; // billboards and models per cell
   public spriteTextureHashMap: WasmTextureMap;
   public backgroundRef: BackgroundImageWasm;
   public spriteTextureMetaHashMap: WasmTextureMetaMap;
 
-  constructor(canvas: HTMLCanvasElement, map: GridMap, spriteMap: SpriteMap) {
+  constructor(canvas: HTMLCanvasElement, map: GridMap) {
     this.ctx = canvas.getContext("2d", { alpha: false });
     this.width = canvas.width = (8 * window.innerWidth) / 8;
     this.height = canvas.height = (8 * window.innerHeight) / 8;
@@ -80,23 +74,6 @@ export class Camera {
 
     this.zBufferRef = new WasmFloat32Array(this.width);
     this.depthRef = new WasmFloat32Array(this.width * this.height);
-
-    // Static model geometry is uploaded once.
-    this.meshRef = new WasmFloat32Array(map.meshTriangles.length);
-    this.meshRef.set(map.meshTriangles);
-
-    this.mapRef = new WasmUInt64Array(map.size * map.size);
-    this.mapRef.set(map.wallGrid);
-
-    const allSprites = new Float32Array(
-      flatten(
-        spriteMap.sprites.map((s) => [s[0], s[1], s[2], s[3] * 100, s[4]])
-      )
-    );
-    this.renderCells = new WasmRenderCells();
-    this.renderCells.populateBillboards(allSprites);
-    // 3D models are registered in the cells they cover, so rays find them like billboards.
-    this.renderCells.populateModels(map.models);
 
     this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
@@ -201,20 +178,16 @@ export class Camera {
       player.position.plane_y_initial,
       this.ceilingFloorPixelsRef.ptr,
       this.zBufferRef.ptr,
-      this.mapRef.ptr,
-      this.map.size,
+      this.map.world,
       this.width,
       this.height,
       this.lightRange,
       this.range,
       this.map.light,
       this.backgroundRef,
-      this.renderCells,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
-      this.depthRef.ptr,
-      this.meshRef.ptr,
-      this.map.meshTriangles.length
+      this.depthRef.ptr
     );
 
     this.drawWeapon(player.weapon, player.paces);

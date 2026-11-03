@@ -7,7 +7,8 @@ import MapPerson from "./mapPerson";
 const Map = () => {
   const gameContext = useContext(GameContext);
 
-  const map = gameContext.gameLoop?.map?.wallGrid;
+  // A fresh copy each render, so runtime edits to the world show on the minimap.
+  const map = gameContext.gameLoop?.map?.world.grid();
   const size = gameContext.gameLoop?.map?.size;
   const playerPosition = gameContext.gameLoop?.player?.position;
   const fps = gameContext.gameLoop?.fps;
