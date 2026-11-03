@@ -1,0 +1,27 @@
+output = "../src/assets/models/woman-ranger"
+header = "Female_Ranger (Quaternius Modular Character Outfits - Fantasy, CC0) with the head and eyes of Superhero_Female (Quaternius Universal Base Characters, CC0); arms posed down"
+
+[[source]]
+gltf = "sources/Female_Ranger.gltf"
+
+[[source]]
+gltf = "sources/Superhero_Female_FullBody.gltf"
+nodes = ["Superhero_Female"]
+keep_joints = ["Head", "neck_01"]
+
+[[source]]
+gltf = "sources/Superhero_Female_FullBody.gltf"
+nodes = ["Eyes", "Eyebrows"]
+
+# Arms down, 10 degrees out from straight down.
+[[pose]]
+kind = "aim"
+joint = "upperarm_l"
+toward = "hand_l"
+direction = [0.17365, -0.98481, 0.0]
+
+[[pose]]
+kind = "aim"
+joint = "upperarm_r"
+toward = "hand_r"
+direction = [-0.17365, -0.98481, 0.0]

@@ -1,0 +1,30 @@
+output = "../src/assets/models/woman-peasant"
+header = "Female_Peasant (Quaternius Modular Character Outfits - Fantasy, CC0) with the head and eyes of Superhero_Female (Quaternius Universal Base Characters, CC0) and Hair_Long; arms posed down"
+
+[[source]]
+gltf = "sources/Female_Peasant.gltf"
+
+[[source]]
+gltf = "sources/Superhero_Female_FullBody.gltf"
+nodes = ["Superhero_Female"]
+keep_joints = ["Head", "neck_01"]
+
+[[source]]
+gltf = "sources/Superhero_Female_FullBody.gltf"
+nodes = ["Eyes", "Eyebrows"]
+
+[[source]]
+gltf = "sources/Hair_Long.gltf"
+
+# Arms down, 10 degrees out from straight down.
+[[pose]]
+kind = "aim"
+joint = "upperarm_l"
+toward = "hand_l"
+direction = [0.17365, -0.98481, 0.0]
+
+[[pose]]
+kind = "aim"
+joint = "upperarm_r"
+toward = "hand_r"
+direction = [-0.17365, -0.98481, 0.0]
