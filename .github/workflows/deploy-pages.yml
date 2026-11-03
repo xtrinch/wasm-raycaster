@@ -1,10 +1,13 @@
-# Simple workflow for deploying static content to GitHub Pages
+# Builds the site on pull requests and deploys it to GitHub Pages from main.
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Deploys pushes to the default branch
   push:
     branches: ['main']
+
+  # Builds pull requests without deploying
+  pull_request:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -15,45 +18,53 @@ permissions:
   pages: write
   id-token: write
 
-# Allow one concurrent deployment
-concurrency:
-  group: 'pages'
-  cancel-in-progress: true
-
 jobs:
-  # Single deploy job since we're just deploying
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
+    # A newer push to the same branch or pull request replaces an unfinished build.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       # pnpm must read lockfile v9; older versions ignore it and resolve newer deps.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'pnpm'
-      - uses: jetli/wasm-pack-action@v0.4.0
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
         with:
-            # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
-            version: 'latest'
+          tool: wasm-pack
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm run build-gh
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           # Upload dist folder
           path: './packages/app/dist'
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    # Allow one concurrent deployment
+    concurrency:
+      group: 'pages'
+      cancel-in-progress: true
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

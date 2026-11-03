@@ -33,7 +33,8 @@ export class Camera {
   public canvas: HTMLCanvasElement;
   public map: GridMap;
   public ceilingFloorPixelsRef: WasmUint8Array;
-  public pixelsClampedArray: Uint8ClampedArray;
+  // Backed by a plain ArrayBuffer: ImageData cannot be built on shared WASM memory.
+  public pixelsClampedArray: Uint8ClampedArray<ArrayBuffer>;
   public skyTextureRef: WasmUint8Array;
   // Wall depth per screen column.
   public zBufferRef: WasmFloat32Array;
@@ -75,7 +76,7 @@ export class Camera {
 
     // ensure we're passing the data in all the same memory locations
     this.ceilingFloorPixelsRef = new WasmUint8Array(length);
-    this.pixelsClampedArray = new Uint8ClampedArray(length);
+    this.pixelsClampedArray = new Uint8ClampedArray(new ArrayBuffer(length));
 
     this.zBufferRef = new WasmFloat32Array(this.width);
     this.depthRef = new WasmFloat32Array(this.width * this.height);
