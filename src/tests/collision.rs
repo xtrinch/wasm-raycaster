@@ -1,5 +1,7 @@
 use super::*;
-use crate::helpers::SOLID_STRIDE;
+
+// Floats per solid in these tests: footprint min x, min y, max x, max y, then top.
+const SOLID_STRIDE: usize = 5;
 
 // Cell values from the examples in gridMap.ts: full-length segments at offset 0.
 const NORTH_WALL: u64 = 0x000000000A101047; // along x, thickness 0.1
@@ -17,9 +19,18 @@ fn grid(middle: u64) -> Vec<u64> {
     cells
 }
 
-fn solids(data: &[f32]) -> WasmCollisionCells {
-    let mut collision = WasmCollisionCells::new();
-    collision.populate_solids(data);
+fn solids(data: &[f32]) -> CollisionCells {
+    let mut collision = CollisionCells::new();
+    for (id, s) in data.chunks_exact(SOLID_STRIDE).enumerate() {
+        let solid = CollisionBox {
+            min_x: s[0],
+            min_y: s[1],
+            max_x: s[2],
+            max_y: s[3],
+            top: s[4],
+        };
+        collision.insert(id as u32, solid);
+    }
     collision
 }
 
@@ -28,7 +39,7 @@ fn step(
     delta: (f32, f32),
     z: f32,
     cells: &[u64],
-    collision: &WasmCollisionCells,
+    collision: &CollisionCells,
 ) -> (f32, f32) {
     walk_step(from.0, from.1, delta.0, delta.1, z, cells, 3, collision)
 }

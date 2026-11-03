@@ -445,6 +445,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "smallvec",
  "wasm-bindgen",
  "wasm-bindgen-rayon",

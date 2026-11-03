@@ -2,14 +2,15 @@
 #![feature(portable_simd)]
 use helpers::{
     get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm,
-    CollisionBox, Position, ScreenTriangle, Sprite, SpritePart, Texture, TextureType,
-    TranslationResult, WasmCollisionCells, WasmRenderCells, WasmTextureMap, WasmTextureMetaMap,
-    FIXED_ONE, FIXED_SHIFT,
+    CollisionBox, CollisionCells, Position, ScreenTriangle, Sprite, SpritePart, Texture,
+    TextureType, TranslationResult, WasmTextureMap, WasmTextureMetaMap, WasmWorld, FIXED_ONE,
+    FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
 use smallvec::SmallVec;
 use wasm_bindgen::prelude::*;
+use world::World;
 
 use rayon::prelude::*;
 
@@ -18,6 +19,8 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod helpers;
 mod line_intersection;
+mod world;
+mod world_helpers;
 use geo::{Coord, Distance, Euclidean, Line};
 use line_intersection::LineInterval;
 use std::collections::HashSet;
@@ -26,7 +29,6 @@ use std::{collections::HashMap, f32::MAX};
 use web_sys::console;
 // let js: JsValue = vec![found_sprites_length as f32].into();
 // console::log_2(&"Znj?".into(), &js);
-use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
 #[wasm_bindgen]
@@ -43,21 +45,20 @@ pub fn render(
     plane_y_initial: f32,
     render_img: *mut u8,
     zbuffer_array: *mut f32,
-    map_array: *mut u64, // 2D array representing the grid map
-    map_width: usize,    // Needed to index into 1D map
+    world: &WasmWorld, // grid, sprites and models
     width: i32,
     height: i32,
     light_range: i32,
     range: i8,
     map_light: i32,
     background: &BackgroundImageWasm,
-    render_cells: &WasmRenderCells, // billboards and models per cell
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
     depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
-    mesh_array: *const f32, // World-space mesh triangles, MESH_TRIANGLE_STRIDE floats each
-    mesh_len: usize,
 ) {
+    let world = world.world();
+    let map_data = world.grid();
+    let map_width = world.size();
     let position = Position {
         x,
         y,
@@ -75,14 +76,11 @@ pub fn render(
     let img_slice =
         unsafe { std::slice::from_raw_parts_mut(render_img, width as usize * height as usize * 4) };
 
-    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
-
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
     // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
     // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
     // sprite pass then skips wall, window and sprite pixels behind either.
     let depth = unsafe { from_raw_parts_mut(depth_array, width as usize * height as usize) };
-    let mesh_data = unsafe { from_raw_parts(mesh_array, mesh_len) };
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
@@ -138,6 +136,8 @@ pub fn render(
         .get(&(TextureType::ROOF as i32, 0))
         .unwrap();
 
+    // Filled by the wall raycast from the cells its rays reach: billboards (and window
+    // glass) for the column-based sprite pass, model ids for the triangle mesh pass.
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
     let mut found_models: Vec<u32> = Vec::new();
 
@@ -173,18 +173,14 @@ pub fn render(
         width,
         range,
         wall_texture_meta.width,
-        render_cells,
+        world,
         &mut found_sprites,
         &mut found_models,
     );
     // Only models in cells the rays reached are drawn, like sprites.
     let visible_meshes: Vec<&[f32]> = found_models
         .iter()
-        .filter_map(|&model| {
-            let mesh = render_cells.model_mesh(model)?;
-            let end = mesh.first_triangle + mesh.triangle_count;
-            mesh_data.get(mesh.first_triangle * MESH_TRIANGLE_STRIDE..end * MESH_TRIANGLE_STRIDE)
-        })
+        .filter_map(|&model| world.model_triangles(model))
         .collect();
     // Meshes go first so walls, sprites and window glass in front of them draw over them.
     draw_meshes(
@@ -220,7 +216,7 @@ pub fn raycast_column(
     width: i32,
     range: i8,
     wall_texture_width: i32,
-    render_cells: Option<&WasmRenderCells>, // records cells holding billboards or models
+    render_cells: Option<&World>, // records cells holding sprites or models
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
     above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
@@ -595,7 +591,7 @@ pub fn draw_walls_raycast(
     width: i32,
     range: i8,
     wall_texture_width: i32,
-    render_cells: &WasmRenderCells,
+    render_cells: &World,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
     found_models: &mut Vec<u32>, // models in cells the rays reached, each listed once
 ) {
@@ -1432,18 +1428,17 @@ pub fn draw_background_image_prescaled(
 // Apply vertical movement and collisions; return [feet height, landed flag].
 #[wasm_bindgen]
 pub fn move_vertical(
-    x: f32,                         // Player's world x coordinate.
-    y: f32,                         // Player's world y coordinate.
-    z: f32,                         // Feet height in world units.
-    distance: f32,                  // Requested vertical travel in world units; positive means up.
-    fall_distance: f32,             // Downward travel to apply when gravity is active.
-    jetpack_active: bool,           // Hover instead of applying gravity while airborne.
-    map_array: *const u64,          // Packed world grid in WASM memory.
-    map_width: usize,               // Grid width used to find the current cell.
-    collision: &WasmCollisionCells, // Solid model boxes per cell.
+    x: f32,               // Player's world x coordinate.
+    y: f32,               // Player's world y coordinate.
+    z: f32,               // Feet height in world units.
+    distance: f32,        // Requested vertical travel in world units; positive means up.
+    fall_distance: f32,   // Downward travel to apply when gravity is active.
+    jetpack_active: bool, // Hover instead of applying gravity while airborne.
+    world: &WasmWorld,    // Grid and solid models.
 ) -> Float32Array {
-    let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
-    let roof = roof_height_at(x, y, grid, map_width);
+    let world = world.world();
+    let collision = world.solids();
+    let roof = roof_height_at(x, y, world.grid(), world.size());
     // A roof supports feet above it; underneath it, feet stand on the ground or a solid model.
     let support = if z >= 1.0 - COLLISION_EPSILON {
         roof
@@ -1505,7 +1500,7 @@ fn collision_boxes(
     max_y: f32,
     grid: &[u64],
     size: i32,
-    collision: &WasmCollisionCells,
+    collision: &CollisionCells,
 ) -> Vec<CollisionBox> {
     let first = (min_x.floor() as i32, min_y.floor() as i32);
     let last = (max_x.floor() as i32, max_y.floor() as i32);
@@ -1567,7 +1562,7 @@ fn walk_step(
     z: f32,
     grid: &[u64],
     size: i32,
-    collision: &WasmCollisionCells,
+    collision: &CollisionCells,
 ) -> (f32, f32) {
     let boxes = collision_boxes(
         x.min(x + dx) - PLAYER_RADIUS,
@@ -1596,22 +1591,20 @@ pub fn walk(
     y: f32,
     dir_x: f32,
     dir_y: f32,
-    z: f32,                // Feet height; feet at or above a box's top pass over it.
-    distance: f32,         // Requested travel in world units; negative walks back.
-    map_array: *const u64, // Packed world grid in WASM memory.
-    map_width: i32,
-    collision: &WasmCollisionCells, // Solid model boxes per cell.
+    z: f32,            // Feet height; feet at or above a box's top pass over it.
+    distance: f32,     // Requested travel in world units; negative walks back.
+    world: &WasmWorld, // Grid and solid models.
 ) -> Float32Array {
-    let grid = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let world = world.world();
     let (x, y) = walk_step(
         x,
         y,
         dir_x * distance,
         dir_y * distance,
         z,
-        grid,
-        map_width,
-        collision,
+        world.grid(),
+        world.size() as i32,
+        world.solids(),
     );
     Float32Array::from(&[x, y][..])
 }

@@ -11,10 +11,12 @@
   pass distances into Rust, as with `walk`, rather than passing frame time.
 - `packages/app/src/vector-game/game/` owns the TypeScript game state, input,
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
-- `GridMap.wallGrid` is a row-major packed `u64` map. Preserve its wall, door,
-  window and floor/ceiling bit layout; see the comments in `gridMap.ts`.
-- Author geometry and sprites as placements in `level.ts`; `levelBuilder.ts` compiles
-  them into the grid, which is the only runtime geometry. Do not hand-edit grid cells.
+- The world grid is a row-major packed `u64` map, encoded by `World` in `src/world.rs`.
+  Preserve its wall, door, window and floor/ceiling bit layout; see the comments in
+  `gridMap.ts`.
+- Author geometry, sprites and models as placements in `level.ts`; `World` compiles
+  them into the grid, which is the only runtime geometry. Change the level at runtime
+  only through `World` (add, remove, move); do not hand-edit grid cells.
 - Floor bit 1 controls the ground floor; ceiling bit 2 controls both the ceiling
   underside and roof top. Wall bottoms and tops use the same wall footprint check.
 - Wall directions 1/2/3 use consecutive bits 6/7/8; window flags 1/2 use bits

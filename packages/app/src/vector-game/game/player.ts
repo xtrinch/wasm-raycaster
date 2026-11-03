@@ -80,9 +80,7 @@ export class Player {
       this.position.dir_y,
       this.position.z,
       distance,
-      this.camera.mapRef.ptr,
-      map.size,
-      map.collisionCells
+      map.world
     );
     this.position.x = x;
     this.position.y = y;
@@ -101,9 +99,7 @@ export class Player {
       distance,
       frameTime / 6, // Gravity lowers feet by 1/6 world unit per second.
       this.jetpackActive,
-      this.camera.mapRef.ptr,
-      this.camera.map.size,
-      this.camera.map.collisionCells
+      this.camera.map.world
     );
     this.position.z = z;
     // Rust reports landing; stop hovering so walking off an edge causes a fall.

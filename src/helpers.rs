@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, slice::from_raw_parts};
 use wasm_bindgen::prelude::*;
 
+use crate::world::World;
+use crate::world_helpers::{Mesh, Placement};
+
 #[wasm_bindgen]
 pub enum TextureType {
     WALL = 1,
@@ -100,7 +103,7 @@ impl WasmTextureMap {
 pub type Cell = (i32, i32);
 
 // Every cell a footprint touches; one ending exactly on a cell line does not reach the next.
-fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<Cell> {
+pub fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<Cell> {
     let (first_x, first_y) = (min_x.floor() as i32, min_y.floor() as i32);
     let last_x = (max_x.ceil() as i32 - 1).max(first_x);
     let last_y = (max_y.ceil() as i32 - 1).max(first_y);
@@ -108,105 +111,6 @@ fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<Cell> 
         .flat_map(|y| (first_x..=last_x).map(move |x| (x, y)))
         .collect()
 }
-
-// A model's triangles in the uploaded mesh buffer.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MeshRange {
-    pub first_triangle: usize,
-    pub triangle_count: usize,
-}
-
-// What each cell holds for drawing. Rays record the cells they pass through that hold
-// anything, and the billboards and models in those cells are drawn.
-#[wasm_bindgen]
-pub struct WasmRenderCells {
-    billboards: HashMap<Cell, Vec<Sprite>>, // flat sprites standing in each cell
-    model_meshes: Vec<MeshRange>,           // each model's triangles, indexed by model id
-    models: HashMap<Cell, Vec<u32>>,        // ids of the models whose footprint touches each cell
-}
-
-// 🦀 Rust-only implementation block
-impl WasmRenderCells {
-    pub fn billboards_at(&self, cell: &Cell) -> &[Sprite] {
-        self.billboards
-            .get(cell)
-            .map_or(&[], |sprites| sprites.as_slice())
-    }
-
-    pub fn models_at(&self, cell: &Cell) -> &[u32] {
-        self.models
-            .get(cell)
-            .map_or(&[], |models| models.as_slice())
-    }
-
-    pub fn model_mesh(&self, model: u32) -> Option<MeshRange> {
-        self.model_meshes.get(model as usize).copied()
-    }
-
-    // Whether a billboard or a model occupies the cell, so rays should record it.
-    pub fn occupied(&self, cell: &Cell) -> bool {
-        self.billboards.contains_key(cell) || self.models.contains_key(cell)
-    }
-}
-
-#[wasm_bindgen]
-impl WasmRenderCells {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self {
-            billboards: HashMap::new(),
-            model_meshes: Vec::new(),
-            models: HashMap::new(),
-        }
-    }
-
-    /// Five floats per billboard: x, y, angle, height and texture type.
-    #[wasm_bindgen(js_name = populateBillboards)]
-    pub fn populate_billboards(&mut self, sprite_data: &[f32]) {
-        self.billboards.clear();
-        for sprite in sprite_data.chunks_exact(5) {
-            let [x, y, angle, height, sprite_type] = sprite.try_into().unwrap();
-            self.billboards
-                .entry((x.floor() as i32, y.floor() as i32))
-                .or_default()
-                .push(Sprite {
-                    // TODO: to a smaller struct
-                    x,
-                    y,
-                    fract: 0., // offset inside the coord
-                    dx: 0.,
-                    dy: 0.,
-                    angle: angle as i32,
-                    height: height as i32,
-                    r#type: sprite_type as i32,
-                    column: 0,
-                    distance: 0.,
-                    distance_fixed: 0,
-                });
-        }
-    }
-
-    /// Six floats per model: first triangle, triangle count, then the footprint's
-    /// min x, min y, max x, max y in world units. A model's id is its position in the
-    /// data; it is registered in every cell the footprint touches.
-    #[wasm_bindgen(js_name = populateModels)]
-    pub fn populate_models(&mut self, model_data: &[f32]) {
-        self.model_meshes.clear();
-        self.models.clear();
-        for (id, model) in model_data.chunks_exact(6).enumerate() {
-            self.model_meshes.push(MeshRange {
-                first_triangle: model[0] as usize,
-                triangle_count: model[1] as usize,
-            });
-            for cell in footprint_cells(model[2], model[3], model[4], model[5]) {
-                self.models.entry(cell).or_default().push(id as u32);
-            }
-        }
-    }
-}
-
-// Floats per solid in populateSolids: footprint min x, min y, max x, max y, then top.
-pub const SOLID_STRIDE: usize = 5;
 
 // An obstacle for movement in world units: an axis-aligned footprint and its top height.
 // Walls, windows and solid models all collide as these boxes.
@@ -219,16 +123,45 @@ pub struct CollisionBox {
     pub top: f32,
 }
 
-// What blocks movement besides the walls and windows decoded from the grid.
-#[wasm_bindgen]
-pub struct WasmCollisionCells {
-    boxes: Vec<CollisionBox>,       // each solid once, indexed by id
+// What blocks movement besides the walls and windows decoded from the grid: solid models,
+// kept by the world under their ids.
+pub struct CollisionCells {
+    boxes: HashMap<u32, CollisionBox>,
     cells: HashMap<Cell, Vec<u32>>, // ids of the boxes touching each cell
 }
 
-// 🦀 Rust-only implementation block
-impl WasmCollisionCells {
-    // Each box touching the cells from first to last, inclusive, listed once.
+impl CollisionCells {
+    pub fn new() -> Self {
+        Self {
+            boxes: HashMap::new(),
+            cells: HashMap::new(),
+        }
+    }
+
+    // Registers the box in every cell it touches, replacing any box with the same id.
+    pub fn insert(&mut self, id: u32, solid: CollisionBox) {
+        self.remove(id);
+        self.boxes.insert(id, solid);
+        for cell in footprint_cells(solid.min_x, solid.min_y, solid.max_x, solid.max_y) {
+            self.cells.entry(cell).or_default().push(id);
+        }
+    }
+
+    pub fn remove(&mut self, id: u32) {
+        let Some(solid) = self.boxes.remove(&id) else {
+            return;
+        };
+        for cell in footprint_cells(solid.min_x, solid.min_y, solid.max_x, solid.max_y) {
+            if let Some(ids) = self.cells.get_mut(&cell) {
+                ids.retain(|&other| other != id);
+                if ids.is_empty() {
+                    self.cells.remove(&cell);
+                }
+            }
+        }
+    }
+
+    // Each box touching the cells from first to last, inclusive, listed once in id order.
     pub fn boxes_in(&self, first: Cell, last: Cell) -> Vec<CollisionBox> {
         let mut ids: Vec<u32> = (first.1..=last.1)
             .flat_map(|y| (first.0..=last.0).map(move |x| (x, y)))
@@ -238,39 +171,75 @@ impl WasmCollisionCells {
             .collect();
         ids.sort_unstable();
         ids.dedup();
-        ids.into_iter().map(|id| self.boxes[id as usize]).collect()
+        ids.into_iter().map(|id| self.boxes[&id]).collect()
+    }
+}
+
+// The level as JavaScript sees it: placements go in, ids come back for removing and moving
+// them while the game runs. Rendering and movement read the world directly.
+#[wasm_bindgen]
+pub struct WasmWorld(World);
+
+// 🦀 Rust-only implementation block
+impl WasmWorld {
+    pub fn world(&self) -> &World {
+        &self.0
     }
 }
 
 #[wasm_bindgen]
-impl WasmCollisionCells {
+impl WasmWorld {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self {
-            boxes: Vec::new(),
-            cells: HashMap::new(),
-        }
+    pub fn new(size: usize) -> Self {
+        Self(World::new(size))
     }
 
-    /// SOLID_STRIDE floats per solid: footprint min x, min y, max x, max y and top height
-    /// in world units. A box's id is its position in the data; it is registered in every
-    /// cell it touches.
-    #[wasm_bindgen(js_name = populateSolids)]
-    pub fn populate_solids(&mut self, solid_data: &[f32]) {
-        self.boxes.clear();
-        self.cells.clear();
-        for (id, solid) in solid_data.chunks_exact(SOLID_STRIDE).enumerate() {
-            self.boxes.push(CollisionBox {
-                min_x: solid[0],
-                min_y: solid[1],
-                max_x: solid[2],
-                max_y: solid[3],
-                top: solid[4],
-            });
-            for cell in footprint_cells(solid[0], solid[1], solid[2], solid[3]) {
-                self.cells.entry(cell).or_default().push(id as u32);
-            }
-        }
+    /// An area, segment, sprite or model placement as built by levelBuilder.ts. Returns its
+    /// id, or 0 for areas, which cannot be removed. Throws when the grid cannot hold it.
+    pub fn add(&mut self, placement: JsValue) -> Result<u32, JsError> {
+        let placement: Placement = serde_wasm_bindgen::from_value(placement)
+            .map_err(|error| JsError::new(&error.to_string()))?;
+        self.0.add(placement).map_err(|error| JsError::new(&error))
+    }
+
+    /// A model's geometry in its file's own axes, uploaded once and placed by the returned
+    /// id: x, y, z per vertex; three vertex indices per triangle; x, y, z normal per
+    /// triangle corner; r, g, b per triangle, NaN where it has no material colour.
+    #[wasm_bindgen(js_name = addMesh)]
+    pub fn add_mesh(
+        &mut self,
+        positions: &[f64],
+        triangles: &[u32],
+        normals: &[f64],
+        colors: &[f32],
+    ) -> u32 {
+        self.0.add_mesh(Mesh {
+            positions: positions.to_vec(),
+            triangles: triangles.to_vec(),
+            normals: normals.to_vec(),
+            colors: colors.to_vec(),
+        })
+    }
+
+    /// Removes any placement but an area; false if the id is unknown.
+    pub fn remove(&mut self, id: u32) -> bool {
+        self.0.remove(id)
+    }
+
+    /// Moves a sprite or model to world x/y; false for walls, doors, windows or unknown ids.
+    #[wasm_bindgen(js_name = move)]
+    pub fn move_to(&mut self, id: u32, x: f64, y: f64) -> bool {
+        self.0.move_to(id, x, y)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
+
+    /// A copy of the packed grid, row-major; see gridMap.ts for the bit layout.
+    pub fn grid(&self) -> js_sys::BigUint64Array {
+        js_sys::BigUint64Array::from(self.0.grid())
     }
 }
 

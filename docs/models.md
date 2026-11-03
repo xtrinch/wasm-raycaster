@@ -9,8 +9,9 @@ anything nearer covers them.
 Pipeline at a glance:
 
 ```
-OBJ + MTL ──parseObj──▶ Mesh ──compileLevel──▶ meshTriangles + models table
-                                                    │ uploaded once (Camera)
+OBJ + MTL ──parseObj──▶ Mesh ──addMesh──▶ World ──add(model)──▶ world-space triangles
+                                (once per mesh)          (baked per placed model)
+                                                    │
                                                     ▼
 every frame:  raycast finds occupied cells ─▶ visible models ─▶ draw_meshes
               floor pass ─▶ mesh pass ─▶ sprite pass   (one shared depth buffer)
@@ -49,11 +50,16 @@ from the textures into the MTL. `packages/app/models/README.md` lists the source
 
 ## 2. Placing a model
 
-Models are placed in `level.ts` with `model()` from `levelBuilder.ts`:
+Models are placed in `level.ts` with `model()` from `levelBuilder.ts`. Each parsed mesh is
+uploaded to the world once with `addMesh`, and placements refer to it by the returned id:
 
 ```ts
+const peasant = addMesh(world, peasantMesh);
 model({ mesh: peasant, x: 2.4, y: 4.2, angle: 270, height: 0.8 }),
 ```
+
+`world.add(model(...))` returns the placed model's id; `world.move(id, x, y)` and
+`world.remove(id)` change it while the game runs.
 
 | Option | Meaning |
 |---|---|
@@ -65,18 +71,18 @@ model({ mesh: peasant, x: 2.4, y: 4.2, angle: 270, height: 0.8 }),
 | `color` | Colour for triangles without a material colour; default light grey |
 | `solid` | Block movement with the model's bounding box; default false |
 
-A solid model collides as one box: its placed footprint, up to its top. `compileLevel` outputs
-these boxes in `solids` (min x, min y, max x, max y, top). `GridMap` loads them into a
-`WasmCollisionCells`, which stores each box once and lists its id in every cell it touches, so
-a box spanning several cells is still tested once. Rust's `walk` tests the whole step against
+A solid model collides as one box: its placed footprint, up to its top (min x, min y, max x,
+max y, top). The world keeps these boxes in a `CollisionCells`, which stores each box once
+under the model's id and lists the id in every cell it touches, so a box spanning several
+cells is still tested once. Moving or removing the model updates its box. Rust's `walk` tests the whole step against
 the boxes of the cells around it: wall and window footprints from the grid, up to height 1, and solid model boxes,
 each widened by the player radius of 0.2. Doors stay passable. A blocked step slides along x
 or y instead, and feet at or above a box's top pass over it. `move_vertical` lets feet land on
 a solid model's top. Models without `solid` are drawn only.
 
-## 3. Baking: `compileLevel`
+## 3. Baking: `bake_model` in `src/world_helpers.rs`
 
-When the level compiles, `bakeModel` turns every placed model into world-space triangles:
+When a model is added or moved, `bake_model` turns it into world-space triangles:
 
 1. **Axes.** OBJ files are Y up; the world is Z up with the ground on x/y. A file point
    (x, y, z) becomes world (x, z, y), and normals get the same swap.
@@ -84,7 +90,7 @@ When the level compiles, `bakeModel` turns every placed model into world-space t
 3. **Scale** so the model is `height` tall, or by `scale`.
 4. **Position** so the footprint's centre is at `x`, `y` and the lowest point is at `z`.
 
-Each triangle is written as **21 floats** into one `Float32Array`, `meshTriangles`:
+Each triangle is written as **21 floats** into the placed model's triangle list:
 
 ```
 corner 1:  x y z  nx ny nz      world position and unit normal
@@ -93,21 +99,15 @@ corner 3:  x y z  nx ny nz
 colour:    r g b                0-1
 ```
 
-`MESH_TRIANGLE_STRIDE = 21` in `lib.rs` and `levelBuilder.ts` must match this layout.
+`MESH_TRIANGLE_STRIDE = 21` in `lib.rs` and `TRIANGLE_FLOATS` in `world_helpers.rs` must match this
+layout. The model's footprint (min x, min y, max x, max y) is computed at the same time.
 
-`compileLevel` also outputs a **model table**, `models`, with 6 floats per model:
+## 4. Registration (in the world)
 
-```
-first triangle, triangle count, footprint min x, min y, max x, max y
-```
-
-## 4. Upload and registration (once, in `Camera`)
-
-- `meshTriangles` is copied into WASM memory once (`meshRef`) and passed to `render` each frame
-  as a pointer and length.
-- `populateModels(models)` registers each model in `WasmRenderCells`, the same per-cell
-  registry the billboard sprites use. It keeps each model's triangle range by model id and
-  lists the id in every grid cell the model's footprint touches. A footprint ending exactly on a cell line does not reach the next cell.
+- The world keeps each placed model's triangles under its id; `render` reads them from the
+  `WasmWorld` it is passed each frame.
+- Each model is registered in the same per-cell registry the billboard sprites use: its id is
+  listed in every grid cell the model's footprint touches. A footprint ending exactly on a cell line does not reach the next cell.
 
 ## 5. Which models are drawn: per-cell visibility
 
@@ -115,7 +115,7 @@ Models use the sprites' visibility mechanism:
 
 1. `raycast_column` casts one ray per screen column through the grid. On every 5th column, it
    records each cell the ray passes through that holds a sprite or a model
-   (`WasmRenderCells::occupied`).
+   (`World::occupied`).
 2. Rays stop at walls. Windows and doors let them continue.
 3. `draw_walls_raycast` collects the sprites and model ids from all recorded cells. A model in
    several reached cells is listed once.

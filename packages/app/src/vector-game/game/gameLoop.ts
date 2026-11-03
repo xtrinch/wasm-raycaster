@@ -4,7 +4,6 @@ import { Camera } from "./camera";
 import { Controls } from "./controls";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
-import { SpriteMap } from "./spriteMap";
 
 export class GameLoop {
   public lastTime = 0;
@@ -13,17 +12,15 @@ export class GameLoop {
   public map: GridMap;
   public controls: Controls;
   public camera: Camera;
-  public spriteMap: SpriteMap;
   public fps: number;
   public lastNFrameTimes: number[];
   public frameTime: number;
 
   constructor() {
     this.map = new GridMap(12);
-    this.spriteMap = new SpriteMap();
     this.display = document.getElementById("display") as HTMLCanvasElement;
     this.controls = new Controls();
-    this.camera = new Camera(this.display, this.map, this.spriteMap);
+    this.camera = new Camera(this.display, this.map);
     this.player = this.findSpawnPoint();
     this.fps = 0;
     this.frameTime = 0;
