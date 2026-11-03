@@ -1,9 +1,10 @@
 // Levels are written as placements at world x/y and compiled into GridMap.wallGrid
-// cells plus the sprite list. Positions are world units (one cell is 1 by 1) and
-// must be multiples of 0.1, the grid's precision.
+// cells, the sprite list and mesh triangles. Positions are world units (one cell is
+// 1 by 1); grid geometry must use multiples of 0.1, the grid's precision.
 
 import { TextureType } from "../../../wasm";
 import { encodeCell, type Segment, type SegmentDirection, type SegmentKind } from "./mapBuilder";
+import type { Color, Mesh } from "./objModel";
 
 export interface AreaPlacement {
   type: "area";
@@ -35,7 +36,20 @@ export interface SpritePlacement {
   angle: number; // 0-360
 }
 
-export type Placement = AreaPlacement | SegmentPlacement | SpritePlacement;
+// A 3D model; it is drawn only and does not block movement.
+export interface ModelPlacement {
+  type: "model";
+  mesh: Mesh;
+  x: number; // centre of the model's footprint
+  y: number;
+  z: number; // height of the model's lowest point
+  scale: number; // ignored when height is set
+  height?: number; // scale the model to exactly this tall, in world units
+  angle: number; // degrees around the vertical axis; 0 faces the file's front (+Z) towards +y
+  color: Color; // 0-1, for triangles without a material colour
+}
+
+export type Placement = AreaPlacement | SegmentPlacement | SpritePlacement | ModelPlacement;
 
 type AreaOptions = Omit<AreaPlacement, "type">;
 type SegmentOptions = {
@@ -75,10 +89,68 @@ export const sprite = (options: Omit<SpritePlacement, "type" | "angle"> & { angl
   ...options,
 });
 
+export const model = (
+  options: Omit<ModelPlacement, "type" | "z" | "scale" | "angle" | "color"> &
+    Partial<Pick<ModelPlacement, "z" | "scale" | "angle" | "color">>
+): ModelPlacement => ({
+  type: "model",
+  z: 0,
+  scale: 1,
+  angle: 0,
+  color: [0.8, 0.8, 0.8],
+  ...options,
+});
+
+// Floats per mesh triangle, matching MESH_TRIANGLE_STRIDE in lib.rs.
+const MESH_TRIANGLE_STRIDE = 21;
+
 export interface Level {
   size: number;
   wallGrid: BigUint64Array;
   sprites: number[][]; // x, y, angle, height, texture, as SpriteMap expects
+  meshTriangles: Float32Array; // per vertex world x, y, z and normal, then r, g, b; see lib.rs
+  // Per model: first triangle, triangle count, footprint min x, min y, max x, max y.
+  models: Float32Array;
+}
+
+// OBJ files are Y up; the world is Z up with the ground on x/y.
+function bakeModel(p: ModelPlacement, out: number[]): number[] {
+  const { positions, triangles, normals } = p.mesh;
+  const cos = Math.cos((p.angle * Math.PI) / 180);
+  const sin = Math.sin((p.angle * Math.PI) / 180);
+  // Swap the file's Y-up axes to the world's Z-up, then turn around the vertical axis.
+  const toWorld = (x: number, y: number, z: number) => [x * cos - z * sin, x * sin + z * cos, y];
+
+  const world: number[] = [];
+  for (let i = 0; i < positions.length; i += 3) {
+    world.push(...toWorld(positions[i], positions[i + 1], positions[i + 2]));
+  }
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < world.length; i++) {
+    min[i % 3] = Math.min(min[i % 3], world[i]);
+    max[i % 3] = Math.max(max[i % 3], world[i]);
+  }
+  const scale = p.height !== undefined ? p.height / (max[2] - min[2]) : p.scale;
+  // Centre the footprint on x/y and stand the lowest point on z.
+  const shift = [p.x - ((min[0] + max[0]) / 2) * scale, p.y - ((min[1] + max[1]) / 2) * scale, p.z - min[2] * scale];
+  for (let t = 0; t < triangles.length; t += 3) {
+    for (let corner = t; corner < t + 3; corner++) {
+      const vertex = triangles[corner] * 3;
+      const n = toWorld(normals[corner * 3], normals[corner * 3 + 1], normals[corner * 3 + 2]);
+      out.push(
+        world[vertex] * scale + shift[0],
+        world[vertex + 1] * scale + shift[1],
+        world[vertex + 2] * scale + shift[2],
+        ...n
+      );
+    }
+    out.push(...(p.mesh.colors[t / 3] ?? p.color));
+  }
+  // The placed footprint, for registering the model in the cells it covers.
+  const halfWidth = ((max[0] - min[0]) / 2) * scale;
+  const halfDepth = ((max[1] - min[1]) / 2) * scale;
+  return [p.x - halfWidth, p.y - halfDepth, p.x + halfWidth, p.y + halfDepth];
 }
 
 const tenths = (value: number, name: string): number => {
@@ -111,6 +183,8 @@ export function compileLevel(size: number, placements: Placement[]): Level {
   const flags = Array.from({ length: size * size }, () => ({ floor: false, ceiling: false, road: false }));
   const segments: Segment[][] = Array.from({ length: size * size }, () => []);
   const sprites: number[][] = [];
+  const meshTriangles: number[] = [];
+  const models: number[] = [];
 
   const index = (x: number, y: number, what: string) => {
     if (x < 0 || y < 0 || x >= size || y >= size) {
@@ -120,7 +194,11 @@ export function compileLevel(size: number, placements: Placement[]): Level {
   };
 
   for (const p of placements) {
-    if (p.type === "sprite") {
+    if (p.type === "model") {
+      const first = meshTriangles.length / MESH_TRIANGLE_STRIDE;
+      const footprint = bakeModel(p, meshTriangles);
+      models.push(first, meshTriangles.length / MESH_TRIANGLE_STRIDE - first, ...footprint);
+    } else if (p.type === "sprite") {
       sprites.push([p.x, p.y, p.angle, p.height, p.texture]);
     } else if (p.type === "area") {
       for (let y = p.y; y < p.y + p.h; y++) {
@@ -180,5 +258,11 @@ export function compileLevel(size: number, placements: Placement[]): Level {
     wallGrid[i] = encoded;
   }
 
-  return { size, wallGrid, sprites };
+  return {
+    size,
+    wallGrid,
+    sprites,
+    meshTriangles: new Float32Array(meshTriangles),
+    models: new Float32Array(models),
+  };
 }

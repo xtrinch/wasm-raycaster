@@ -41,6 +41,8 @@ export interface Point {
 export class GridMap {
   public size: number;
   public wallGrid: BigUint64Array;
+  public meshTriangles: Float32Array;
+  public models: Float32Array;
   public skybox: Bitmap;
   public wallTexture: Bitmap;
   public treeTexture: Bitmap;
@@ -122,6 +124,8 @@ export class GridMap {
     // The grid is compiled from the placements in level.ts by levelBuilder.ts.
     this.wallGrid = level.wallGrid;
     this.size = level.size;
+    this.meshTriangles = level.meshTriangles;
+    this.models = level.models;
 
     makeAutoObservable(this);
   }

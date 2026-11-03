@@ -1,5 +1,13 @@
+import peasantMtl from "../../assets/models/woman-peasant.mtl?raw";
+import peasantObj from "../../assets/models/woman-peasant.obj?raw";
+import rangerMtl from "../../assets/models/woman-ranger.mtl?raw";
+import rangerObj from "../../assets/models/woman-ranger.obj?raw";
 import { TextureType } from "../../../wasm";
-import { area, compileLevel, door, pillar, sprite, wall, window } from "./levelBuilder";
+import { area, compileLevel, door, model, pillar, sprite, wall, window } from "./levelBuilder";
+import { parseMtl, parseObj } from "./objModel";
+
+const peasant = parseObj(peasantObj, parseMtl(peasantMtl));
+const ranger = parseObj(rangerObj, parseMtl(rangerMtl));
 
 // The player starts at (4, 4) facing north (-y); see gameLoop.ts.
 export const level = compileLevel(13, [
@@ -60,8 +68,8 @@ export const level = compileLevel(13, [
   sprite({ x: -2, y: 5, height: 0.5, texture: TextureType.TREE_CONE }),
   sprite({ x: -1, y: 6, height: 0.9, texture: TextureType.BUSH1 }),
   sprite({ x: -2, y: 4, height: 1, texture: TextureType.TREE_VASE }),
-  sprite({ x: 2.4, y: 4.2, angle: 270, height: 0.8, texture: TextureType.LADY }),
-  sprite({ x: 0.8, y: 3.2, angle: 90, height: 0.8, texture: TextureType.LADY }),
+  model({ mesh: peasant, x: 2.4, y: 4.2, angle: 270, height: 0.8 }),
+  model({ mesh: ranger, x: 0.8, y: 3.2, angle: 90, height: 0.8 }),
   sprite({ x: 4, y: 7, height: 0.7, texture: TextureType.PILLAR }),
   sprite({ x: 5, y: 5, height: 0.7, texture: TextureType.PILLAR }),
   sprite({ x: 14, y: 8.5, height: 0.5, texture: TextureType.PILLAR }),

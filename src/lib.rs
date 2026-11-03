@@ -2,8 +2,8 @@
 #![feature(portable_simd)]
 use helpers::{
     get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm, Position,
-    Sprite, SpritePart, Texture, TextureType, TranslationResult, WasmStripePerCoordMap,
-    WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    ScreenTriangle, Sprite, SpritePart, Texture, TextureType, TranslationResult,
+    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -53,7 +53,9 @@ pub fn render(
     sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
-    surface_depth_array: *mut f32, // Nearest floor, ceiling or roof depth per pixel
+    depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
+    mesh_array: *const f32, // World-space mesh triangles, MESH_TRIANGLE_STRIDE floats each
+    mesh_len: usize,
 ) {
     let position = Position {
         x,
@@ -75,8 +77,11 @@ pub fn render(
     let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
 
     let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
-    let surface_depth =
-        unsafe { from_raw_parts_mut(surface_depth_array, width as usize * height as usize) };
+    // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
+    // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
+    // sprite pass then skips wall, window and sprite pixels behind either.
+    let depth = unsafe { from_raw_parts_mut(depth_array, width as usize * height as usize) };
+    let mesh_data = unsafe { from_raw_parts(mesh_array, mesh_len) };
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
@@ -133,6 +138,7 @@ pub fn render(
         .unwrap();
 
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
+    let mut found_models: Vec<u32> = Vec::new();
 
     draw_background_image_prescaled(&position, background, img_slice, width, height);
     draw_ceiling_floor_raycast(
@@ -156,7 +162,7 @@ pub fn render(
         roof_texture,
         roof_texture_meta.width,
         roof_texture_meta.height,
-        surface_depth,
+        depth,
     );
     draw_walls_raycast(
         &position,
@@ -168,6 +174,27 @@ pub fn render(
         wall_texture_meta.width,
         sprites_map,
         &mut found_sprites,
+        &mut found_models,
+    );
+    // Only models in cells the rays reached are drawn, like sprites.
+    let model_triangles = sprites_map.get_model_triangles();
+    let visible_meshes: Vec<&[f32]> = found_models
+        .iter()
+        .filter_map(|&model| {
+            let (first, count) = *model_triangles.get(model as usize)?;
+            mesh_data.get(first * MESH_TRIANGLE_STRIDE..(first + count) * MESH_TRIANGLE_STRIDE)
+        })
+        .collect();
+    // Meshes go first so walls, sprites and window glass in front of them draw over them.
+    draw_meshes(
+        &position,
+        img_slice,
+        width,
+        height,
+        &visible_meshes,
+        depth,
+        light_range,
+        map_light,
     );
     draw_sprites_wasm(
         &position,
@@ -180,7 +207,7 @@ pub fn render(
         sprites_texture_map,
         sprites_texture_meta_map,
         &mut found_sprites,
-        surface_depth,
+        depth,
     );
 }
 
@@ -192,16 +219,13 @@ pub fn raycast_column(
     width: i32,
     range: i8,
     wall_texture_width: i32,
-    sprites_map: Option<&HashMap<(i32, i32), Vec<Sprite>>>,
+    sprites_map: Option<&WasmStripePerCoordMap>, // sprites and models per cell
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
     above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
     let mut met_coords: Vec<(i32, i32)> = Vec::new();
     let mut window_sprites: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
-
-    let default_sprites_map = HashMap::new();
-    let sprites_map = sprites_map.unwrap_or_else(|| &default_sprites_map);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width as f32)) - 1.0;
@@ -509,10 +533,10 @@ pub fn raycast_column(
             hit = true;
         }
 
-        // only add coord if sprites exist in it;
+        // only add coord if sprites or models exist in it;
         // TODO: check more smartly
         if !skip_sprites_and_writes && column % 5 == 0 {
-            if let Some(_) = sprites_map.get(&(map_x, map_y)) {
+            if sprites_map.is_some_and(|cells| cells.occupied(&(map_x, map_y))) {
                 let _ = met_coords.push((map_x, map_y));
             }
         }
@@ -572,6 +596,7 @@ pub fn draw_walls_raycast(
     wall_texture_width: i32,
     sprites_map: &WasmStripePerCoordMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
+    found_models: &mut Vec<u32>, // models in cells the rays reached, each listed once
 ) {
     // Eyes are above wall tops once feet reach half a world unit.
     let above_walls = position.z >= 0.5;
@@ -586,7 +611,7 @@ pub fn draw_walls_raycast(
                 width,
                 range,
                 wall_texture_width,
-                Some(&sprites_map.get_map()),
+                Some(sprites_map),
                 false,
                 false,
                 above_walls,
@@ -601,6 +626,7 @@ pub fn draw_walls_raycast(
         .flat_map(|(_, _, met_coords, _)| met_coords.iter().copied())
         .collect();
 
+    let model_cells = sprites_map.get_model_cells();
     let sprites_map = sprites_map.get_map();
 
     for (x, y) in &uniqued_met_coords {
@@ -609,7 +635,13 @@ pub fn draw_walls_raycast(
         if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
             found_sprites.extend((*sprite_list).clone());
         }
+        if let Some(models) = model_cells.get(&(map_x, map_y)) {
+            found_models.extend(models);
+        }
     }
+    // A model covering several reached cells is drawn once.
+    found_models.sort_unstable();
+    found_models.dedup();
     // since sprites don't have a distance yet, do it now
     found_sprites.iter_mut().for_each(|sprite| {
         let local_distance = Euclidean.distance(
@@ -860,7 +892,7 @@ pub fn draw_sprites_wasm(
     sprites_texture_map: &WasmTextureMap,
     texture_array: &WasmTextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
-    surface_depth: &[f32],
+    depth: &[f32], // floor, ceiling, roof and mesh depth per pixel
 ) {
     found_sprites.iter_mut().for_each(|sprite| {
         let dx = sprite.x - position.x;
@@ -913,10 +945,9 @@ pub fn draw_sprites_wasm(
                 || sprite.r#type == TextureType::DOOR as i32
                 || sprite.r#type == TextureType::WALL as i32
             {
-                // Skip wall stripes fully hidden by nearer floors or roofs.
+                // Skip wall stripes fully hidden by nearer floors, roofs or meshes.
                 if (visible_start..visible_end).all(|y| {
-                    surface_depth[y * width as usize + sprite.column as usize]
-                        <= projection.distance
+                    depth[y * width as usize + sprite.column as usize] <= projection.distance
                 }) {
                     return None;
                 }
@@ -1054,8 +1085,9 @@ pub fn draw_sprites_wasm(
 
                     let x = sprite.sprite_left_x as i32 + dx;
                     let idx = (x * 4) as usize;
-                    // A roof can hide only part of a tree or wall, so check each pixel.
-                    if sprite.depth >= surface_depth[y as usize * width as usize + x as usize] {
+                    // A roof or mesh can hide only part of a tree or wall, so check each pixel.
+                    let pixel = y as usize * width as usize + x as usize;
+                    if sprite.depth >= depth[pixel] {
                         continue;
                     }
 
@@ -1081,6 +1113,263 @@ pub fn draw_sprites_wasm(
             }
         });
 }
+
+// Each mesh triangle is three vertices of world-space x, y, z and normal x, y, z,
+// followed by the triangle's r, g, b (0-1).
+pub const MESH_TRIANGLE_STRIDE: usize = 21;
+// Triangles are clipped at this camera depth so vertices behind the eye never project.
+const MESH_NEAR_DEPTH: f32 = 0.05;
+// Screen rows per rasterization band; each band is filled by one thread.
+const MESH_BAND_ROWS: usize = 8;
+
+// Signed doubled area of (a, b, p); its sign tells which side of a->b the point is on.
+#[inline(always)]
+fn edge(ax: f32, ay: f32, bx: f32, by: f32, px: f32, py: f32) -> f32 {
+    (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+}
+
+// Clip a camera-space polygon (lateral, depth, height, shade) to depth >= MESH_NEAR_DEPTH.
+fn clip_to_near_plane(vertices: &[[f32; 4]]) -> SmallVec<[[f32; 4]; 4]> {
+    let mut clipped = SmallVec::new();
+    for i in 0..vertices.len() {
+        let a = vertices[i];
+        let b = vertices[(i + 1) % vertices.len()];
+        let a_inside = a[1] >= MESH_NEAR_DEPTH;
+        let b_inside = b[1] >= MESH_NEAR_DEPTH;
+        if a_inside {
+            clipped.push(a);
+        }
+        if a_inside != b_inside {
+            let t = (MESH_NEAR_DEPTH - a[1]) / (b[1] - a[1]);
+            clipped.push([0, 1, 2, 3].map(|k| a[k] + (b[k] - a[k]) * t));
+        }
+    }
+    clipped
+}
+
+// Whether a mesh triangle's outside faces away from the eye. On a closed model such faces
+// are always covered by its near side. The vertex normals decide which side is outside,
+// so winding order does not matter.
+fn faces_away_from(t: &[f32], eye: [f32; 3]) -> bool {
+    let vertex = |i: usize| [t[i * 6], t[i * 6 + 1], t[i * 6 + 2]];
+    let (a, b, c) = (vertex(0), vertex(1), vertex(2));
+    let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let face = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    let outward: f32 = (0..3)
+        .map(|k| face[k] * (t[3 + k] + t[9 + k] + t[15 + k]))
+        .sum();
+    let towards_triangle: f32 = (0..3).map(|k| face[k] * (a[k] - eye[k])).sum();
+    // Same sign: the outside normal points along the view ray, i.e. away from the eye.
+    outward * towards_triangle > 0.0
+}
+
+// Project world-space triangles with the sprite camera transform and fill them per pixel.
+// Tests and writes the shared depth buffer, which already holds floors, ceilings and roofs;
+// draw_sprites_wasm runs after it and skips wall and sprite pixels behind any of them.
+#[inline(never)]
+pub fn draw_meshes(
+    position: &Position,
+    img_slice: &mut [u8],
+    width: i32,
+    height: i32,
+    meshes: &[&[f32]], // each a run of triangles in MESH_TRIANGLE_STRIDE layout
+    depth_buffer: &mut [f32], // per-pixel depth of floors, ceilings and roofs; meshes add theirs
+    light_range: i32,
+    map_light: i32,
+) {
+    if meshes.iter().all(|mesh| mesh.len() < MESH_TRIANGLE_STRIDE) {
+        return;
+    }
+    let half_width = (width / 2) as f32;
+    let middle_view_y = height as f32 * 0.5 + position.pitch as f32;
+    let eye = position.z + 0.5;
+    // Same scale as translate_coordinate_to_camera, so depths compare with walls and sprites.
+    let scale = (position.plane_x * position.dir_y - position.dir_x * position.plane_y).abs()
+        / position.plane_y_initial;
+    // Fixed sun direction; surfaces are lit from either side so winding order does not matter.
+    let light = [0.4, 0.3, 0.866_f32];
+
+    let screen_triangles: Vec<ScreenTriangle> = meshes
+        .par_iter()
+        .flat_map(|mesh| mesh.par_chunks_exact(MESH_TRIANGLE_STRIDE))
+        .flat_map_iter(|t| {
+            // Camera-space vertices with their light level; normals are unit length.
+            let camera: [[f32; 4]; 3] = [0, 1, 2].map(|i| {
+                let v = &t[i * 6..i * 6 + 6];
+                let dx = v[0] - position.x;
+                let dy = v[1] - position.y;
+                let lit = (v[3] * light[0] + v[4] * light[1] + v[5] * light[2]).abs();
+                [
+                    scale * (position.dir_y * dx - position.dir_x * dy),
+                    scale * (-position.plane_y * dx + position.plane_x * dy),
+                    v[2],
+                    0.35 + 0.65 * lit.min(1.0),
+                ]
+            });
+
+            // Skip triangles entirely behind the eye or beside the view (each test is a
+            // half-space through the eye that contains no visible pixel).
+            let outside = camera.iter().all(|p| p[1] < MESH_NEAR_DEPTH)
+                || camera.iter().all(|p| p[0] > p[1])
+                || camera.iter().all(|p| p[0] < -p[1]);
+            let clipped = if outside || faces_away_from(t, [position.x, position.y, eye]) {
+                SmallVec::new()
+            } else {
+                clip_to_near_plane(&camera)
+            };
+
+            // Darken with distance like sprites do, using the triangle's average depth.
+            let depth = camera.iter().map(|p| p[1]).sum::<f32>() / 3.0;
+            let fog = (1.0 - (depth / light_range as f32 - map_light as f32)).clamp(0.125, 1.0);
+            let color = [t[18], t[19], t[20]].map(|c| c * fog * 255.0);
+
+            // Screen x, y, 1 / depth and shade / depth, which interpolate linearly on screen.
+            let projected: SmallVec<[[f32; 4]; 4]> = clipped
+                .iter()
+                .map(|p| {
+                    [
+                        half_width * (1.0 + p[0] / p[1]),
+                        middle_view_y + (half_width / p[1]) * (eye - p[2]),
+                        1.0 / p[1],
+                        p[3] / p[1],
+                    ]
+                })
+                .collect();
+
+            // Fan-triangulate the clipped polygon (3 or 4 vertices).
+            (1..projected.len().saturating_sub(1)).filter_map(move |i| {
+                let corners = [projected[0], projected[i], projected[i + 1]];
+                let xs = corners.map(|c| c[0]);
+                let ys = corners.map(|c| c[1]);
+                let min_x = (xs.iter().cloned().fold(f32::MAX, f32::min).floor() as i32).max(0);
+                let max_x =
+                    (xs.iter().cloned().fold(f32::MIN, f32::max).ceil() as i32).min(width - 1);
+                let min_y = (ys.iter().cloned().fold(f32::MAX, f32::min).floor() as i32).max(0);
+                let max_y =
+                    (ys.iter().cloned().fold(f32::MIN, f32::max).ceil() as i32).min(height - 1);
+                if min_x > max_x || min_y > max_y {
+                    return None;
+                }
+                // Dividing by the signed area accepts either winding.
+                let area = edge(xs[0], ys[0], xs[1], ys[1], xs[2], ys[2]);
+                if area.abs() < f32::EPSILON {
+                    return None;
+                }
+                // edge(a, b, p) as a plane in p, scaled by 1 / area.
+                let plane = |a: usize, b: usize| {
+                    [
+                        -(ys[b] - ys[a]) / area,
+                        (xs[b] - xs[a]) / area,
+                        ((ys[b] - ys[a]) * xs[a] - (xs[b] - xs[a]) * ys[a]) / area,
+                    ]
+                };
+                let w0 = plane(1, 2);
+                let w1 = plane(2, 0);
+                let w2 = [-w0[0] - w1[0], -w0[1] - w1[1], 1.0 - w0[2] - w1[2]];
+                // A vertex value as a plane: w0 * v0 + w1 * v1 + w2 * v2, with w2 = 1 - w0 - w1.
+                let interpolate = |k: usize| {
+                    let v = corners.map(|c| c[k]);
+                    let mut p = [0, 1, 2].map(|j| w0[j] * (v[0] - v[2]) + w1[j] * (v[1] - v[2]));
+                    p[2] += v[2];
+                    p
+                };
+                Some(ScreenTriangle {
+                    weights: [w0, w1, w2],
+                    inv_depth: interpolate(2),
+                    shade: interpolate(3),
+                    nearest: corners[0][2].max(corners[1][2]).max(corners[2][2]),
+                    color,
+                    min_x,
+                    max_x,
+                    min_y,
+                    max_y,
+                })
+            })
+        })
+        .collect();
+
+    // Draw nearest triangles first so pixels hidden behind them fail the depth test before
+    // any shading work.
+    let mut screen_triangles = screen_triangles;
+    screen_triangles.par_sort_unstable_by(|a, b| b.nearest.total_cmp(&a.nearest));
+
+    // Bucket triangles into bands of rows so each band only visits triangles that touch it.
+    let band_count = (height as usize).div_ceil(MESH_BAND_ROWS);
+    let mut bands: Vec<Vec<u32>> = vec![Vec::new(); band_count];
+    for (index, tri) in screen_triangles.iter().enumerate() {
+        let first = tri.min_y as usize / MESH_BAND_ROWS;
+        let last = tri.max_y as usize / MESH_BAND_ROWS;
+        for band in &mut bands[first..=last] {
+            band.push(index as u32);
+        }
+    }
+
+    let width = width as usize;
+    img_slice
+        .par_chunks_mut(4 * width * MESH_BAND_ROWS)
+        .zip(depth_buffer.par_chunks_mut(width * MESH_BAND_ROWS))
+        .zip(bands.par_iter())
+        .enumerate()
+        .for_each(|(band, ((pixels, depths), triangles))| {
+            let band_top = band * MESH_BAND_ROWS;
+            let band_rows = depths.len() / width;
+            for &index in triangles {
+                let tri = &screen_triangles[index as usize];
+                let first_row = (tri.min_y as usize).max(band_top);
+                let last_row = (tri.max_y as usize).min(band_top + band_rows - 1);
+                for y in first_row..=last_row {
+                    let py = y as f32 + 0.5;
+                    // Each weight is linear in x along the row; keep the x range where all are >= 0.
+                    let mut left = tri.min_x as f32 + 0.5;
+                    let mut right = tri.max_x as f32 + 0.5;
+                    for w in &tri.weights {
+                        let at_zero = w[1] * py + w[2];
+                        if w[0] > f32::EPSILON {
+                            left = left.max(-at_zero / w[0]);
+                        } else if w[0] < -f32::EPSILON {
+                            right = right.min(-at_zero / w[0]);
+                        } else if at_zero < 0.0 {
+                            right = f32::MIN;
+                        }
+                    }
+                    if left > right {
+                        continue;
+                    }
+                    let first_x = (left - 0.5).ceil() as usize;
+                    let last_x = ((right - 0.5).floor() as usize).min(width - 1);
+                    let row_start = (y - band_top) * width;
+                    let inv_depth_row = tri.inv_depth[1] * py + tri.inv_depth[2];
+                    let shade_row = tri.shade[1] * py + tri.shade[2];
+                    for x in first_x..=last_x {
+                        let px = x as f32 + 0.5;
+                        // Hidden when depth >= d, i.e. inv_depth * d <= 1, so hidden pixels skip
+                        // the division. An infinite d (nothing drawn there yet) never hides.
+                        let inv_depth = tri.inv_depth[0] * px + inv_depth_row;
+                        if inv_depth * depths[row_start + x] <= 1.0 {
+                            continue;
+                        }
+                        let depth = 1.0 / inv_depth;
+                        depths[row_start + x] = depth;
+                        // Perspective-correct light level between the vertices.
+                        let shade = (tri.shade[0] * px + shade_row) * depth;
+                        let pixel = (row_start + x) * 4;
+                        for k in 0..3 {
+                            pixels[pixel + k] = (tri.color[k] * shade).clamp(0.0, 255.0) as u8;
+                        }
+                    }
+                }
+            }
+        });
+}
+
+#[cfg(test)]
+#[path = "tests/mesh.rs"]
+mod mesh_tests;
 
 #[inline(never)]
 #[no_mangle]

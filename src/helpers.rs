@@ -99,12 +99,28 @@ impl WasmTextureMap {
 #[wasm_bindgen]
 pub struct WasmStripePerCoordMap {
     map: HashMap<(i32, i32), Vec<Sprite>>,
+    // 3D models (sprites with a mesh): their triangle range and the cells they cover.
+    model_triangles: Vec<(usize, usize)>, // first triangle, triangle count
+    model_cells: HashMap<(i32, i32), Vec<u32>>,
 }
 
 // 🦀 Rust-only implementation block
 impl WasmStripePerCoordMap {
     pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<Sprite>> {
         &self.map
+    }
+
+    pub fn get_model_cells(&self) -> &HashMap<(i32, i32), Vec<u32>> {
+        &self.model_cells
+    }
+
+    pub fn get_model_triangles(&self) -> &[(usize, usize)] {
+        &self.model_triangles
+    }
+
+    // Whether a sprite or a model occupies the cell, so rays should record it.
+    pub fn occupied(&self, cell: &(i32, i32)) -> bool {
+        self.map.contains_key(cell) || self.model_cells.contains_key(cell)
     }
 }
 
@@ -114,6 +130,33 @@ impl WasmStripePerCoordMap {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
+            model_triangles: Vec::new(),
+            model_cells: HashMap::new(),
+        }
+    }
+
+    /// Six floats per model: first triangle, triangle count, then the footprint's
+    /// min x, min y, max x, max y in world units. The model is registered in every
+    /// cell the footprint touches.
+    #[wasm_bindgen(js_name = populateModels)]
+    pub fn populate_models(&mut self, model_data: &[f32]) {
+        self.model_triangles.clear();
+        self.model_cells.clear();
+        for (index, model) in model_data.chunks_exact(6).enumerate() {
+            self.model_triangles
+                .push((model[0] as usize, model[1] as usize));
+            let (min_x, min_y) = (model[2].floor() as i32, model[3].floor() as i32);
+            // A footprint ending exactly on a cell line does not reach the next cell.
+            let max_x = (model[4].ceil() as i32 - 1).max(min_x);
+            let max_y = (model[5].ceil() as i32 - 1).max(min_y);
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    self.model_cells
+                        .entry((x, y))
+                        .or_default()
+                        .push(index as u32);
+                }
+            }
         }
     }
 
@@ -386,6 +429,21 @@ pub struct SpritePart<'a> {
     pub full_texture_data: &'a Vec<u8>,
     pub inv_sprite_width: i32,
     pub inv_sprite_height: i32,
+}
+
+// A mesh triangle projected to the screen, ready to rasterize. Each [a, b, c] is a screen
+// plane a * x + b * y + c evaluated at pixel centres.
+#[derive(Clone, Copy)]
+pub struct ScreenTriangle {
+    pub weights: [[f32; 3]; 3], // barycentric weights, each >= 0 inside the triangle
+    pub inv_depth: [f32; 3],    // 1 / camera depth, which interpolates linearly on screen
+    pub shade: [f32; 3],        // light level / camera depth, divided back per pixel
+    pub color: [f32; 3],        // 0-255, already darkened by distance
+    pub nearest: f32,           // largest 1 / depth of the corners, for front-to-back order
+    pub min_x: i32,
+    pub max_x: i32,
+    pub min_y: i32,
+    pub max_y: i32,
 }
 
 #[inline(always)]
