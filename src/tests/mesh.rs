@@ -1,4 +1,5 @@
 use super::*;
+use crate::helpers::MeshRange;
 
 const WIDTH: i32 = 64;
 const HEIGHT: i32 = 48;
@@ -229,15 +230,23 @@ fn triangles_crossing_behind_the_camera_are_clipped() {
 
 #[test]
 fn model_footprints_register_every_cell_they_touch() {
-    let mut cells = WasmStripePerCoordMap::new();
+    let mut cells = WasmRenderCells::new();
     // first triangle, triangle count, footprint min x, min y, max x, max y
     cells.populate_models(&[4.0, 2.0, 1.5, 2.5, 3.0, 3.2]);
 
-    let mut registered: Vec<_> = cells.get_model_cells().keys().copied().collect();
-    registered.sort_unstable();
+    for cell in [(1, 2), (1, 3), (2, 2), (2, 3)] {
+        assert_eq!(cells.models_at(&cell), &[0], "cell {cell:?}");
+    }
     // x ends exactly on the line x = 3, so column 3 is not reached.
-    assert_eq!(registered, vec![(1, 2), (1, 3), (2, 2), (2, 3)]);
-    assert_eq!(cells.get_model_triangles(), &[(4, 2)]);
+    assert!(cells.models_at(&(3, 2)).is_empty() && cells.models_at(&(3, 3)).is_empty());
+    assert_eq!(
+        cells.model_mesh(0),
+        Some(MeshRange {
+            first_triangle: 4,
+            triangle_count: 2
+        })
+    );
+    assert_eq!(cells.model_mesh(1), None);
     assert!(cells.occupied(&(2, 3)) && !cells.occupied(&(3, 3)));
 }
 
@@ -249,7 +258,7 @@ fn only_models_in_cells_the_rays_reach_are_found() {
     for x in 0..size {
         grid[2 * size + x] = 0x0A10_1041;
     }
-    let mut cells = WasmStripePerCoordMap::new();
+    let mut cells = WasmRenderCells::new();
     cells.populate_models(&[
         0.0, 1.0, 4.2, 3.2, 4.8, 3.8, // 0: in front of the camera
         1.0, 1.0, 4.2, 1.2, 4.8, 1.8, // 1: behind the wall

@@ -82,7 +82,7 @@ export class Player {
       distance,
       this.camera.mapRef.ptr,
       map.size,
-      this.camera.spriteHashMap
+      map.collisionCells
     );
     this.position.x = x;
     this.position.y = y;
@@ -103,7 +103,7 @@ export class Player {
       this.jetpackActive,
       this.camera.mapRef.ptr,
       this.camera.map.size,
-      this.camera.spriteHashMap
+      this.camera.map.collisionCells
     );
     this.position.z = z;
     // Rust reports landing; stop hovering so walking off an edge causes a fall.

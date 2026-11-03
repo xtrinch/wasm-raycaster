@@ -3,8 +3,8 @@
 use helpers::{
     get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm,
     CollisionBox, Position, ScreenTriangle, Sprite, SpritePart, Texture, TextureType,
-    TranslationResult, WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE,
-    FIXED_SHIFT,
+    TranslationResult, WasmCollisionCells, WasmRenderCells, WasmTextureMap, WasmTextureMetaMap,
+    FIXED_ONE, FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -51,7 +51,7 @@ pub fn render(
     range: i8,
     map_light: i32,
     background: &BackgroundImageWasm,
-    sprites_map: &WasmStripePerCoordMap, // sprites per x y coordinate
+    render_cells: &WasmRenderCells, // billboards and models per cell
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
     depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
@@ -173,17 +173,17 @@ pub fn render(
         width,
         range,
         wall_texture_meta.width,
-        sprites_map,
+        render_cells,
         &mut found_sprites,
         &mut found_models,
     );
     // Only models in cells the rays reached are drawn, like sprites.
-    let model_triangles = sprites_map.get_model_triangles();
     let visible_meshes: Vec<&[f32]> = found_models
         .iter()
         .filter_map(|&model| {
-            let (first, count) = *model_triangles.get(model as usize)?;
-            mesh_data.get(first * MESH_TRIANGLE_STRIDE..(first + count) * MESH_TRIANGLE_STRIDE)
+            let mesh = render_cells.model_mesh(model)?;
+            let end = mesh.first_triangle + mesh.triangle_count;
+            mesh_data.get(mesh.first_triangle * MESH_TRIANGLE_STRIDE..end * MESH_TRIANGLE_STRIDE)
         })
         .collect();
     // Meshes go first so walls, sprites and window glass in front of them draw over them.
@@ -220,7 +220,7 @@ pub fn raycast_column(
     width: i32,
     range: i8,
     wall_texture_width: i32,
-    sprites_map: Option<&WasmStripePerCoordMap>, // sprites and models per cell
+    render_cells: Option<&WasmRenderCells>, // records cells holding billboards or models
     skip_sprites_and_writes: bool,
     stop_at_window: bool,
     above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
@@ -537,7 +537,7 @@ pub fn raycast_column(
         // only add coord if sprites or models exist in it;
         // TODO: check more smartly
         if !skip_sprites_and_writes && column % 5 == 0 {
-            if sprites_map.is_some_and(|cells| cells.occupied(&(map_x, map_y))) {
+            if render_cells.is_some_and(|cells| cells.occupied(&(map_x, map_y))) {
                 let _ = met_coords.push((map_x, map_y));
             }
         }
@@ -595,7 +595,7 @@ pub fn draw_walls_raycast(
     width: i32,
     range: i8,
     wall_texture_width: i32,
-    sprites_map: &WasmStripePerCoordMap,
+    render_cells: &WasmRenderCells,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
     found_models: &mut Vec<u32>, // models in cells the rays reached, each listed once
 ) {
@@ -612,7 +612,7 @@ pub fn draw_walls_raycast(
                 width,
                 range,
                 wall_texture_width,
-                Some(sprites_map),
+                Some(render_cells),
                 false,
                 false,
                 above_walls,
@@ -627,18 +627,9 @@ pub fn draw_walls_raycast(
         .flat_map(|(_, _, met_coords, _)| met_coords.iter().copied())
         .collect();
 
-    let model_cells = sprites_map.get_model_cells();
-    let sprites_map = sprites_map.get_map();
-
-    for (x, y) in &uniqued_met_coords {
-        let (map_x, map_y) = (*x as i32, *y as i32);
-
-        if let Some(sprite_list) = sprites_map.get(&(map_x, map_y)) {
-            found_sprites.extend((*sprite_list).clone());
-        }
-        if let Some(models) = model_cells.get(&(map_x, map_y)) {
-            found_models.extend(models);
-        }
+    for cell in &uniqued_met_coords {
+        found_sprites.extend(render_cells.billboards_at(cell).iter().cloned());
+        found_models.extend_from_slice(render_cells.models_at(cell));
     }
     // A model covering several reached cells is drawn once.
     found_models.sort_unstable();
@@ -1449,7 +1440,7 @@ pub fn move_vertical(
     jetpack_active: bool,           // Hover instead of applying gravity while airborne.
     map_array: *const u64,          // Packed world grid in WASM memory.
     map_width: usize,               // Grid width used to find the current cell.
-    solids: &WasmStripePerCoordMap, // Solid model boxes per cell.
+    collision: &WasmCollisionCells, // Solid model boxes per cell.
 ) -> Float32Array {
     let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
     let roof = roof_height_at(x, y, grid, map_width);
@@ -1457,12 +1448,8 @@ pub fn move_vertical(
     let support = if z >= 1.0 - COLLISION_EPSILON {
         roof
     } else {
-        solid_support_at(
-            x,
-            y,
-            z,
-            solids.solids_at(&(x.floor() as i32, y.floor() as i32)),
-        )
+        let feet = (x.floor() as i32, y.floor() as i32);
+        solid_support_at(x, y, z, &collision.boxes_in(feet, feet))
     };
     let mut next_z = (z + distance).max(support);
     if !jetpack_active && distance > 0.0 {
@@ -1518,17 +1505,19 @@ fn collision_boxes(
     max_y: f32,
     grid: &[u64],
     size: i32,
-    solids: &WasmStripePerCoordMap,
+    collision: &WasmCollisionCells,
 ) -> Vec<CollisionBox> {
-    let mut boxes = Vec::new();
-    for cell_y in min_y.floor() as i32..=max_y.floor() as i32 {
-        for cell_x in min_x.floor() as i32..=max_x.floor() as i32 {
+    let first = (min_x.floor() as i32, min_y.floor() as i32);
+    let last = (max_x.floor() as i32, max_y.floor() as i32);
+    // Solid models are stored once and listed by id, so one spanning cells comes back once.
+    let mut boxes = collision.boxes_in(first, last);
+    for cell_y in first.1..=last.1 {
+        for cell_x in first.0..=last.0 {
             boxes.extend(wall_boxes(
                 get_grid_value(cell_x, cell_y, size, grid),
                 cell_x,
                 cell_y,
             ));
-            boxes.extend_from_slice(solids.solids_at(&(cell_x, cell_y)));
         }
     }
     boxes
@@ -1578,7 +1567,7 @@ fn walk_step(
     z: f32,
     grid: &[u64],
     size: i32,
-    solids: &WasmStripePerCoordMap,
+    collision: &WasmCollisionCells,
 ) -> (f32, f32) {
     let boxes = collision_boxes(
         x.min(x + dx) - PLAYER_RADIUS,
@@ -1587,7 +1576,7 @@ fn walk_step(
         y.max(y + dy) + PLAYER_RADIUS,
         grid,
         size,
-        solids,
+        collision,
     );
     let free = |next_x: f32, next_y: f32| {
         !boxes
@@ -1611,7 +1600,7 @@ pub fn walk(
     distance: f32,         // Requested travel in world units; negative walks back.
     map_array: *const u64, // Packed world grid in WASM memory.
     map_width: i32,
-    solids: &WasmStripePerCoordMap, // Solid model boxes per cell.
+    collision: &WasmCollisionCells, // Solid model boxes per cell.
 ) -> Float32Array {
     let grid = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
     let (x, y) = walk_step(
@@ -1622,7 +1611,7 @@ pub fn walk(
         z,
         grid,
         map_width,
-        solids,
+        collision,
     );
     Float32Array::from(&[x, y][..])
 }

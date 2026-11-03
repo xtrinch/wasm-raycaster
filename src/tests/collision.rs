@@ -17,10 +17,10 @@ fn grid(middle: u64) -> Vec<u64> {
     cells
 }
 
-fn solids(data: &[f32]) -> WasmStripePerCoordMap {
-    let mut map = WasmStripePerCoordMap::new();
-    map.populate_solids(data);
-    map
+fn solids(data: &[f32]) -> WasmCollisionCells {
+    let mut collision = WasmCollisionCells::new();
+    collision.populate_solids(data);
+    collision
 }
 
 fn step(
@@ -28,9 +28,9 @@ fn step(
     delta: (f32, f32),
     z: f32,
     cells: &[u64],
-    solids: &WasmStripePerCoordMap,
+    collision: &WasmCollisionCells,
 ) -> (f32, f32) {
-    walk_step(from.0, from.1, delta.0, delta.1, z, cells, 3, solids)
+    walk_step(from.0, from.1, delta.0, delta.1, z, cells, 3, collision)
 }
 
 #[test]
@@ -126,19 +126,27 @@ fn a_player_inside_a_solid_model_can_walk_out() {
 fn solid_models_are_found_in_every_cell_they_touch() {
     let bed = solids(&[0.8, 0.5, 1.4, 2.0, 0.25]);
     for cell in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-        assert_eq!(bed.solids_at(&cell).len(), 1, "cell {cell:?}");
+        assert_eq!(bed.boxes_in(cell, cell).len(), 1, "cell {cell:?}");
     }
     // The footprint ends on the line y = 2, so it does not reach row 2.
-    assert!(bed.solids_at(&(1, 2)).is_empty());
+    assert!(bed.boxes_in((1, 2), (1, 2)).is_empty());
+}
+
+#[test]
+fn a_solid_spanning_several_cells_is_returned_once() {
+    let collision = solids(&[0.8, 0.5, 1.4, 2.0, 0.25, 0.2, 0.2, 0.4, 0.4, 0.5]);
+    let boxes = collision.boxes_in((0, 0), (1, 1));
+    assert_eq!(boxes.len(), 2);
+    assert_eq!((boxes[0].top, boxes[1].top), (0.25, 0.5));
 }
 
 #[test]
 fn solid_tops_support_feet_above_them() {
     let bed = solids(&BED);
-    let here = bed.solids_at(&(1, 1));
-    assert_eq!(solid_support_at(1.2, 1.5, 0.3, here), 0.25);
-    assert_eq!(solid_support_at(1.2, 1.5, 0.25, here), 0.25);
+    let here = bed.boxes_in((1, 1), (1, 1));
+    assert_eq!(solid_support_at(1.2, 1.5, 0.3, &here), 0.25);
+    assert_eq!(solid_support_at(1.2, 1.5, 0.25, &here), 0.25);
     // Below the top or beside the footprint, feet stand on the ground.
-    assert_eq!(solid_support_at(1.2, 1.5, 0.1, here), 0.0);
-    assert_eq!(solid_support_at(1.6, 1.5, 0.3, here), 0.0);
+    assert_eq!(solid_support_at(1.2, 1.5, 0.1, &here), 0.0);
+    assert_eq!(solid_support_at(1.6, 1.5, 0.3, &here), 0.0);
 }

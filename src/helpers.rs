@@ -96,7 +96,116 @@ impl WasmTextureMap {
     }
 }
 
-// Floats per solid model box in populateSolids: footprint min x, min y, max x, max y, top.
+// A grid cell: world x and y rounded down. Cells may be negative, outside the grid.
+pub type Cell = (i32, i32);
+
+// Every cell a footprint touches; one ending exactly on a cell line does not reach the next.
+fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<Cell> {
+    let (first_x, first_y) = (min_x.floor() as i32, min_y.floor() as i32);
+    let last_x = (max_x.ceil() as i32 - 1).max(first_x);
+    let last_y = (max_y.ceil() as i32 - 1).max(first_y);
+    (first_y..=last_y)
+        .flat_map(|y| (first_x..=last_x).map(move |x| (x, y)))
+        .collect()
+}
+
+// A model's triangles in the uploaded mesh buffer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshRange {
+    pub first_triangle: usize,
+    pub triangle_count: usize,
+}
+
+// What each cell holds for drawing. Rays record the cells they pass through that hold
+// anything, and the billboards and models in those cells are drawn.
+#[wasm_bindgen]
+pub struct WasmRenderCells {
+    billboards: HashMap<Cell, Vec<Sprite>>, // flat sprites standing in each cell
+    model_meshes: Vec<MeshRange>,           // each model's triangles, indexed by model id
+    models: HashMap<Cell, Vec<u32>>,        // ids of the models whose footprint touches each cell
+}
+
+// 🦀 Rust-only implementation block
+impl WasmRenderCells {
+    pub fn billboards_at(&self, cell: &Cell) -> &[Sprite] {
+        self.billboards
+            .get(cell)
+            .map_or(&[], |sprites| sprites.as_slice())
+    }
+
+    pub fn models_at(&self, cell: &Cell) -> &[u32] {
+        self.models
+            .get(cell)
+            .map_or(&[], |models| models.as_slice())
+    }
+
+    pub fn model_mesh(&self, model: u32) -> Option<MeshRange> {
+        self.model_meshes.get(model as usize).copied()
+    }
+
+    // Whether a billboard or a model occupies the cell, so rays should record it.
+    pub fn occupied(&self, cell: &Cell) -> bool {
+        self.billboards.contains_key(cell) || self.models.contains_key(cell)
+    }
+}
+
+#[wasm_bindgen]
+impl WasmRenderCells {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            billboards: HashMap::new(),
+            model_meshes: Vec::new(),
+            models: HashMap::new(),
+        }
+    }
+
+    /// Five floats per billboard: x, y, angle, height and texture type.
+    #[wasm_bindgen(js_name = populateBillboards)]
+    pub fn populate_billboards(&mut self, sprite_data: &[f32]) {
+        self.billboards.clear();
+        for sprite in sprite_data.chunks_exact(5) {
+            let [x, y, angle, height, sprite_type] = sprite.try_into().unwrap();
+            self.billboards
+                .entry((x.floor() as i32, y.floor() as i32))
+                .or_default()
+                .push(Sprite {
+                    // TODO: to a smaller struct
+                    x,
+                    y,
+                    fract: 0., // offset inside the coord
+                    dx: 0.,
+                    dy: 0.,
+                    angle: angle as i32,
+                    height: height as i32,
+                    r#type: sprite_type as i32,
+                    column: 0,
+                    distance: 0.,
+                    distance_fixed: 0,
+                });
+        }
+    }
+
+    /// Six floats per model: first triangle, triangle count, then the footprint's
+    /// min x, min y, max x, max y in world units. A model's id is its position in the
+    /// data; it is registered in every cell the footprint touches.
+    #[wasm_bindgen(js_name = populateModels)]
+    pub fn populate_models(&mut self, model_data: &[f32]) {
+        self.model_meshes.clear();
+        self.models.clear();
+        for (id, model) in model_data.chunks_exact(6).enumerate() {
+            self.model_meshes.push(MeshRange {
+                first_triangle: model[0] as usize,
+                triangle_count: model[1] as usize,
+            });
+            for cell in footprint_cells(model[2], model[3], model[4], model[5]) {
+                self.models.entry(cell).or_default().push(id as u32);
+            }
+        }
+    }
+}
+
+// Floats per solid in populateSolids: footprint min x, min y, max x, max y, then top.
 pub const SOLID_STRIDE: usize = 5;
 
 // An obstacle for movement in world units: an axis-aligned footprint and its top height.
@@ -110,131 +219,58 @@ pub struct CollisionBox {
     pub top: f32,
 }
 
-// Every cell a footprint touches; one ending exactly on a cell line does not reach the next.
-fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<(i32, i32)> {
-    let (first_x, first_y) = (min_x.floor() as i32, min_y.floor() as i32);
-    let last_x = (max_x.ceil() as i32 - 1).max(first_x);
-    let last_y = (max_y.ceil() as i32 - 1).max(first_y);
-    (first_y..=last_y)
-        .flat_map(|y| (first_x..=last_x).map(move |x| (x, y)))
-        .collect()
-}
-
+// What blocks movement besides the walls and windows decoded from the grid.
 #[wasm_bindgen]
-pub struct WasmStripePerCoordMap {
-    map: HashMap<(i32, i32), Vec<Sprite>>,
-    // 3D models (sprites with a mesh): their triangle range and the cells they cover.
-    model_triangles: Vec<(usize, usize)>, // first triangle, triangle count
-    model_cells: HashMap<(i32, i32), Vec<u32>>,
-    // Collision boxes of solid models, listed in every cell they touch.
-    solid_cells: HashMap<(i32, i32), Vec<CollisionBox>>,
+pub struct WasmCollisionCells {
+    boxes: Vec<CollisionBox>,       // each solid once, indexed by id
+    cells: HashMap<Cell, Vec<u32>>, // ids of the boxes touching each cell
 }
 
 // 🦀 Rust-only implementation block
-impl WasmStripePerCoordMap {
-    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<Sprite>> {
-        &self.map
-    }
-
-    pub fn get_model_cells(&self) -> &HashMap<(i32, i32), Vec<u32>> {
-        &self.model_cells
-    }
-
-    pub fn get_model_triangles(&self) -> &[(usize, usize)] {
-        &self.model_triangles
-    }
-
-    // Solid model boxes touching the cell.
-    pub fn solids_at(&self, cell: &(i32, i32)) -> &[CollisionBox] {
-        self.solid_cells
-            .get(cell)
-            .map_or(&[], |solids| solids.as_slice())
-    }
-
-    // Whether a sprite or a model occupies the cell, so rays should record it.
-    pub fn occupied(&self, cell: &(i32, i32)) -> bool {
-        self.map.contains_key(cell) || self.model_cells.contains_key(cell)
+impl WasmCollisionCells {
+    // Each box touching the cells from first to last, inclusive, listed once.
+    pub fn boxes_in(&self, first: Cell, last: Cell) -> Vec<CollisionBox> {
+        let mut ids: Vec<u32> = (first.1..=last.1)
+            .flat_map(|y| (first.0..=last.0).map(move |x| (x, y)))
+            .filter_map(|cell| self.cells.get(&cell))
+            .flatten()
+            .copied()
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids.into_iter().map(|id| self.boxes[id as usize]).collect()
     }
 }
 
 #[wasm_bindgen]
-impl WasmStripePerCoordMap {
+impl WasmCollisionCells {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
-            model_triangles: Vec::new(),
-            model_cells: HashMap::new(),
-            solid_cells: HashMap::new(),
+            boxes: Vec::new(),
+            cells: HashMap::new(),
         }
     }
 
-    /// Six floats per model: first triangle, triangle count, then the footprint's
-    /// min x, min y, max x, max y in world units. The model is registered in every
-    /// cell the footprint touches.
-    #[wasm_bindgen(js_name = populateModels)]
-    pub fn populate_models(&mut self, model_data: &[f32]) {
-        self.model_triangles.clear();
-        self.model_cells.clear();
-        for (index, model) in model_data.chunks_exact(6).enumerate() {
-            self.model_triangles
-                .push((model[0] as usize, model[1] as usize));
-            for cell in footprint_cells(model[2], model[3], model[4], model[5]) {
-                self.model_cells.entry(cell).or_default().push(index as u32);
-            }
-        }
-    }
-
-    /// SOLID_STRIDE floats per solid model: footprint min x, min y, max x, max y and top
-    /// height in world units. Each box is registered in every cell it touches.
+    /// SOLID_STRIDE floats per solid: footprint min x, min y, max x, max y and top height
+    /// in world units. A box's id is its position in the data; it is registered in every
+    /// cell it touches.
     #[wasm_bindgen(js_name = populateSolids)]
     pub fn populate_solids(&mut self, solid_data: &[f32]) {
-        self.solid_cells.clear();
-        for solid in solid_data.chunks_exact(SOLID_STRIDE) {
-            let solid_box = CollisionBox {
+        self.boxes.clear();
+        self.cells.clear();
+        for (id, solid) in solid_data.chunks_exact(SOLID_STRIDE).enumerate() {
+            self.boxes.push(CollisionBox {
                 min_x: solid[0],
                 min_y: solid[1],
                 max_x: solid[2],
                 max_y: solid[3],
                 top: solid[4],
-            };
+            });
             for cell in footprint_cells(solid[0], solid[1], solid[2], solid[3]) {
-                self.solid_cells.entry(cell).or_default().push(solid_box);
+                self.cells.entry(cell).or_default().push(id as u32);
             }
         }
-    }
-
-    /// Accepts a JS Float32Array directly!
-    #[wasm_bindgen(js_name = populateFromArray)]
-    pub fn populate_from_array(&mut self, sprite_data: &[f32]) {
-        let mut sprites_map: HashMap<(i32, i32), Vec<Sprite>> = HashMap::new();
-
-        for i in (0..sprite_data.len()).step_by(5) {
-            let sprite: [f32; 5] = sprite_data[i..i + 5].try_into().unwrap();
-            let key = (sprite[0].floor() as i32, sprite[1].floor() as i32);
-            let [x, y, angle, height, sprite_type] = sprite;
-            sprites_map.entry(key).or_default().push(Sprite {
-                // TODO: to a smaller struct
-                x,
-                y,
-                fract: 0., // offset inside the coord
-                dx: 0.,
-                dy: 0.,
-                angle: angle as i32,
-                height: height as i32,
-                r#type: sprite_type as i32,
-                column: 0,
-                distance: 0.,
-                distance_fixed: 0,
-            });
-        }
-
-        self.map = sprites_map;
-    }
-
-    #[wasm_bindgen]
-    pub fn count_cells(&self) -> usize {
-        self.map.len()
     }
 }
 
