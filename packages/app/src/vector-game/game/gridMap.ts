@@ -43,6 +43,7 @@ export class GridMap {
   public wallGrid: BigUint64Array;
   public meshTriangles: Float32Array;
   public models: Float32Array;
+  public solids: Float32Array;
   public skybox: Bitmap;
   public wallTexture: Bitmap;
   public treeTexture: Bitmap;
@@ -126,6 +127,7 @@ export class GridMap {
     this.size = level.size;
     this.meshTriangles = level.meshTriangles;
     this.models = level.models;
+    this.solids = level.solids;
 
     makeAutoObservable(this);
   }

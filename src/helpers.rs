@@ -96,12 +96,38 @@ impl WasmTextureMap {
     }
 }
 
+// Floats per solid model box in populateSolids: footprint min x, min y, max x, max y, top.
+pub const SOLID_STRIDE: usize = 5;
+
+// An obstacle for movement in world units: an axis-aligned footprint and its top height.
+// Walls, windows and solid models all collide as these boxes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CollisionBox {
+    pub min_x: f32,
+    pub min_y: f32,
+    pub max_x: f32,
+    pub max_y: f32,
+    pub top: f32,
+}
+
+// Every cell a footprint touches; one ending exactly on a cell line does not reach the next.
+fn footprint_cells(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Vec<(i32, i32)> {
+    let (first_x, first_y) = (min_x.floor() as i32, min_y.floor() as i32);
+    let last_x = (max_x.ceil() as i32 - 1).max(first_x);
+    let last_y = (max_y.ceil() as i32 - 1).max(first_y);
+    (first_y..=last_y)
+        .flat_map(|y| (first_x..=last_x).map(move |x| (x, y)))
+        .collect()
+}
+
 #[wasm_bindgen]
 pub struct WasmStripePerCoordMap {
     map: HashMap<(i32, i32), Vec<Sprite>>,
     // 3D models (sprites with a mesh): their triangle range and the cells they cover.
     model_triangles: Vec<(usize, usize)>, // first triangle, triangle count
     model_cells: HashMap<(i32, i32), Vec<u32>>,
+    // Collision boxes of solid models, listed in every cell they touch.
+    solid_cells: HashMap<(i32, i32), Vec<CollisionBox>>,
 }
 
 // 🦀 Rust-only implementation block
@@ -118,6 +144,13 @@ impl WasmStripePerCoordMap {
         &self.model_triangles
     }
 
+    // Solid model boxes touching the cell.
+    pub fn solids_at(&self, cell: &(i32, i32)) -> &[CollisionBox] {
+        self.solid_cells
+            .get(cell)
+            .map_or(&[], |solids| solids.as_slice())
+    }
+
     // Whether a sprite or a model occupies the cell, so rays should record it.
     pub fn occupied(&self, cell: &(i32, i32)) -> bool {
         self.map.contains_key(cell) || self.model_cells.contains_key(cell)
@@ -132,6 +165,7 @@ impl WasmStripePerCoordMap {
             map: HashMap::new(),
             model_triangles: Vec::new(),
             model_cells: HashMap::new(),
+            solid_cells: HashMap::new(),
         }
     }
 
@@ -145,17 +179,27 @@ impl WasmStripePerCoordMap {
         for (index, model) in model_data.chunks_exact(6).enumerate() {
             self.model_triangles
                 .push((model[0] as usize, model[1] as usize));
-            let (min_x, min_y) = (model[2].floor() as i32, model[3].floor() as i32);
-            // A footprint ending exactly on a cell line does not reach the next cell.
-            let max_x = (model[4].ceil() as i32 - 1).max(min_x);
-            let max_y = (model[5].ceil() as i32 - 1).max(min_y);
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    self.model_cells
-                        .entry((x, y))
-                        .or_default()
-                        .push(index as u32);
-                }
+            for cell in footprint_cells(model[2], model[3], model[4], model[5]) {
+                self.model_cells.entry(cell).or_default().push(index as u32);
+            }
+        }
+    }
+
+    /// SOLID_STRIDE floats per solid model: footprint min x, min y, max x, max y and top
+    /// height in world units. Each box is registered in every cell it touches.
+    #[wasm_bindgen(js_name = populateSolids)]
+    pub fn populate_solids(&mut self, solid_data: &[f32]) {
+        self.solid_cells.clear();
+        for solid in solid_data.chunks_exact(SOLID_STRIDE) {
+            let solid_box = CollisionBox {
+                min_x: solid[0],
+                min_y: solid[1],
+                max_x: solid[2],
+                max_y: solid[3],
+                top: solid[4],
+            };
+            for cell in footprint_cells(solid[0], solid[1], solid[2], solid[3]) {
+                self.solid_cells.entry(cell).or_default().push(solid_box);
             }
         }
     }

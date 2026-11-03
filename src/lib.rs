@@ -1,9 +1,10 @@
 #![feature(map_try_insert)]
 #![feature(portable_simd)]
 use helpers::{
-    get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm, Position,
-    ScreenTriangle, Sprite, SpritePart, Texture, TextureType, TranslationResult,
-    WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE, FIXED_SHIFT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm,
+    CollisionBox, Position, ScreenTriangle, Sprite, SpritePart, Texture, TextureType,
+    TranslationResult, WasmStripePerCoordMap, WasmTextureMap, WasmTextureMetaMap, FIXED_ONE,
+    FIXED_SHIFT,
 };
 use js_sys::Float32Array;
 use js_sys::Math::atan2;
@@ -663,33 +664,38 @@ pub fn draw_walls_raycast(
 }
 
 // Check the shared wall-bottom/top footprint using cell-local coordinates.
-fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
-    // Coordinates are local to this cell; value 1 fills the whole cell.
+// A cell's wall, door and window slots as local rectangles: min x, min y, max x, max y in
+// cell units, and whether the slot is a door. A cell whose value is exactly 1 is one
+// full-cell wall.
+fn wall_slots(value: u64) -> SmallVec<[([f32; 4], bool); 3]> {
     if value == 1 {
-        return true;
+        return SmallVec::from_slice(&[([0.0, 0.0, 1.0, 1.0], false)]);
     }
-    for index in 0..get_bits(value, 12).min(3) {
-        // Each wall footprint uses four 4-bit fields, measured in tenths of a cell.
-        let shift = 16 + index * 16;
-        let primary = (get_bits(value, shift) % 11) as f32 / 10.0;
-        let thickness = (get_bits(value, shift + 4) % 11) as f32 / 10.0;
-        let length = (get_bits(value, shift + 8) % 11) as f32 / 10.0;
-        let secondary = (get_bits(value, shift + 12) % 11) as f32 / 10.0;
-        // These are the existing orientation bits for the cell's three wall slots.
-        let (along, across) = if has_bit_set(value, [6, 7, 8][index as usize]) {
-            (x, y)
-        } else {
-            (y, x)
-        };
-        if across >= primary
-            && across < primary + thickness
-            && along >= secondary
-            && along < secondary + length
-        {
-            return true;
-        }
-    }
-    false
+    (0..get_bits(value, 12).min(3))
+        .map(|index| {
+            // Each wall footprint uses four 4-bit fields, measured in tenths of a cell.
+            let shift = 16 + index * 16;
+            let primary = (get_bits(value, shift) % 11) as f32 / 10.0;
+            let thickness = (get_bits(value, shift + 4) % 11) as f32 / 10.0;
+            let length = (get_bits(value, shift + 8) % 11) as f32 / 10.0;
+            let secondary = (get_bits(value, shift + 12) % 11) as f32 / 10.0;
+            let door = has_bit_set(value, if index == 0 { 5 } else { 4 });
+            // These are the existing orientation bits for the cell's three wall slots.
+            let rect = if has_bit_set(value, [6, 7, 8][index as usize]) {
+                [secondary, primary, secondary + length, primary + thickness]
+            } else {
+                [primary, secondary, primary + thickness, secondary + length]
+            };
+            (rect, door)
+        })
+        .collect()
+}
+
+fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
+    // Coordinates are local to this cell.
+    wall_slots(value)
+        .iter()
+        .any(|(r, _)| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
 }
 
 #[inline(never)]
@@ -1371,6 +1377,10 @@ pub fn draw_meshes(
 #[path = "tests/mesh.rs"]
 mod mesh_tests;
 
+#[cfg(test)]
+#[path = "tests/collision.rs"]
+mod collision_tests;
+
 #[inline(never)]
 #[no_mangle]
 pub fn draw_background_image_prescaled(
@@ -1431,25 +1441,35 @@ pub fn draw_background_image_prescaled(
 // Apply vertical movement and collisions; return [feet height, landed flag].
 #[wasm_bindgen]
 pub fn move_vertical(
-    x: f32,                // Player's world x coordinate.
-    y: f32,                // Player's world y coordinate.
-    z: f32,                // Feet height in world units.
-    distance: f32,         // Requested vertical travel in world units; positive means up.
-    fall_distance: f32,    // Downward travel to apply when gravity is active.
-    jetpack_active: bool,  // Hover instead of applying gravity while airborne.
-    map_array: *const u64, // Packed world grid in WASM memory.
-    map_width: usize,      // Grid width used to find the current cell.
+    x: f32,                         // Player's world x coordinate.
+    y: f32,                         // Player's world y coordinate.
+    z: f32,                         // Feet height in world units.
+    distance: f32,                  // Requested vertical travel in world units; positive means up.
+    fall_distance: f32,             // Downward travel to apply when gravity is active.
+    jetpack_active: bool,           // Hover instead of applying gravity while airborne.
+    map_array: *const u64,          // Packed world grid in WASM memory.
+    map_width: usize,               // Grid width used to find the current cell.
+    solids: &WasmStripePerCoordMap, // Solid model boxes per cell.
 ) -> Float32Array {
     let grid = unsafe { from_raw_parts(map_array, map_width * map_width) };
     let roof = roof_height_at(x, y, grid, map_width);
-    // A roof supports feet above it; underneath it, the walking surface is ground.
-    let support = if z >= 1.0 - 0.000001 { roof } else { 0.0 };
+    // A roof supports feet above it; underneath it, feet stand on the ground or a solid model.
+    let support = if z >= 1.0 - COLLISION_EPSILON {
+        roof
+    } else {
+        solid_support_at(
+            x,
+            y,
+            z,
+            solids.solids_at(&(x.floor() as i32, y.floor() as i32)),
+        )
+    };
     let mut next_z = (z + distance).max(support);
     if !jetpack_active && distance > 0.0 {
         // D-key jumping reaches half a world unit above the ground or roof.
         next_z = next_z.min(support + 0.5);
     }
-    if support == 0.0 && roof > 0.0 {
+    if z < 1.0 - COLLISION_EPSILON && roof > 0.0 {
         // Eyes sit 0.5 units above feet; leave a gap below the ceiling at height 1.
         next_z = next_z.min(0.49);
     }
@@ -1471,132 +1491,140 @@ fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
     }
 }
 
-// move if no wall in front of you
+// How far the player's centre keeps from the sides of walls, windows and solid models.
+const PLAYER_RADIUS: f32 = 0.2;
+const COLLISION_EPSILON: f32 = 0.000001;
+
+// Walls and windows of one cell as world boxes up to wall-top height; doors stay passable.
+fn wall_boxes(value: u64, cell_x: i32, cell_y: i32) -> impl Iterator<Item = CollisionBox> {
+    let (x, y) = (cell_x as f32, cell_y as f32);
+    wall_slots(value)
+        .into_iter()
+        .filter(|(_, door)| !door)
+        .map(move |(r, _)| CollisionBox {
+            min_x: x + r[0],
+            min_y: y + r[1],
+            max_x: x + r[2],
+            max_y: y + r[3],
+            top: 1.0,
+        })
+}
+
+// Every wall, window and solid model box in the cells overlapping the area.
+fn collision_boxes(
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+    grid: &[u64],
+    size: i32,
+    solids: &WasmStripePerCoordMap,
+) -> Vec<CollisionBox> {
+    let mut boxes = Vec::new();
+    for cell_y in min_y.floor() as i32..=max_y.floor() as i32 {
+        for cell_x in min_x.floor() as i32..=max_x.floor() as i32 {
+            boxes.extend(wall_boxes(
+                get_grid_value(cell_x, cell_y, size, grid),
+                cell_x,
+                cell_y,
+            ));
+            boxes.extend_from_slice(solids.solids_at(&(cell_x, cell_y)));
+        }
+    }
+    boxes
+}
+
+// Whether the step from (x, y) to (next_x, next_y) runs into the box widened by the player
+// radius, with feet below its top. The whole step is tested, so long steps after slow
+// frames cannot pass through. A player already inside a box may walk out of it.
+fn step_enters_box(x: f32, y: f32, next_x: f32, next_y: f32, z: f32, b: &CollisionBox) -> bool {
+    let (min_x, min_y) = (b.min_x - PLAYER_RADIUS, b.min_y - PLAYER_RADIUS);
+    let (max_x, max_y) = (b.max_x + PLAYER_RADIUS, b.max_y + PLAYER_RADIUS);
+    if z >= b.top - COLLISION_EPSILON || (x > min_x && x < max_x && y > min_y && y < max_y) {
+        return false;
+    }
+    // Clip the step to the box one axis at a time; it enters when a part remains.
+    let (mut enter, mut exit) = (0.0f32, 1.0f32);
+    for (start, delta, low, high) in [(x, next_x - x, min_x, max_x), (y, next_y - y, min_y, max_y)]
+    {
+        if delta == 0.0 {
+            if start <= low || start >= high {
+                return false;
+            }
+        } else {
+            let (a, b) = ((low - start) / delta, (high - start) / delta);
+            enter = enter.max(a.min(b));
+            exit = exit.min(a.max(b));
+        }
+    }
+    enter < exit
+}
+
+// The highest solid top under the feet that they are at or above; 0 is the ground.
+fn solid_support_at(x: f32, y: f32, z: f32, solids: &[CollisionBox]) -> f32 {
+    solids
+        .iter()
+        .filter(|s| x >= s.min_x && x <= s.max_x && y >= s.min_y && y <= s.max_y)
+        .filter(|s| z >= s.top - COLLISION_EPSILON)
+        .fold(0.0, |top, s| top.max(s.top))
+}
+
+// Where a step of (dx, dy) ends: the full step, else its x or y part to slide along a box.
+fn walk_step(
+    x: f32,
+    y: f32,
+    dx: f32,
+    dy: f32,
+    z: f32,
+    grid: &[u64],
+    size: i32,
+    solids: &WasmStripePerCoordMap,
+) -> (f32, f32) {
+    let boxes = collision_boxes(
+        x.min(x + dx) - PLAYER_RADIUS,
+        y.min(y + dy) - PLAYER_RADIUS,
+        x.max(x + dx) + PLAYER_RADIUS,
+        y.max(y + dy) + PLAYER_RADIUS,
+        grid,
+        size,
+        solids,
+    );
+    let free = |next_x: f32, next_y: f32| {
+        !boxes
+            .iter()
+            .any(|b| step_enters_box(x, y, next_x, next_y, z, b))
+    };
+    [(x + dx, y + dy), (x + dx, y), (x, y + dy)]
+        .into_iter()
+        .find(|&(next_x, next_y)| free(next_x, next_y))
+        .unwrap_or((x, y))
+}
+
+// Move along the view direction unless a wall, window or solid model is in the way.
 #[wasm_bindgen]
 pub fn walk(
     x: f32,
     y: f32,
     dir_x: f32,
     dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-    pitch: i32,
-    z: f32,
-    plane_y_initial: f32,
-    distance: f32,
-    map_array: *mut u64,
+    z: f32,                // Feet height; feet at or above a box's top pass over it.
+    distance: f32,         // Requested travel in world units; negative walks back.
+    map_array: *const u64, // Packed world grid in WASM memory.
     map_width: i32,
-    width: i32,
-    range: i8,
-    wall_texture_width: i32,
+    solids: &WasmStripePerCoordMap, // Solid model boxes per cell.
 ) -> Float32Array {
-    // Feet at or above wall tops can move over walls instead of colliding with them.
-    if z >= 1.0 {
-        return Float32Array::from(&[x + dir_x * distance, y + dir_y * distance][..]);
-    }
-    let position = Position {
+    let grid = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
+    let (x, y) = walk_step(
         x,
         y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
+        dir_x * distance,
+        dir_y * distance,
         z,
-        plane_y_initial,
-        map_x: x.floor() as i32,
-        map_y: y.floor() as i32,
-    };
-
-    let map_data = unsafe { from_raw_parts(map_array, (map_width * map_width) as usize) };
-
-    let mut raycast_position = position.clone();
-
-    // check behind you by turning
-    if distance < 0.0 {
-        raycast_position.dir_x = position.dir_x * -1.0;
-        raycast_position.dir_y = position.dir_y * -1.0;
-    }
-
-    // raycast middle column to get the distance
-    let (perp_wall_dist, col_data, _, _) = raycast_column(
-        (width / 2) as i32,
-        &raycast_position,
-        map_data,
-        map_width as usize,
-        width,
-        range,
-        wall_texture_width,
-        None,
-        true,
-        true,
-        false,
+        grid,
+        map_width,
+        solids,
     );
-
-    let mut x = position.x;
-    let mut y = position.y;
-
-    // if far enough or not a door
-    if perp_wall_dist > 0.2 || (col_data[6] == 2) {
-        x += position.dir_x * distance;
-        y += position.dir_y * distance;
-
-        let result = vec![x, y];
-        return Float32Array::from(result.as_slice());
-    }
-
-    // since we can't move in both direction, check just y
-    let mut raycast_position_x = raycast_position.clone();
-    raycast_position_x.dir_y = 0.0;
-
-    // raycast middle column to get the distance
-    let (perp_wall_dist_x, _, _, _) = raycast_column(
-        (width / 2) as i32,
-        &raycast_position_x,
-        map_data,
-        map_width as usize,
-        width,
-        range,
-        wall_texture_width,
-        None,
-        true,
-        true,
-        false,
-    );
-    if perp_wall_dist_x > 0.2 {
-        x += position.dir_x * distance;
-
-        let result = vec![x, y];
-        return Float32Array::from(result.as_slice());
-    }
-
-    // if we weren't able to move x, check if we can move y
-    let mut raycast_position_y = raycast_position.clone();
-    raycast_position_y.dir_x = 0.0;
-
-    // raycast middle column to get the distance
-    let (perp_wall_dist_y, _, _, _) = raycast_column(
-        (width / 2) as i32,
-        &raycast_position_y,
-        map_data,
-        map_width as usize,
-        width,
-        range,
-        wall_texture_width,
-        None,
-        true,
-        true,
-        false,
-    );
-    if perp_wall_dist_y > 0.2 {
-        y += position.dir_y * distance;
-
-        let result = vec![x, y];
-        return Float32Array::from(result.as_slice());
-    }
-
-    let result = vec![x, y];
-    Float32Array::from(result.as_slice())
+    Float32Array::from(&[x, y][..])
 }
 
 #[wasm_bindgen]

@@ -71,24 +71,18 @@ export class Player {
     this.position.plane_y = plane_y;
   };
 
-  // move if no wall in front of you
+  // Rust stops the move at walls, windows and solid models.
   public walk = (distance: number, map: GridMap) => {
     const [x, y] = walk(
       this.position.x,
       this.position.y,
       this.position.dir_x,
       this.position.dir_y,
-      this.position.plane_x,
-      this.position.plane_y,
-      this.position.pitch,
       this.position.z,
-      this.position.plane_y_initial,
       distance,
       this.camera.mapRef.ptr,
       map.size,
-      this.camera.width,
-      this.camera.range,
-      map.wallTexture.width
+      this.camera.spriteHashMap
     );
     this.position.x = x;
     this.position.y = y;
@@ -108,7 +102,8 @@ export class Player {
       frameTime / 6, // Gravity lowers feet by 1/6 world unit per second.
       this.jetpackActive,
       this.camera.mapRef.ptr,
-      this.camera.map.size
+      this.camera.map.size,
+      this.camera.spriteHashMap
     );
     this.position.z = z;
     // Rust reports landing; stop hovering so walking off an edge causes a fall.

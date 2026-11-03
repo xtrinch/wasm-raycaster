@@ -97,6 +97,8 @@ export class Camera {
     this.spriteHashMap.populateFromArray(allSprites);
     // 3D models are registered in the cells they cover, so rays find them like sprites.
     this.spriteHashMap.populateModels(map.models);
+    // Solid models collide by their bounding boxes, alongside walls and windows.
+    this.spriteHashMap.populateSolids(map.solids);
 
     this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
