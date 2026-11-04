@@ -17,9 +17,9 @@ pub struct World {
     items: HashMap<u32, Item>,
     next_id: u32,
     meshes: Vec<Mesh>,
-    billboards: HashMap<Cell, CellBillboards>, // sprites standing in each cell
-    models: HashMap<Cell, Vec<u32>>, // ids of the models whose footprint touches each cell
-    solids: CollisionCells,          // boxes of solid models, by model id
+    sprites: HashMap<Cell, CellSprites>, // sprites standing in each cell
+    models: HashMap<Cell, Vec<u32>>,     // ids of the models whose footprint touches each cell
+    solids: CollisionCells,              // boxes of solid models, by model id
 }
 
 impl World {
@@ -31,7 +31,7 @@ impl World {
             items: HashMap::new(),
             next_id: 1,
             meshes: Vec::new(),
-            billboards: HashMap::new(),
+            sprites: HashMap::new(),
             models: HashMap::new(),
             solids: CollisionCells::new(),
         }
@@ -42,7 +42,7 @@ impl World {
         match placement {
             Placement::Area(area) => self.set_area(area).map(|_| 0),
             Placement::Segment(segment) => self.add_segment(segment),
-            Placement::Sprite(billboard) => Ok(self.add_billboard(billboard)),
+            Placement::Sprite(placement) => Ok(self.add_sprite(placement)),
             Placement::Model(model) => self.add_model(model),
         }
     }
@@ -154,25 +154,25 @@ impl World {
     }
 
     // Sprites may stand outside the grid.
-    pub fn add_billboard(&mut self, billboard: Billboard) -> u32 {
+    pub fn add_sprite(&mut self, placement: SpritePlacement) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
         let sprite = Sprite {
-            x: billboard.x as f32,
-            y: billboard.y as f32,
+            x: placement.x as f32,
+            y: placement.y as f32,
             fract: 0.,
             dx: 0.,
             dy: 0.,
-            angle: billboard.angle as f32 as i32,
+            angle: placement.angle as f32 as i32,
             // Sprite heights are percentages of one wall height.
-            height: (billboard.height * 100.0) as f32 as i32,
-            r#type: billboard.texture,
+            height: (placement.height * 100.0) as f32 as i32,
+            r#type: placement.texture,
             column: 0,
             distance: 0.,
             distance_fixed: 0,
         };
         let cell = self.place_sprite(id, sprite);
-        self.items.insert(id, Item::Billboard { cell });
+        self.items.insert(id, Item::Sprite { cell });
         id
     }
 
@@ -206,7 +206,7 @@ impl World {
                     self.encode(index);
                 }
             }
-            Item::Billboard { cell } => self.unplace_sprite(id, cell),
+            Item::Sprite { cell } => self.unplace_sprite(id, cell),
             Item::Model(placed) => self.unregister_model(id, &placed),
         }
         true
@@ -215,14 +215,14 @@ impl World {
     // Moves a sprite or model to world x/y; false for walls, doors, windows or unknown ids.
     pub fn move_to(&mut self, id: u32, x: f64, y: f64) -> bool {
         match self.items.get(&id) {
-            Some(&Item::Billboard { cell }) => {
-                let index = self.billboards[&cell].ids.iter().position(|&i| i == id);
-                let mut sprite = self.billboards[&cell].sprites[index.unwrap()].clone();
+            Some(&Item::Sprite { cell }) => {
+                let index = self.sprites[&cell].ids.iter().position(|&i| i == id);
+                let mut sprite = self.sprites[&cell].sprites[index.unwrap()].clone();
                 self.unplace_sprite(id, cell);
                 sprite.x = x as f32;
                 sprite.y = y as f32;
                 let cell = self.place_sprite(id, sprite);
-                self.items.insert(id, Item::Billboard { cell });
+                self.items.insert(id, Item::Sprite { cell });
                 true
             }
             Some(Item::Model(placed)) => {
@@ -252,10 +252,10 @@ impl World {
         &self.grid
     }
 
-    pub fn billboards_at(&self, cell: &Cell) -> &[Sprite] {
-        self.billboards
+    pub fn sprites_at(&self, cell: &Cell) -> &[Sprite] {
+        self.sprites
             .get(cell)
-            .map_or(&[], |billboards| billboards.sprites.as_slice())
+            .map_or(&[], |in_cell| in_cell.sprites.as_slice())
     }
 
     pub fn models_at(&self, cell: &Cell) -> &[u32] {
@@ -266,7 +266,7 @@ impl World {
 
     // Whether a sprite or a model occupies the cell, so rays should record it.
     pub fn occupied(&self, cell: &Cell) -> bool {
-        self.billboards.contains_key(cell) || self.models.contains_key(cell)
+        self.sprites.contains_key(cell) || self.models.contains_key(cell)
     }
 
     // A model's world-space triangles, MESH_TRIANGLE_STRIDE floats each.
@@ -301,19 +301,19 @@ impl World {
 
     fn place_sprite(&mut self, id: u32, sprite: Sprite) -> Cell {
         let cell = (sprite.x.floor() as i32, sprite.y.floor() as i32);
-        let billboards = self.billboards.entry(cell).or_default();
-        billboards.sprites.push(sprite);
-        billboards.ids.push(id);
+        let in_cell = self.sprites.entry(cell).or_default();
+        in_cell.sprites.push(sprite);
+        in_cell.ids.push(id);
         cell
     }
 
     fn unplace_sprite(&mut self, id: u32, cell: Cell) {
-        let billboards = self.billboards.get_mut(&cell).unwrap();
-        let index = billboards.ids.iter().position(|&i| i == id).unwrap();
-        billboards.sprites.remove(index);
-        billboards.ids.remove(index);
-        if billboards.ids.is_empty() {
-            self.billboards.remove(&cell);
+        let in_cell = self.sprites.get_mut(&cell).unwrap();
+        let index = in_cell.ids.iter().position(|&i| i == id).unwrap();
+        in_cell.sprites.remove(index);
+        in_cell.ids.remove(index);
+        if in_cell.ids.is_empty() {
+            self.sprites.remove(&cell);
         }
     }
 

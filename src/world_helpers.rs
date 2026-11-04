@@ -48,7 +48,7 @@ pub struct Segment {
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]
-pub struct Billboard {
+pub struct SpritePlacement {
     pub x: f64,
     pub y: f64,
     pub texture: i32, // TextureType
@@ -76,7 +76,7 @@ pub struct Model {
 pub enum Placement {
     Area(Area),
     Segment(Segment),
-    Sprite(Billboard),
+    Sprite(SpritePlacement),
     Model(Model),
 }
 
@@ -117,7 +117,7 @@ pub struct CellState {
 }
 
 #[derive(Default)]
-pub struct CellBillboards {
+pub struct CellSprites {
     pub sprites: Vec<Sprite>,
     pub ids: Vec<u32>, // aligned with sprites
 }
@@ -133,7 +133,7 @@ pub struct PlacedModel {
 // Everything placed with an id.
 pub enum Item {
     Segment { cells: SmallVec<[usize; 4]> }, // indexes of the cells holding its pieces
-    Billboard { cell: Cell },
+    Sprite { cell: Cell },
     Model(PlacedModel),
 }
 

@@ -29,12 +29,12 @@ export class Camera {
   public scale: number;
   public canvas: HTMLCanvasElement;
   public map: GridMap;
-  public ceilingFloorPixelsRef: WasmUint8Array;
+  public pixelsRef: WasmUint8Array;
   // Backed by a plain ArrayBuffer: ImageData cannot be built on shared WASM memory.
   public pixelsClampedArray: Uint8ClampedArray<ArrayBuffer>;
   public skyTextureRef: WasmUint8Array;
   // Wall depth per screen column.
-  public zBufferRef: WasmFloat32Array;
+  public columnDepthRef: WasmFloat32Array;
   // Nearest floor, ceiling or roof depth per pixel.
   public depthRef: WasmFloat32Array; // nearest floor, ceiling, roof or model depth per pixel
   public initialized: boolean;
@@ -69,10 +69,10 @@ export class Camera {
     let length = this.width * this.height * 4;
 
     // ensure we're passing the data in all the same memory locations
-    this.ceilingFloorPixelsRef = new WasmUint8Array(length);
+    this.pixelsRef = new WasmUint8Array(length);
     this.pixelsClampedArray = new Uint8ClampedArray(new ArrayBuffer(length));
 
-    this.zBufferRef = new WasmFloat32Array(this.width);
+    this.columnDepthRef = new WasmFloat32Array(this.width);
     this.depthRef = new WasmFloat32Array(this.width * this.height);
 
     this.spriteTextureHashMap = new WasmTextureMap();
@@ -176,8 +176,8 @@ export class Camera {
       player.position.pitch,
       player.position.z,
       player.position.plane_y_initial,
-      this.ceilingFloorPixelsRef.ptr,
-      this.zBufferRef.ptr,
+      this.pixelsRef.ptr,
+      this.columnDepthRef.ptr,
       this.map.world,
       this.width,
       this.height,
@@ -194,9 +194,9 @@ export class Camera {
   }
 
   drawCanvas() {
-    // this.imageData.data.set(this.ceilingFloorPixelsRef.buffer);
+    // this.imageData.data.set(this.pixelsRef.buffer);
 
-    this.pixelsClampedArray.set(this.ceilingFloorPixelsRef.buffer);
+    this.pixelsClampedArray.set(this.pixelsRef.buffer);
     const img01 = new ImageData(
       this.pixelsClampedArray,
       this.width,

@@ -45,8 +45,8 @@ fn window(x: f64, y: f64, direction: Direction, length: f64) -> Segment {
     segment(SegmentKind::Window, x, y, direction, length)
 }
 
-fn tree(x: f64, y: f64) -> Billboard {
-    Billboard {
+fn tree(x: f64, y: f64) -> SpritePlacement {
+    SpritePlacement {
         x,
         y,
         texture: 6,
@@ -121,13 +121,13 @@ fn the_level_places_the_same_sprites_as_the_typescript_builder() {
     }
     for (cell, sprites) in &expected {
         let placed: Vec<_> = world
-            .billboards_at(cell)
+            .sprites_at(cell)
             .iter()
             .map(|s| (s.x, s.y, s.angle, s.height, s.r#type))
             .collect();
         assert_eq!(&placed, sprites, "cell {cell:?}");
     }
-    let total: usize = world.billboards.values().map(|b| b.sprites.len()).sum();
+    let total: usize = world.sprites.values().map(|b| b.sprites.len()).sum();
     assert_eq!(total, fixture.sprites.len());
 }
 
@@ -256,20 +256,20 @@ fn removing_a_segment_keeps_the_others_in_its_cells() {
 #[test]
 fn sprites_move_between_cells_and_can_be_removed() {
     let mut world = World::new(3);
-    let id = world.add_billboard(tree(0.5, 0.5));
-    assert_eq!(world.billboards_at(&(0, 0))[0].height, 150);
+    let id = world.add_sprite(tree(0.5, 0.5));
+    assert_eq!(world.sprites_at(&(0, 0))[0].height, 150);
 
     assert!(world.move_to(id, 2.5, 1.5));
-    assert!(world.billboards_at(&(0, 0)).is_empty() && !world.occupied(&(0, 0)));
-    assert_eq!(world.billboards_at(&(2, 1))[0].x, 2.5);
+    assert!(world.sprites_at(&(0, 0)).is_empty() && !world.occupied(&(0, 0)));
+    assert_eq!(world.sprites_at(&(2, 1))[0].x, 2.5);
 
     assert!(world.remove(id));
     assert!(!world.occupied(&(2, 1)));
     assert!(!world.move_to(id, 1.0, 1.0));
 
     // Sprites may stand outside the grid, like the trees around the level.
-    world.add_billboard(tree(-1.0, 0.5));
-    assert_eq!(world.billboards_at(&(-1, 0)).len(), 1);
+    world.add_sprite(tree(-1.0, 0.5));
+    assert_eq!(world.sprites_at(&(-1, 0)).len(), 1);
 }
 
 #[test]
