@@ -115,6 +115,7 @@ requestAnimationFrame
        camera.render(player)                        Rust render() into the shared pixel buffer
          └─ drawWeapon                              2D canvas drawImage
        camera.drawCanvas()                          copy buffer → ImageData → putImageData
+       recordPassTimes                              average per-pass milliseconds for the HUD
 ```
 
 - `camera.render` returns early until at least 20 texture entries are uploaded (12 types with
@@ -122,6 +123,11 @@ requestAnimationFrame
 - The FPS readout averages the last 10 `requestAnimationFrame` intervals, including frames
   skipped by the 10 ms gate, so it is only approximate.
 - Window resizes are not handled. The canvas and buffers keep their startup size.
+- **Per-pass timing.** `render` times each of its five passes with `performance.now()` and
+  writes the milliseconds to `Camera.passTimesRef`, a persistent 5-float buffer
+  (`RENDER_PASS_COUNT` in `lib.rs`, `RENDER_PASS_NAMES` in `camera.ts`). `GameLoop` adds the
+  present step, averages each over the last 60 updates into `passTimes`, and the minimap HUD
+  shows them under the FPS.
 
 ## 4. The world and the grid
 
@@ -403,7 +409,26 @@ whole axis-aligned footprint box, up to its top.
 
 ## 10. Cost model
 
-This section is based on reading the code. Nothing has been profiled yet. For scale, at 1280 × 720 there are about 920k pixels and 1,280 columns.
+For scale, at 1280 × 720 there are about 920k pixels and 1,280 columns.
+
+**Measured** with the HUD timings: headless Edge, 1254 × 627 canvas, 8 threads, dev build
+(`build:wasm`, profiling), standing at the spawn point and turning in quarter turns. Each
+value is a 60-update average in milliseconds. These numbers come from one machine; measure
+again on the target hardware before deciding anything.
+
+| View | Sky | Floors | Walls | Meshes | Sprites | Present |
+|---|---|---|---|---|---|---|
+| North, spawn view, no models | 0.9 | 5.2 | 0.5 | 0.0 | 2.3 | 1.0 |
+| Table and chair in view | 0.7 | 4.4–4.6 | 0.8 | 1.3 | 2.0 | 1.0 |
+| One woman in view, close | 0.7 | 4.4 | 0.5 | 3.4 | 1.7 | 0.8 |
+
+- The floor pass is the largest pass in every view.
+- One visible woman costs about 3.4 ms in the mesh pass.
+- The table and chair have under 160 triangles together, yet that view's mesh pass took
+  1.3 ms. The likely cause, not yet verified, is a woman whose cell a ray reached while she
+  was almost entirely off-screen, so her full triangle setup ran for few or no pixels.
+
+What each pass scales with, from reading the code:
 
 | Pass | Scales with | Notes |
 |---|---|---|
@@ -428,7 +453,7 @@ Per-frame bookkeeping is negligible next to the per-pixel passes:
 
 - **Weapon overlay.** `drawWeapon` draws on the 2D canvas inside `camera.render`. Then
   `drawCanvas` calls `putImageData`, which replaces every canvas pixel. In this order, the
-  weapon is overwritten every frame. Seen in the code; not checked in a browser.
+  weapon is overwritten every frame; headless Edge screenshots show no weapon.
 - **Fixed wall height.** All walls are 1 tall. Doors are wall-like slots that render with the
   door texture and never collide. They do not open.
 - **Window texture stretch.** A window's thickness is usually 0. Its texture is stretched

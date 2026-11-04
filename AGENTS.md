@@ -10,7 +10,8 @@
   documenting the mismatch.
 - Weigh a saving by what the work scales with (see the doc's cost model): per-frame
   bookkeeping that runs a few hundred times is noise next to per-pixel loops.
-- Label estimates as estimates; no per-pass timing exists yet.
+- Label estimates as estimates. Measure with the HUD's per-pass timings (milliseconds,
+  averaged over 60 updates) and report measured numbers separately from expectations.
 
 ## Architecture
 - Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
