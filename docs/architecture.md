@@ -239,7 +239,8 @@ steps, set in `Camera`. It is a step count, not a distance.
 
 ### 5.4 Models
 
-`draw_meshes` rasterizes only the models whose ids were collected in step 3:
+`draw_meshes` rasterizes only the models whose ids the wall raycast collected from the cells
+its rays reached ([5.3](#53-wall-raycast)):
 
 - triangle setup in parallel: camera transform, half-space rejects, back-face cull,
   near-plane clip and projection to screen planes;
