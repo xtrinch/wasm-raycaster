@@ -222,7 +222,7 @@ pub fn raycast_column(
     above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
     let mut occupied_cells: Vec<(i32, i32)> = Vec::new();
-    let mut wall_hits: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
+    let mut segment_hits: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width as f32)) - 1.0;
@@ -502,7 +502,7 @@ pub fn raycast_column(
 
                         // add to visible sprites
                         if !skip_sprites_and_writes {
-                            wall_hits.push(Sprite {
+                            segment_hits.push(Sprite {
                                 x: local_intersection_coord.x,
                                 y: local_intersection_coord.y,
                                 angle: 0,
@@ -573,7 +573,12 @@ pub fn raycast_column(
 
     let col_data = [0, column, 0, 0, 0, hit as i32, hit_type as i32];
 
-    (perp_wall_dist, col_data, occupied_cells.to_vec(), wall_hits)
+    (
+        perp_wall_dist,
+        col_data,
+        occupied_cells.to_vec(),
+        segment_hits,
+    )
 }
 
 #[inline(never)]
@@ -595,7 +600,7 @@ pub fn draw_walls_raycast(
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
-            let (perp_wall_dist, col_data, occupied_cells, wall_hits) = raycast_column(
+            let (perp_wall_dist, col_data, occupied_cells, segment_hits) = raycast_column(
                 column,
                 position,
                 map_data,
@@ -609,7 +614,7 @@ pub fn draw_walls_raycast(
                 above_walls,
             );
 
-            (perp_wall_dist, col_data, occupied_cells, wall_hits)
+            (perp_wall_dist, col_data, occupied_cells, segment_hits)
         })
         .collect();
 
@@ -634,14 +639,14 @@ pub fn draw_walls_raycast(
         sprite.distance = local_distance;
     });
 
-    for (idx, (perp_wall_dist, _, _, wall_hits)) in data.iter().enumerate() {
+    for (idx, (perp_wall_dist, _, _, segment_hits)) in data.iter().enumerate() {
         // Above walls, per-pixel roof depth replaces whole-column wall occlusion.
         column_depth[idx] = if above_walls {
             f32::INFINITY
         } else {
             *perp_wall_dist
         };
-        found_sprites.extend((*wall_hits).clone());
+        found_sprites.extend((*segment_hits).clone());
     }
 }
 

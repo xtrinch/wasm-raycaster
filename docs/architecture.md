@@ -213,7 +213,7 @@ steps, set in `Camera`. It is a step count, not a distance.
   that misses, the side face across its thickness. The intersection uses `geo` lines and
   `LineInterval::relate`. Doors and windows stretch their texture coordinate over their own
   length.
-- **Hits** go into the column's `wall_hits` as one-pixel-wide `Sprite`s, each carrying its
+- **Hits** go into the column's `segment_hits` as one-pixel-wide `Sprite`s, each carrying its
   texture type (wall, door or window), the hit `fract` and the Euclidean distance. A hit is
   pushed when it is nearer than the nearest wall or door found so far in its cell, and
   always when the eye is above wall tops. Windows never become the nearest wall, so every
@@ -235,7 +235,7 @@ steps, set in `Camera`. It is a step count, not a distance.
   - Model ids are collected, sorted and deduplicated.
   - `column_depth[column]` is set to the column's perpendicular wall distance, or ∞ when above
     walls.
-  - Every wall hit is appended to the sprite list.
+  - Every segment hit is appended to the sprite list.
 
 ### 5.4 Models
 
