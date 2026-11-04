@@ -1,7 +1,8 @@
 # CPU optimization, crate split and WebGPU roadmap
 
-These notes come from reading the code and have not been profiled yet. Add per-pass timing
-before acting on the order below.
+These notes come from reading the code. The HUD now shows per-pass timings; the first
+measurements are in the cost model of [architecture.md](architecture.md). They put the floor
+pass first, at about 4.5–5.5 ms, ahead of every item below, so check the order against them.
 
 ## 1. Remaining CPU optimizations
 

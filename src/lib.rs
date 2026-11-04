@@ -55,6 +55,7 @@ pub fn render(
     sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
     sprites_texture_meta_map: &WasmTextureMetaMap,
     depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
+    pass_times_array: *mut f32, // RENDER_PASS_COUNT milliseconds, one per pass in run order
 ) {
     let world = world.world();
     let map_data = world.grid();
@@ -141,7 +142,17 @@ pub fn render(
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
     let mut found_models: Vec<u32> = Vec::new();
 
+    let pass_times = unsafe { from_raw_parts_mut(pass_times_array, RENDER_PASS_COUNT) };
+    let mut pass_start = now_ms();
+    // Store the time since the previous mark as this pass's duration.
+    let mut end_pass = |pass: usize| {
+        let now = now_ms();
+        pass_times[pass] = (now - pass_start) as f32;
+        pass_start = now;
+    };
+
     draw_background_image_prescaled(&position, background, img_slice, width, height);
+    end_pass(0);
     draw_ceiling_floor_raycast(
         &position,
         img_slice,
@@ -165,6 +176,7 @@ pub fn render(
         roof_texture_meta.height,
         depth,
     );
+    end_pass(1);
     draw_walls_raycast(
         &position,
         column_depth,
@@ -177,6 +189,7 @@ pub fn render(
         &mut found_sprites,
         &mut found_models,
     );
+    end_pass(2);
     // Only models in cells the rays reached are drawn, like sprites.
     let visible_meshes: Vec<&[f32]> = found_models
         .iter()
@@ -193,6 +206,7 @@ pub fn render(
         light_range,
         map_light,
     );
+    end_pass(3);
     draw_sprites_wasm(
         &position,
         img_slice,
@@ -206,6 +220,17 @@ pub fn render(
         &mut found_sprites,
         depth,
     );
+    end_pass(4);
+}
+
+// Passes timed by render: sky, floors/ceilings/roofs, wall raycast, meshes, sprites.
+pub const RENDER_PASS_COUNT: usize = 5;
+
+// Milliseconds from the page's high-resolution clock; render runs on the main thread.
+fn now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map_or(0.0, |performance| performance.now())
 }
 
 pub fn raycast_column(
