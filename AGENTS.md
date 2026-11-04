@@ -1,5 +1,17 @@
 # Working in this repository
 
+## Before proposing a change
+- Read `docs/architecture.md` first. Its "Visibility: what is already culled" section
+  lists every place work is already skipped; models and sprites, for example, are already
+  culled per grid cell by the wall rays.
+- Read the function you want to change, not only its call site, and check the doc's claims
+  against the code. Update the doc in the same change when behavior it describes changes.
+- If a name does not say what the thing holds, rename it in the same change rather than
+  documenting the mismatch.
+- Weigh a saving by what the work scales with (see the doc's cost model): per-frame
+  bookkeeping that runs a few hundred times is noise next to per-pixel loops.
+- Label estimates as estimates; no per-pass timing exists yet.
+
 ## Architecture
 - Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
 - Keep rendering data structs and enums in `src/helpers.rs`, alongside the existing
@@ -56,7 +68,7 @@
   once in `Camera`, not each frame. Upload static geometry once at initialization.
 - Clip geometry against the near plane and screen before rasterization. Depth
   must resolve stairs, roofs, walls and sprites together, including roof views.
-- Reuse textures for geometric features. A billboard sprite is not a walkable
+- Reuse textures for geometric features. A sprite is not a walkable
   staircase. Share collision/support geometry with rendering.
 - Substep movement after slow frames to avoid tunnelling. Keep ground interiors,
   doors and windows usable when adding elevated movement.
