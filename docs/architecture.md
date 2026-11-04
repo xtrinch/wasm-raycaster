@@ -248,10 +248,11 @@ its rays reached ([5.3](#53-wall-raycast)):
 - a serial assignment to 8-row bands;
 - parallel filling, one band per task, with a per-pixel depth test and write.
 
-[models.md](models.md) documents this pass step by step. Each triangle has one colour,
-the `Kd` colour of its MTL material, and is lit by a fixed sun. Models never read texture
-images: the OBJ parser ignores texture coordinates, and the characters' textures are baked
-into per-triangle colours ahead of time by posebake.
+[models.md](models.md) documents this pass step by step. Each model triangle is
+filled with one solid colour, from its material's `Kd` in the MTL file, and shaded by a
+fixed sun. No image is wrapped around a model, unlike walls and floors. The women were
+originally textured; before the game runs, posebake picks one colour per triangle from their
+texture images and writes it into the MTL. Detail smaller than a triangle is therefore lost.
 
 ### 5.5 Walls, doors, windows and sprites
 
