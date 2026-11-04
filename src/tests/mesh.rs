@@ -151,13 +151,13 @@ fn mesh_then_stripe(mesh_y: f32, texture: TextureType, alpha: u8) -> [u8; 3] {
         distance: 2.0,
         distance_fixed: 0,
     });
-    let mut zbuffer = vec![f32::INFINITY; WIDTH as usize];
+    let mut column_depth = vec![f32::INFINITY; WIDTH as usize];
     draw_sprites_wasm(
         &camera(),
         &mut frame.image,
         WIDTH,
         HEIGHT,
-        &mut zbuffer,
+        &mut column_depth,
         1000,
         0,
         &textures,
@@ -288,12 +288,12 @@ fn only_models_in_cells_the_rays_reach_are_found() {
     position.map_x = 4;
     position.map_y = 4;
     let width = 40;
-    let mut zbuffer = vec![0.0; width as usize];
+    let mut column_depth = vec![0.0; width as usize];
     let mut sprites: SmallVec<[Sprite; 1024]> = SmallVec::new();
     let mut found = Vec::new();
     draw_walls_raycast(
         &position,
-        &mut zbuffer,
+        &mut column_depth,
         &grid,
         size,
         width,

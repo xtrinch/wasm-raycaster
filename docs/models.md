@@ -2,7 +2,7 @@
 
 This document follows a 3D model from its file to the screen. Models are drawn by a CPU
 triangle rasterizer in Rust (`draw_meshes` in `src/lib.rs`) and composited with the
-raycaster's floors, walls, windows and billboard sprites through one shared depth buffer.
+raycaster's floors, walls, windows and sprites through one shared depth buffer.
 They behave like sprites with a mesh: the grid decides whether they are drawn at all, and
 anything nearer covers them.
 
@@ -48,6 +48,20 @@ outfit, a head and hair, lower the arms from the T-pose and sample one colour pe
 from the textures into the MTL. `packages/app/models/README.md` lists the source files, and
 `pnpm run bake:models` regenerates the OBJ and MTL files.
 
+The baked files are ordinary OBJ and MTL that any viewer opens. They use materials as a
+colour palette instead of textures: `woman-peasant.mtl` defines 389 materials (`c0`, `c1`,
+...) that each hold only a `Kd` colour, the OBJ switches between them with `usemtl`, and it
+has no texture coordinates (`vt`). No image is wrapped around a model; walls, floors and
+sprites are the only things drawn from texture images.
+
+Because each triangle has one colour, a model shows only as much detail as it has
+triangles: anything smaller than a triangle, such as an eye, is lost. Detailed models
+therefore need many triangles (the women have about 21.7k and 32.2k), and every visible
+triangle costs setup work each frame. Simplifying a mesh for distance (level of detail)
+would lose colour detail along with shape. Supporting textures instead would mean keeping
+`vt` in `parseObj`, adding u and v to the triangle layout below, and sampling the texture in
+`draw_meshes`; the files would stay standard OBJ/MTL with `map_Kd` texture references.
+
 ## 2. Placing a model
 
 Models are placed in `level.ts` with `model()` from `levelBuilder.ts`. Each parsed mesh is
@@ -90,7 +104,8 @@ When a model is added or moved, `bake_model` turns it into world-space triangles
 3. **Scale** so the model is `height` tall, or by `scale`.
 4. **Position** so the footprint's centre is at `x`, `y` and the lowest point is at `z`.
 
-Each triangle is written as **21 floats** into the placed model's triangle list:
+Each triangle is written as **21 floats** into the placed model's triangle list. This is the
+engine's in-memory layout, like a vertex buffer; it is never written to a file:
 
 ```
 corner 1:  x y z  nx ny nz      world position and unit normal
@@ -106,7 +121,7 @@ layout. The model's footprint (min x, min y, max x, max y) is computed at the sa
 
 - The world keeps each placed model's triangles under its id; `render` reads them from the
   `WasmWorld` it is passed each frame.
-- Each model is registered in the same per-cell registry the billboard sprites use: its id is
+- Each model is registered in the same per-cell registry the sprites use: its id is
   listed in every grid cell the model's footprint touches. A footprint ending exactly on a cell line does not reach the next cell.
 
 ## 5. Which models are drawn: per-cell visibility
@@ -116,11 +131,11 @@ Models use the sprites' visibility mechanism:
 1. `raycast_column` casts one ray per screen column through the grid. On every 5th column, it
    records each cell the ray passes through that holds a sprite or a model
    (`World::occupied`).
-2. Rays stop at walls. Windows and doors let them continue.
+2. Rays stop at walls and doors. Windows let them continue.
 3. `draw_walls_raycast` collects the sprites and model ids from all recorded cells. A model in
    several reached cells is listed once.
-4. `render` slices each found model's triangle range out of the uploaded data and passes only
-   those runs to `draw_meshes`.
+4. `render` looks up each found model's triangles with `World::model_triangles` and passes
+   only those runs to `draw_meshes`.
 
 A model behind the camera, outside the view, or in a room hidden behind walls is never
 recorded, so it costs no per-triangle work. As with sprites, a distant model whose cell is
@@ -136,14 +151,14 @@ screen pixel: the distance of the nearest floor, ceiling, roof or model drawn th
 | Sky (`draw_background_image_prescaled`) | every pixel | no | no |
 | Floor, ceiling and roof (`draw_ceiling_floor_raycast`) | its pixels | resets every row to infinity, then stores surface depth | no |
 | Models (`draw_meshes`) | its pixels | yes | skips pixels behind floors, roofs and nearer triangles |
-| Walls, doors, windows, billboards (`draw_sprites_wasm`) | its pixels | no | skips pixels behind floors, roofs and models |
+| Walls, doors, windows, sprites (`draw_sprites_wasm`) | its pixels | no | skips pixels behind floors, roofs and models |
 
 Colour and depth are written together, pixel by pixel. No separate model image exists; a
 model's pixels appear in the frame one at a time among everything else, and at every moment a
 pixel's colour and its depth entry describe the same thing.
 
 The sprite pass draws farthest first, so it needs no depth writes of its own: nearer walls
-and billboards simply paint over farther ones. Window glass is semi-transparent and blends
+and sprites simply paint over farther ones. Window glass is semi-transparent and blends
 with whatever is already in the frame, so glass in front of a model shows the model behind it.
 
 ## 7. Distance units
@@ -233,12 +248,12 @@ For each row of a band that the triangle's bounding box covers:
    The skip test is `depth >= depth_buffer[pixel]` rearranged into `1 / depth` terms, so hidden
    pixels need no division. An infinite buffer entry (nothing drawn yet) never hides anything.
 
-## 11. Compositing with walls, windows and billboards
+## 11. Compositing with walls, windows and sprites
 
 After the mesh pass, `draw_sprites_wasm` draws wall, door and window stripes (one pixel wide,
-one per screen column per hit) and billboard sprites, farthest first. Each part has one depth
+one per screen column per hit) and sprites, farthest first. Each part has one depth
 for its whole height, `projection.distance` from `translate_coordinate_to_camera`: the ray's
-hit point for a stripe, the centre for a billboard. For every pixel it would cover:
+hit point for a stripe, the centre for a sprite. For every pixel it would cover:
 
 ```
 if sprite.depth >= depth_buffer[pixel]: skip    // a floor, roof or model is nearer
@@ -247,12 +262,13 @@ if sprite.depth >= depth_buffer[pixel]: skip    // a floor, roof or model is nea
 Otherwise it writes over the model's colour; window glass blends with it. A wall, door or
 window stripe whose every pixel is behind the buffer is skipped entirely.
 
-A billboard has one depth for its whole height, so it behaves as a flat card at its centre's
+A sprite has one depth for its whole height, so it behaves as a flat card at its centre's
 distance: a model standing partly inside a tree is cut off sharply at that distance.
 
 ## Limits
 
-- Models are coloured per triangle; textures are not sampled.
+- Models have one colour per triangle and no texture images, so detail costs triangles (see
+  [section 1](#1-files-obj-and-mtl)).
 - A solid model collides as its whole bounding box, so a bed's headboard sets where feet
   stand on the mattress.
 - Models are found through cells recorded on every 5th screen column, like sprites.

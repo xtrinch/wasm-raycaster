@@ -44,7 +44,7 @@ pub fn render(
     z: f32,
     plane_y_initial: f32,
     render_img: *mut u8,
-    zbuffer_array: *mut f32,
+    column_depth_array: *mut f32,
     world: &WasmWorld, // grid, sprites and models
     width: i32,
     height: i32,
@@ -76,7 +76,7 @@ pub fn render(
     let img_slice =
         unsafe { std::slice::from_raw_parts_mut(render_img, width as usize * height as usize * 4) };
 
-    let zbuffer = unsafe { from_raw_parts_mut(zbuffer_array, width as usize) };
+    let column_depth = unsafe { from_raw_parts_mut(column_depth_array, width as usize) };
     // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
     // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
     // sprite pass then skips wall, window and sprite pixels behind either.
@@ -136,7 +136,7 @@ pub fn render(
         .get(&(TextureType::ROOF as i32, 0))
         .unwrap();
 
-    // Filled by the wall raycast from the cells its rays reach: billboards (and window
+    // Filled by the wall raycast from the cells its rays reach: sprites (and window
     // glass) for the column-based sprite pass, model ids for the triangle mesh pass.
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
     let mut found_models: Vec<u32> = Vec::new();
@@ -167,7 +167,7 @@ pub fn render(
     );
     draw_walls_raycast(
         &position,
-        zbuffer,
+        column_depth,
         map_data,
         map_width,
         width,
@@ -198,7 +198,7 @@ pub fn render(
         img_slice,
         width,
         height,
-        zbuffer,
+        column_depth,
         light_range,
         map_light,
         sprites_texture_map,
@@ -221,8 +221,8 @@ pub fn raycast_column(
     stop_at_window: bool,
     above_walls: bool, // Continue past nearby walls to find walls visible beyond their tops.
 ) -> (f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>) {
-    let mut met_coords: Vec<(i32, i32)> = Vec::new();
-    let mut window_sprites: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
+    let mut occupied_cells: Vec<(i32, i32)> = Vec::new();
+    let mut segment_hits: SmallVec<[Sprite; 2]> = SmallVec::with_capacity(2);
 
     // x-coordinate in camera space
     let camera_x = (2.0 * (column as f32) / (width as f32)) - 1.0;
@@ -502,7 +502,7 @@ pub fn raycast_column(
 
                         // add to visible sprites
                         if !skip_sprites_and_writes {
-                            window_sprites.push(Sprite {
+                            segment_hits.push(Sprite {
                                 x: local_intersection_coord.x,
                                 y: local_intersection_coord.y,
                                 angle: 0,
@@ -534,7 +534,7 @@ pub fn raycast_column(
         // TODO: check more smartly
         if !skip_sprites_and_writes && column % 5 == 0 {
             if render_cells.is_some_and(|cells| cells.occupied(&(map_x, map_y))) {
-                let _ = met_coords.push((map_x, map_y));
+                let _ = occupied_cells.push((map_x, map_y));
             }
         }
 
@@ -576,8 +576,8 @@ pub fn raycast_column(
     (
         perp_wall_dist,
         col_data,
-        met_coords.to_vec(),
-        window_sprites,
+        occupied_cells.to_vec(),
+        segment_hits,
     )
 }
 
@@ -585,7 +585,7 @@ pub fn raycast_column(
 #[no_mangle]
 pub fn draw_walls_raycast(
     position: &Position,
-    zbuffer: &mut [f32],
+    column_depth: &mut [f32],
     map_data: &[u64],
     map_width: usize, // Needed to index into 1D map
     width: i32,
@@ -600,7 +600,7 @@ pub fn draw_walls_raycast(
     let data: Vec<(f32, [i32; 7], Vec<(i32, i32)>, SmallVec<[Sprite; 2]>)> = (0..width)
         .into_par_iter()
         .map(|column| {
-            let (perp_wall_dist, col_data, met_coords, window_sprites) = raycast_column(
+            let (perp_wall_dist, col_data, occupied_cells, segment_hits) = raycast_column(
                 column,
                 position,
                 map_data,
@@ -614,17 +614,17 @@ pub fn draw_walls_raycast(
                 above_walls,
             );
 
-            (perp_wall_dist, col_data, met_coords, window_sprites)
+            (perp_wall_dist, col_data, occupied_cells, segment_hits)
         })
         .collect();
 
-    let uniqued_met_coords: HashSet<(i32, i32)> = data
+    let reached_cells: HashSet<(i32, i32)> = data
         .iter()
-        .flat_map(|(_, _, met_coords, _)| met_coords.iter().copied())
+        .flat_map(|(_, _, occupied_cells, _)| occupied_cells.iter().copied())
         .collect();
 
-    for cell in &uniqued_met_coords {
-        found_sprites.extend(render_cells.billboards_at(cell).iter().cloned());
+    for cell in &reached_cells {
+        found_sprites.extend(render_cells.sprites_at(cell).iter().cloned());
         found_models.extend_from_slice(render_cells.models_at(cell));
     }
     // A model covering several reached cells is drawn once.
@@ -639,14 +639,14 @@ pub fn draw_walls_raycast(
         sprite.distance = local_distance;
     });
 
-    for (idx, (perp_wall_dist, _, _, window_sprites)) in data.iter().enumerate() {
+    for (idx, (perp_wall_dist, _, _, segment_hits)) in data.iter().enumerate() {
         // Above walls, per-pixel roof depth replaces whole-column wall occlusion.
-        zbuffer[idx] = if above_walls {
+        column_depth[idx] = if above_walls {
             f32::INFINITY
         } else {
             *perp_wall_dist
         };
-        found_sprites.extend((*window_sprites).clone());
+        found_sprites.extend((*segment_hits).clone());
     }
 }
 
@@ -879,7 +879,7 @@ pub fn draw_sprites_wasm(
     img_slice: &mut [u8],
     width: i32,
     height: i32,
-    zbuffer: &mut [f32],
+    column_depth: &mut [f32],
     light_range: i32,
     map_light: i32,
     sprites_texture_map: &WasmTextureMap,
@@ -1004,7 +1004,7 @@ pub fn draw_sprites_wasm(
             // advance the non-visible parts
             let mut idx_start = draw_start_x;
             while idx_start < width as i32
-                && (projection.distance >= zbuffer[idx_start as usize])
+                && (projection.distance >= column_depth[idx_start as usize])
                 && draw_start_x + 1 < draw_end_x
             {
                 draw_start_x += 1;
@@ -1013,7 +1013,7 @@ pub fn draw_sprites_wasm(
 
             let mut idx_end = draw_end_x;
             while idx_end >= 0
-                && (projection.distance >= zbuffer[idx_end as usize])
+                && (projection.distance >= column_depth[idx_end as usize])
                 && draw_end_x - 1 > draw_start_x
             {
                 draw_end_x -= 1;
