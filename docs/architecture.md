@@ -127,7 +127,9 @@ requestAnimationFrame
   writes the milliseconds to `Camera.passTimesRef`, a persistent 5-float buffer
   (`RENDER_PASS_COUNT` in `lib.rs`, `RENDER_PASS_NAMES` in `camera.ts`). `GameLoop` adds the
   present step, averages each over the last 60 updates into `passTimes`, and the minimap HUD
-  shows them under the FPS.
+  shows them under the FPS. `pnpm run measure` (`scripts/measure-passes.mjs`) reads them in
+  headless Edge or Chrome from a running dev server, at the spawn view and after each of
+  four quarter turns, and saves a screenshot of each view.
 
 ## 4. The world and the grid
 
@@ -411,7 +413,7 @@ whole axis-aligned footprint box, up to its top.
 
 For scale, at 1280 × 720 there are about 920k pixels and 1,280 columns.
 
-**Measured** with the HUD timings: headless Edge, 1254 × 627 canvas, 8 threads, dev build
+**Measured** with `pnpm run measure`: headless Edge, 1254 × 627 canvas, 8 threads, dev build
 (`build:wasm`, profiling), standing at the spawn point and turning in quarter turns. Each
 value is a 60-update average in milliseconds. These numbers come from one machine; measure
 again on the target hardware before deciding anything.

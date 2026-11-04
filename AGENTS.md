@@ -53,6 +53,8 @@
   nightly Rust, rust-src and the wasm32-unknown-unknown target.
 - `pnpm run build:app` type-checks and builds the frontend.
 - `pnpm run dev` serves Vite with cross-origin isolation for WASM threads.
+- `pnpm run measure [url]` reads the HUD's per-pass timings in headless Edge or Chrome
+  from a running dev server, at four headings, and saves a screenshot of each.
 - `cargo fmt --check` checks Rust formatting. Use targeted tests for geometry
   and movement changes, then check the production build where tools permit.
 - Keep new Rust test bodies in `src/tests/`; implementation files only declare their

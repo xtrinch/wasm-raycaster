@@ -12,7 +12,8 @@
     "bake:models": "posebake packages/app/models/woman-peasant.toml && posebake packages/app/models/woman-ranger.toml",
     "start": "pnpm --filter app run start",
     "dev": "pnpm --filter app run run-dev",
-    "preview": "pnpm --filter app run preview"
+    "preview": "pnpm --filter app run preview",
+    "measure": "node --experimental-websocket scripts/measure-passes.mjs"
   },
   "keywords": [],
   "author": "",
