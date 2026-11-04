@@ -252,7 +252,8 @@ its rays reached ([5.3](#53-wall-raycast)):
 filled with one solid colour, from its material's `Kd` in the MTL file, and shaded by a
 fixed sun. No image is wrapped around a model, unlike walls and floors. The women were
 originally textured; before the game runs, posebake picks one colour per triangle from their
-texture images and writes it into the MTL. Detail smaller than a triangle is therefore lost.
+texture images and writes it into the MTL. Detail smaller than a triangle is therefore lost. [models.md](models.md) section 1 covers
+the file format and this trade-off.
 
 ### 5.5 Walls, doors, windows and sprites
 

@@ -48,6 +48,20 @@ outfit, a head and hair, lower the arms from the T-pose and sample one colour pe
 from the textures into the MTL. `packages/app/models/README.md` lists the source files, and
 `pnpm run bake:models` regenerates the OBJ and MTL files.
 
+The baked files are ordinary OBJ and MTL that any viewer opens. They use materials as a
+colour palette instead of textures: `woman-peasant.mtl` defines 389 materials (`c0`, `c1`,
+...) that each hold only a `Kd` colour, the OBJ switches between them with `usemtl`, and it
+has no texture coordinates (`vt`). No image is wrapped around a model; walls, floors and
+sprites are the only things drawn from texture images.
+
+Because each triangle has one colour, a model shows only as much detail as it has
+triangles: anything smaller than a triangle, such as an eye, is lost. Detailed models
+therefore need many triangles (the women have about 21.7k and 32.2k), and every visible
+triangle costs setup work each frame. Simplifying a mesh for distance (level of detail)
+would lose colour detail along with shape. Supporting textures instead would mean keeping
+`vt` in `parseObj`, adding u and v to the triangle layout below, and sampling the texture in
+`draw_meshes`; the files would stay standard OBJ/MTL with `map_Kd` texture references.
+
 ## 2. Placing a model
 
 Models are placed in `level.ts` with `model()` from `levelBuilder.ts`. Each parsed mesh is
@@ -90,7 +104,8 @@ When a model is added or moved, `bake_model` turns it into world-space triangles
 3. **Scale** so the model is `height` tall, or by `scale`.
 4. **Position** so the footprint's centre is at `x`, `y` and the lowest point is at `z`.
 
-Each triangle is written as **21 floats** into the placed model's triangle list:
+Each triangle is written as **21 floats** into the placed model's triangle list. This is the
+engine's in-memory layout, like a vertex buffer; it is never written to a file:
 
 ```
 corner 1:  x y z  nx ny nz      world position and unit normal
@@ -252,7 +267,8 @@ distance: a model standing partly inside a tree is cut off sharply at that dista
 
 ## Limits
 
-- Models are coloured per triangle; textures are not sampled.
+- Models have one colour per triangle and no texture images, so detail costs triangles (see
+  [section 1](#1-files-obj-and-mtl)).
 - A solid model collides as its whole bounding box, so a bed's headboard sets where feet
   stand on the mattress.
 - Models are found through cells recorded on every 5th screen column, like sprites.
