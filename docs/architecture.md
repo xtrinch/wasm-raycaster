@@ -70,6 +70,11 @@ docs/                        this file, models.md, optimization-roadmap.md, stai
 - **Eye height** is `z + 0.5`. `move_vertical` and the renderers all assume this.
 - **Cells** are `(floor(x), floor(y))`, typed `Cell = (i32, i32)`. Cells can be negative or
   lie outside the grid. Grid reads outside the grid return 0, which means empty with no floor.
+- **Segments and slots.** A segment is a wall, door or window placement: a straight piece
+  with a position, direction, length and thickness (`SegmentKind`, `segment()` in
+  `levelBuilder.ts`). A pillar is a square wall segment. A segment that crosses several
+  cells is split into one piece per cell, and each cell stores up to three pieces in the
+  three slots of its `u64`.
 - **Grid precision.** Wall, door and window geometry is stored in tenths of a cell. `World`
   rejects any position, length or thickness that is not a multiple of 0.1.
 - **Directions.** An `east` segment runs along y and a `north` segment runs along x. The
