@@ -115,8 +115,8 @@ The wall raycast measures 0.5–0.8 ms, so these are small however they turn out
 - **Per-column allocations and hashing.** `raycast_column` allocates `occupied_cells` and
   copies it with `.to_vec()`, the hits are cloned, and the cells go into a SipHash
   `HashSet`. This is per-frame bookkeeping of a few hundred entries.
-- **SIMD.** `#![feature(portable_simd)]` is enabled but unused. Revisit for the floor
-  texel loop once items 1.1.1–1.1.3 have changed its shape.
+- **SIMD.** There is no SIMD code; the unused `portable_simd` feature was removed in the
+  crate split, which also keeps the engine on stable Rust. Revisit for the floor texel loop once items 1.1.1–1.1.3 have changed its shape.
 
 Skip optimizations that only help the finite map, such as whole-map BVHs or precomputed
 visibility, because the map is meant to become infinite.
@@ -166,10 +166,10 @@ The goal is to publish the raycaster as `raycast-engine` (free on crates.io as o
 
 ### Steps
 
-1. **Snapshot tests.** Render fixed scenes natively through `render`, built with `World`
+1. **Snapshot tests** (done). Render fixed scenes natively through `render`, built with `World`
    and procedural textures, and compare them with reference PNGs: walls, a door and a
    window; a sprite behind glass; a mesh; a roof seen from above while pitched down.
-2. **Workspace split.**
+2. **Workspace split** (done).
    - `crates/raycast-engine` holds the world, the render passes and collision, with no
      `wasm-bindgen`, `js-sys` or `web-sys`. It must build on stable:
      `cargo +stable check -p raycast-engine`.
@@ -177,8 +177,8 @@ The goal is to publish the raycaster as `raycast-engine` (free on crates.io as o
      wrappers) and the raw-pointer `render` entry point.
    - Replace `js_sys::Math::atan2` with `f64::atan2`, the only browser call in the render
      passes.
-   - Per-pass timing uses `web_sys` `performance.now()`. Move the timing into the wasm
-     wrapper, or pass in a clock, so the engine stays browser-free.
+   - Per-pass timing used `web_sys` `performance.now()`. `render` now takes a clock, and
+     the wasm wrapper passes `performance.now()`.
    - Drop the unused `#![feature]`s from the engine.
    - `TextureType` is defined in both crates for now, with a test that the values match.
 3. **API cleanup.** Textures supplied by the caller instead of `TextureType` and the

@@ -41,8 +41,10 @@ Before you begin, ensure you have the following installed:
 ├── packages/
 │   ├── app/          # Frontend application
 │   └── wasm/     # Generated WASM output
-├── src/              # Rust source code
-│   └── lib.rs        # Rust WASM module source
+├── crates/
+│   └── raycast-engine/  # Rust engine: World, rendering, collision
+├── src/              # Rust game crate
+│   └── lib.rs        # Rust WASM module source: the API the app calls
 ├── package.json      # Workspace configuration
 └── pnpm-workspace.yaml  # PNPM workspace configuration
 ```
@@ -80,7 +82,9 @@ pnpm run start
 ## Development Workflow
 
 ### Rust WASM Module
-The Rust code in `src/lib.rs` contains the WebAssembly module implementation. When you run `build:wasm`, `wasm-pack` compiles this code and generates:
+The renderer, world and collision live in the `raycast-engine` crate
+(`crates/raycast-engine`). The root crate's `src/lib.rs` is the WebAssembly module: the
+wasm-bindgen API the app calls, built on the engine. When you run `build:wasm`, `wasm-pack` compiles this code and generates:
 - WebAssembly binary (`.wasm`)
 - JavaScript bindings
 - TypeScript type definitions
