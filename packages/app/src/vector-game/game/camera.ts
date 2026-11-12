@@ -13,6 +13,9 @@ import { Bitmap } from "./bitmap";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
 
+// The passes render times, in the order it runs them; RENDER_PASS_COUNT in src/lib.rs.
+export const RENDER_PASS_NAMES = ["sky", "floors", "walls", "meshes", "sprites"];
+
 export interface Sprite {
   x: number;
   y: number;
@@ -37,6 +40,8 @@ export class Camera {
   public columnDepthRef: WasmFloat32Array;
   // Nearest floor, ceiling or roof depth per pixel.
   public depthRef: WasmFloat32Array; // nearest floor, ceiling, roof or model depth per pixel
+  // Milliseconds each render pass took last frame, in RENDER_PASS_NAMES order.
+  public passTimesRef: WasmFloat32Array;
   public initialized: boolean;
   public spriteTextureHashMap: WasmTextureMap;
   public backgroundRef: BackgroundImageWasm;
@@ -74,6 +79,7 @@ export class Camera {
 
     this.columnDepthRef = new WasmFloat32Array(this.width);
     this.depthRef = new WasmFloat32Array(this.width * this.height);
+    this.passTimesRef = new WasmFloat32Array(RENDER_PASS_NAMES.length);
 
     this.spriteTextureHashMap = new WasmTextureMap();
     this.populateSpriteTextureHashMap();
@@ -187,7 +193,8 @@ export class Camera {
       this.backgroundRef,
       this.spriteTextureHashMap,
       this.spriteTextureMetaHashMap,
-      this.depthRef.ptr
+      this.depthRef.ptr,
+      this.passTimesRef.ptr
     );
 
     this.drawWeapon(player.weapon, player.paces);

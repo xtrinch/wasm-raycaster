@@ -1,9 +1,14 @@
 import { max, mean } from "lodash";
 import { makeAutoObservable } from "mobx";
-import { Camera } from "./camera";
+import { Camera, RENDER_PASS_NAMES } from "./camera";
 import { Controls } from "./controls";
 import { GridMap } from "./gridMap";
 import { Player } from "./player";
+
+// Timed steps of an update: the render passes, then copying the frame to the canvas.
+export const TIMED_PASS_NAMES = [...RENDER_PASS_NAMES, "present"];
+// Updates averaged into passTimes.
+const TIMING_FRAMES = 60;
 
 export class GameLoop {
   public lastTime = 0;
@@ -15,6 +20,9 @@ export class GameLoop {
   public fps: number;
   public lastNFrameTimes: number[];
   public frameTime: number;
+  // Average milliseconds per TIMED_PASS_NAMES step over the last TIMING_FRAMES updates.
+  public passTimes: number[] = [];
+  private recentPassTimes: number[][] = [];
 
   constructor() {
     this.map = new GridMap(12);
@@ -67,7 +75,19 @@ export class GameLoop {
     // this.map.update(this.frameTime);
     this.player.update(this.controls.states, this.map, this.frameTime);
     this.camera.render(this.player);
+    const presentStart = performance.now();
     this.camera.drawCanvas();
+    this.recordPassTimes([...this.camera.passTimesRef.buffer, performance.now() - presentStart]);
+  }
+
+  recordPassTimes(times: number[]) {
+    this.recentPassTimes.push(times);
+    if (this.recentPassTimes.length > TIMING_FRAMES) {
+      this.recentPassTimes.shift();
+    }
+    this.passTimes = TIMED_PASS_NAMES.map((_, pass) =>
+      mean(this.recentPassTimes.map((frame) => frame[pass]))
+    );
   }
 
   findSpawnPoint() {
