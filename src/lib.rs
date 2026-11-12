@@ -1,22 +1,23 @@
-#![feature(map_try_insert)]
-#![feature(portable_simd)]
 use helpers::{
-    get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, BackgroundImageWasm,
-    CollisionBox, CollisionCells, Position, ScreenTriangle, Sprite, SpritePart, Texture,
-    TextureType, TranslationResult, WasmTextureMap, WasmTextureMetaMap, WasmWorld, FIXED_ONE,
-    FIXED_SHIFT,
+    get_bits, get_grid_value, has_bit_set, to_fixed, to_fixed_i64, ScreenTriangle, SpritePart,
+    Texture, TranslationResult, FIXED_ONE, FIXED_SHIFT,
 };
-use js_sys::Float32Array;
-use js_sys::Math::atan2;
+pub use helpers::{
+    Background, CollisionBox, CollisionCells, Position, Sprite, TextureData, TextureMap,
+    TextureMetaMap, TextureType,
+};
 use smallvec::SmallVec;
-use wasm_bindgen::prelude::*;
-use world::World;
+pub use world::World;
+pub use world_helpers::{
+    Area, Direction, Mesh, Model, Placement, Segment, SegmentKind, SpritePlacement,
+};
 
 use rayon::prelude::*;
 
 #[cfg(feature = "parallel")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+mod bindings;
 mod helpers;
 mod line_intersection;
 mod world;
@@ -26,62 +27,33 @@ use line_intersection::LineInterval;
 use std::collections::HashSet;
 use std::f32::consts::PI;
 use std::{collections::HashMap, f32::MAX};
-use web_sys::console;
-// let js: JsValue = vec![found_sprites_length as f32].into();
-// console::log_2(&"Znj?".into(), &js);
-use std::slice::from_raw_parts_mut;
 
-#[wasm_bindgen]
+// Draws one frame into img_slice (RGBA, width x height), column_depth (one per column) and
+// depth (one per pixel), and stores each pass's duration in pass_times, timed with now_ms.
 #[inline(never)]
 pub fn render(
-    x: f32,
-    y: f32,
-    dir_x: f32,
-    dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-    pitch: i32,
-    z: f32,
-    plane_y_initial: f32,
-    render_img: *mut u8,
-    column_depth_array: *mut f32,
-    world: &WasmWorld, // grid, sprites and models
+    position: &Position,
+    world: &World, // grid, sprites and models
+    img_slice: &mut [u8],
+    column_depth: &mut [f32],
+    // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
+    // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
+    // sprite pass then skips wall, window and sprite pixels behind either.
+    depth: &mut [f32],
+    pass_times: &mut [f32], // RENDER_PASS_COUNT milliseconds, one per pass in run order
     width: i32,
     height: i32,
     light_range: i32,
     range: i8,
     map_light: i32,
-    background: &BackgroundImageWasm,
-    sprites_texture_map: &WasmTextureMap, // contains textures along with angled textures
-    sprites_texture_meta_map: &WasmTextureMetaMap,
-    depth_array: *mut f32, // Nearest floor, ceiling, roof or mesh depth per pixel
-    pass_times_array: *mut f32, // RENDER_PASS_COUNT milliseconds, one per pass in run order
+    background: &Background,
+    sprites_texture_map: &TextureMap, // contains textures along with angled textures
+    sprites_texture_meta_map: &TextureMetaMap,
+    now_ms: impl Fn() -> f64, // a clock in milliseconds, used only for pass_times
 ) {
-    let world = world.world();
+    let position = *position;
     let map_data = world.grid();
     let map_width = world.size();
-    let position = Position {
-        x,
-        y,
-        dir_x,
-        dir_y,
-        plane_x,
-        plane_y,
-        pitch,
-        z,
-        plane_y_initial,
-        map_x: x.floor() as i32,
-        map_y: y.floor() as i32,
-    };
-
-    let img_slice =
-        unsafe { std::slice::from_raw_parts_mut(render_img, width as usize * height as usize * 4) };
-
-    let column_depth = unsafe { from_raw_parts_mut(column_depth_array, width as usize) };
-    // One per-pixel depth buffer, built up by the passes in order: the floor pass resets it
-    // and stores floor, ceiling and roof depth; the mesh pass adds nearer mesh pixels; the
-    // sprite pass then skips wall, window and sprite pixels behind either.
-    let depth = unsafe { from_raw_parts_mut(depth_array, width as usize * height as usize) };
 
     let wall_texture_meta = sprites_texture_meta_map
         .get_map()
@@ -142,7 +114,6 @@ pub fn render(
     let mut found_sprites: SmallVec<[Sprite; 1024]> = vec![].into();
     let mut found_models: Vec<u32> = Vec::new();
 
-    let pass_times = unsafe { from_raw_parts_mut(pass_times_array, RENDER_PASS_COUNT) };
     let mut pass_start = now_ms();
     // Store the time since the previous mark as this pass's duration.
     let mut end_pass = |pass: usize| {
@@ -207,7 +178,7 @@ pub fn render(
         map_light,
     );
     end_pass(3);
-    draw_sprites_wasm(
+    draw_sprites(
         &position,
         img_slice,
         width,
@@ -225,13 +196,6 @@ pub fn render(
 
 // Passes timed by render: sky, floors/ceilings/roofs, wall raycast, meshes, sprites.
 pub const RENDER_PASS_COUNT: usize = 5;
-
-// Milliseconds from the page's high-resolution clock; render runs on the main thread.
-fn now_ms() -> f64 {
-    web_sys::window()
-        .and_then(|window| window.performance())
-        .map_or(0.0, |performance| performance.now())
-}
 
 pub fn raycast_column(
     column: i32,
@@ -607,7 +571,6 @@ pub fn raycast_column(
 }
 
 #[inline(never)]
-#[no_mangle]
 pub fn draw_walls_raycast(
     position: &Position,
     column_depth: &mut [f32],
@@ -711,7 +674,6 @@ fn inside_wall_footprint(value: u64, x: f32, y: f32) -> bool {
 }
 
 #[inline(never)]
-#[no_mangle]
 pub fn draw_ceiling_floor_raycast(
     position: &Position,
     img_slice: &mut [u8],
@@ -898,8 +860,7 @@ pub fn translate_coordinate_to_camera(
 }
 
 #[inline(never)]
-#[no_mangle]
-pub fn draw_sprites_wasm(
+pub fn draw_sprites(
     position: &Position,
     img_slice: &mut [u8],
     width: i32,
@@ -907,8 +868,8 @@ pub fn draw_sprites_wasm(
     column_depth: &mut [f32],
     light_range: i32,
     map_light: i32,
-    sprites_texture_map: &WasmTextureMap,
-    texture_array: &WasmTextureMetaMap,
+    sprites_texture_map: &TextureMap,
+    texture_array: &TextureMetaMap,
     found_sprites: &mut SmallVec<[Sprite; 1024]>,
     depth: &[f32], // floor, ceiling, roof and mesh depth per pixel
 ) {
@@ -997,7 +958,7 @@ pub fn draw_sprites_wasm(
                 });
             }
 
-            let angle = atan2(sprite.dx as f64, sprite.dy as f64);
+            let angle = (sprite.dx as f64).atan2(sprite.dy as f64);
 
             // will return from -180 to 180
             let angle_i = (((angle).to_degrees() as i32) + 180 + sprite.angle) % 360;
@@ -1394,10 +1355,9 @@ mod mesh_tests;
 mod collision_tests;
 
 #[inline(never)]
-#[no_mangle]
 pub fn draw_background_image_prescaled(
     position: &Position,
-    background: &BackgroundImageWasm,
+    background: &Background,
     img_slice: &mut [u8],
     width: i32,
     height: i32,
@@ -1450,8 +1410,7 @@ pub fn draw_background_image_prescaled(
         });
 }
 
-// Apply vertical movement and collisions; return [feet height, landed flag].
-#[wasm_bindgen]
+// Apply vertical movement and collisions; return the feet height and whether they landed.
 pub fn move_vertical(
     x: f32,               // Player's world x coordinate.
     y: f32,               // Player's world y coordinate.
@@ -1459,9 +1418,8 @@ pub fn move_vertical(
     distance: f32,        // Requested vertical travel in world units; positive means up.
     fall_distance: f32,   // Downward travel to apply when gravity is active.
     jetpack_active: bool, // Hover instead of applying gravity while airborne.
-    world: &WasmWorld,    // Grid and solid models.
-) -> Float32Array {
-    let world = world.world();
+    world: &World,        // Grid and solid models.
+) -> (f32, bool) {
     let collision = world.solids();
     let roof = roof_height_at(x, y, world.grid(), world.size());
     // A roof supports feet above it; underneath it, feet stand on the ground or a solid model.
@@ -1485,7 +1443,7 @@ pub fn move_vertical(
         // Gravity stops at the walking surface; hovering disables it until landing.
         next_z = (next_z - fall_distance).max(support);
     }
-    Float32Array::from(&[next_z, if landed { 1.0 } else { 0.0 }][..])
+    (next_z, landed)
 }
 
 fn roof_height_at(x: f32, y: f32, grid: &[u64], size: usize) -> f32 {
@@ -1609,19 +1567,18 @@ fn walk_step(
         .unwrap_or((x, y))
 }
 
-// Move along the view direction unless a wall, window or solid model is in the way.
-#[wasm_bindgen]
+// Move along the view direction unless a wall, window or solid model is in the way; return
+// the new x and y.
 pub fn walk(
     x: f32,
     y: f32,
     dir_x: f32,
     dir_y: f32,
-    z: f32,            // Feet height; feet at or above a box's top pass over it.
-    distance: f32,     // Requested travel in world units; negative walks back.
-    world: &WasmWorld, // Grid and solid models.
-) -> Float32Array {
-    let world = world.world();
-    let (x, y) = walk_step(
+    z: f32,        // Feet height; feet at or above a box's top pass over it.
+    distance: f32, // Requested travel in world units; negative walks back.
+    world: &World, // Grid and solid models.
+) -> (f32, f32) {
+    walk_step(
         x,
         y,
         dir_x * distance,
@@ -1630,29 +1587,5 @@ pub fn walk(
         world.grid(),
         world.size() as i32,
         world.solids(),
-    );
-    Float32Array::from(&[x, y][..])
-}
-
-#[wasm_bindgen]
-pub fn rotate_view(
-    frame_time: f32,
-    multiplier: i32,
-    dir_x: f32,
-    dir_y: f32,
-    plane_x: f32,
-    plane_y: f32,
-) -> Float32Array {
-    let rot_speed = 0.8 * PI * frame_time * multiplier as f32;
-
-    let (sin_r, cos_r) = rot_speed.sin_cos(); // more efficient than separate .sin() and .cos()
-
-    let new_dir_x = dir_x * cos_r - dir_y * sin_r;
-    let new_dir_y = dir_x * sin_r + dir_y * cos_r;
-
-    let new_plane_x = plane_x * cos_r - plane_y * sin_r;
-    let new_plane_y = plane_x * sin_r + plane_y * cos_r;
-
-    // Avoid heap allocation by creating a fixed-size array
-    Float32Array::from(&[new_dir_x, new_dir_y, new_plane_x, new_plane_y][..])
+    )
 }

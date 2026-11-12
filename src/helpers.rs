@@ -1,12 +1,7 @@
-use js_sys::Float32Array;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, slice::from_raw_parts};
-use wasm_bindgen::prelude::*;
+use std::collections::HashMap;
 
-use crate::world::World;
-use crate::world_helpers::{Mesh, Placement};
-
-#[wasm_bindgen]
+// Texture ids the render passes look up. The game's wasm TextureType mirrors these values.
 pub enum TextureType {
     WALL = 1,
     CEILING = 2,
@@ -23,8 +18,8 @@ pub enum TextureType {
     ROOF = 13,
 }
 
-#[wasm_bindgen]
-pub struct WasmTextureMetaMap {
+// Each texture's size and number of view angles, by TextureType value.
+pub struct TextureMetaMap {
     map: HashMap<i32, TextureData>,
 }
 
@@ -36,17 +31,14 @@ pub struct TextureData {
     // pub data: Vec<u8>,
 }
 
-#[wasm_bindgen]
-impl WasmTextureMetaMap {
-    #[wasm_bindgen(constructor)]
+impl TextureMetaMap {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
-    #[wasm_bindgen(js_name = populateFromArray)]
-    pub fn populate_from_array(&mut self, key: i32, width: i32, height: i32, angles: u32) {
+    pub fn insert(&mut self, key: i32, width: i32, height: i32, angles: u32) {
         self.map.insert(
             key,
             TextureData {
@@ -56,9 +48,7 @@ impl WasmTextureMetaMap {
             },
         );
     }
-}
 
-impl WasmTextureMetaMap {
     pub fn get_map(&self) -> &HashMap<i32, TextureData> {
         &self.map
     }
@@ -68,33 +58,27 @@ impl WasmTextureMetaMap {
     }
 }
 
-#[wasm_bindgen]
-pub struct WasmTextureMap {
+// RGBA texels by (TextureType value, view angle).
+pub struct TextureMap {
     map: HashMap<(i32, i32), Vec<u8>>,
 }
 
-impl WasmTextureMap {
-    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<u8>> {
-        &self.map
-    }
-}
-
-#[wasm_bindgen]
-impl WasmTextureMap {
-    #[wasm_bindgen(constructor)]
+impl TextureMap {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
-    #[wasm_bindgen(js_name = populateFromArray)]
-    pub fn populate_from_array(&mut self, key0: i32, angle: i32, sprite_data: &[u8]) {
+    pub fn insert(&mut self, key0: i32, angle: i32, sprite_data: &[u8]) {
         self.map.insert((key0, angle), sprite_data.to_vec());
     }
 
-    #[wasm_bindgen]
-    pub fn count_cells(&self) -> usize {
+    pub fn get_map(&self) -> &HashMap<(i32, i32), Vec<u8>> {
+        &self.map
+    }
+
+    pub fn len(&self) -> usize {
         self.map.len()
     }
 }
@@ -175,247 +159,7 @@ impl CollisionCells {
     }
 }
 
-// The level as JavaScript sees it: placements go in, ids come back for removing and moving
-// them while the game runs. Rendering and movement read the world directly.
-#[wasm_bindgen]
-pub struct WasmWorld(World);
-
-// 🦀 Rust-only implementation block
-impl WasmWorld {
-    pub fn world(&self) -> &World {
-        &self.0
-    }
-}
-
-#[wasm_bindgen]
-impl WasmWorld {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        Self(World::new(size))
-    }
-
-    /// An area, segment, sprite or model placement as built by levelBuilder.ts. Returns its
-    /// id, or 0 for areas, which cannot be removed. Throws when the grid cannot hold it.
-    pub fn add(&mut self, placement: JsValue) -> Result<u32, JsError> {
-        let placement: Placement = serde_wasm_bindgen::from_value(placement)
-            .map_err(|error| JsError::new(&error.to_string()))?;
-        self.0.add(placement).map_err(|error| JsError::new(&error))
-    }
-
-    /// A model's geometry in its file's own axes, uploaded once and placed by the returned
-    /// id: x, y, z per vertex; three vertex indices per triangle; x, y, z normal per
-    /// triangle corner; r, g, b per triangle, NaN where it has no material colour.
-    #[wasm_bindgen(js_name = addMesh)]
-    pub fn add_mesh(
-        &mut self,
-        positions: &[f64],
-        triangles: &[u32],
-        normals: &[f64],
-        colors: &[f32],
-    ) -> u32 {
-        self.0.add_mesh(Mesh {
-            positions: positions.to_vec(),
-            triangles: triangles.to_vec(),
-            normals: normals.to_vec(),
-            colors: colors.to_vec(),
-        })
-    }
-
-    /// Removes any placement but an area; false if the id is unknown.
-    pub fn remove(&mut self, id: u32) -> bool {
-        self.0.remove(id)
-    }
-
-    /// Moves a sprite or model to world x/y; false for walls, doors, windows or unknown ids.
-    #[wasm_bindgen(js_name = move)]
-    pub fn move_to(&mut self, id: u32, x: f64, y: f64) -> bool {
-        self.0.move_to(id, x, y)
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn size(&self) -> usize {
-        self.0.size()
-    }
-
-    /// A copy of the packed grid, row-major; see gridMap.ts for the bit layout.
-    pub fn grid(&self) -> js_sys::BigUint64Array {
-        js_sys::BigUint64Array::from(self.0.grid())
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmUint8Array(Vec<u8>);
-
-#[wasm_bindgen]
-impl WasmUint8Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::Uint8Array {
-        unsafe { js_sys::Uint8Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut u8 {
-        self.0.as_mut_ptr()
-    }
-
-    // set data from a JavaScript Uint8Array
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: js_sys::Uint8Array) {
-        let len = self.0.len().min(data.length() as usize);
-        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmFloat32Array {
-    buffer: Vec<f32>,
-}
-
-#[wasm_bindgen]
-impl WasmFloat32Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        Self {
-            buffer: vec![0.0; size],
-        }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> Float32Array {
-        unsafe { Float32Array::view_mut_raw(self.buffer.as_mut_ptr(), self.buffer.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut f32 {
-        self.buffer.as_mut_ptr()
-    }
-
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: Float32Array) {
-        let len = self.buffer.len().min(data.length() as usize);
-        self.buffer[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmInt32Array(Vec<i32>);
-
-#[wasm_bindgen]
-impl WasmInt32Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::Int32Array {
-        unsafe { js_sys::Int32Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut i32 {
-        self.0.as_mut_ptr()
-    }
-
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: js_sys::Int32Array) {
-        let len = self.0.len().min(data.length() as usize);
-        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmUInt32Array(Vec<u32>);
-
-#[wasm_bindgen]
-impl WasmUInt32Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::Uint32Array {
-        unsafe { js_sys::Uint32Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut u32 {
-        self.0.as_mut_ptr()
-    }
-
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: js_sys::Uint32Array) {
-        let len = self.0.len().min(data.length() as usize);
-        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmUInt64Array(Vec<u64>);
-
-#[wasm_bindgen]
-impl WasmUInt64Array {
-    #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
-        let buffer = vec![0; size];
-        Self { 0: buffer }
-    }
-
-    #[wasm_bindgen(getter, js_name = buffer)]
-    pub fn buffer(&mut self) -> js_sys::BigUint64Array {
-        unsafe { js_sys::BigUint64Array::view_mut_raw(self.0.as_mut_ptr(), self.0.len()) }
-    }
-
-    #[wasm_bindgen(getter, js_name = ptr)]
-    pub fn ptr(&mut self) -> *mut u64 {
-        self.0.as_mut_ptr()
-    }
-
-    #[wasm_bindgen]
-    pub fn set(&mut self, data: js_sys::BigUint64Array) {
-        let len = self.0.len().min(data.length() as usize);
-        self.0[..len].copy_from_slice(&data.to_vec()[..len]);
-    }
-}
-
-pub fn copy_to_raw_pointer<T: Copy>(ptr: *mut T, index: usize, data: &[T]) {
-    unsafe {
-        let target_ptr = ptr.add(index);
-        for (i, &value) in data.iter().enumerate() {
-            *target_ptr.add(i) = value;
-        }
-    }
-}
-
-use core::slice;
-
-pub fn parse_sprite_texture_array(ptr: *const i32, len: usize) -> HashMap<i32, (i32, i32, i32)> {
-    let mut map = HashMap::new();
-
-    // Convert raw pointer to a safe slice
-    let data: &[i32] = unsafe { slice::from_raw_parts(ptr, len) };
-
-    // Process chunks of 3 (type, height, width)
-    for chunk in data.chunks(4) {
-        if let [sprite_type, height, width, angles] = *chunk {
-            map.insert(sprite_type, (height, width, angles));
-        }
-    }
-
-    map
-}
-
 #[derive(Serialize, Deserialize, Clone, Copy)]
-#[wasm_bindgen]
 pub struct Position {
     pub x: f32,
     pub y: f32,
@@ -431,13 +175,6 @@ pub struct Position {
 }
 
 // Data structures
-#[derive(Serialize, Deserialize)]
-#[wasm_bindgen]
-pub struct Coords {
-    pub x: i32,
-    pub y: i32,
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Sprite {
     pub x: f32,
@@ -453,7 +190,6 @@ pub struct Sprite {
     pub distance_fixed: i32,
 }
 
-#[wasm_bindgen]
 pub struct TranslationResult {
     pub screen_x: i32,
     pub screen_y_ceiling: i32,
@@ -565,15 +301,22 @@ pub fn from_fixed_to_f32(x: i32) -> f32 {
     x as f32 / (1 << FIXED_SHIFT) as f32
 }
 
-#[wasm_bindgen]
-pub struct BackgroundImageWasm {
+// The sky panorama, prescaled to the screen height and twice its width.
+pub struct Background {
     data: Vec<u8>,
     width: i32,
     height: i32,
 }
 
-// 🦀 Rust-only implementation block
-impl BackgroundImageWasm {
+impl Background {
+    pub fn new() -> Background {
+        Background {
+            data: vec![],
+            width: 0,
+            height: 0,
+        }
+    }
+
     pub fn get_data(&self) -> &Vec<u8> {
         &self.data
     }
@@ -581,26 +324,16 @@ impl BackgroundImageWasm {
     pub fn get_width(&self) -> i32 {
         self.width
     }
-}
 
-#[wasm_bindgen]
-impl BackgroundImageWasm {
-    #[wasm_bindgen]
+    // Prescales an RGBA panorama of texture_width by texture_height pixels.
     pub fn set(
         &mut self,
-        bg_img_texture: *const u8,
+        src: &[u8],
         texture_width: i32,
         texture_height: i32,
         screen_width: i32,
         screen_height: i32,
     ) {
-        let src = unsafe {
-            from_raw_parts(
-                bg_img_texture,
-                (texture_width * texture_height * 4) as usize,
-            )
-        };
-
         let sky_scale = screen_height as f64 / texture_height as f64;
         let sky_width = (texture_width as f64 * sky_scale * 2.0).round() as i32;
 
@@ -622,14 +355,5 @@ impl BackgroundImageWasm {
         self.data = data;
         self.height = screen_height;
         self.width = sky_width;
-    }
-
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> BackgroundImageWasm {
-        BackgroundImageWasm {
-            data: vec![],
-            width: 0,
-            height: 0,
-        }
     }
 }
