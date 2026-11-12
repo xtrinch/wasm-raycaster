@@ -1,11 +1,14 @@
 // The wasm-bindgen API the TypeScript game calls. It turns JavaScript values and raw buffer
 // pointers into engine types and slices, and engine results back into JavaScript values.
-use crate as engine;
 use engine::{Background, Mesh, Placement, Position, TextureMap, TextureMetaMap, World};
 use js_sys::Float32Array;
+use raycast_engine as engine;
 use std::f32::consts::PI;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "parallel")]
+pub use wasm_bindgen_rayon::init_thread_pool;
 
 // The engine's TextureType values, for TypeScript.
 #[wasm_bindgen]
