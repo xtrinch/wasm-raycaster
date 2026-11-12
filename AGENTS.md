@@ -14,9 +14,15 @@
   averaged over 60 updates) and report measured numbers separately from expectations.
 
 ## Architecture
-- Rust in `src/` owns the CPU raycaster, collision queries and WASM bindings.
-- Keep rendering data structs and enums in `src/helpers.rs`, alongside the existing
-  types; keep rendering behavior in `src/lib.rs` unless a separate move is requested.
+- The `raycast-engine` crate in `crates/raycast-engine/` owns the CPU raycaster, `World`
+  and collision queries. It must not depend on wasm-bindgen, js-sys or web-sys, and must
+  build on stable Rust; pass in anything it needs from the browser, as with the clock
+  `render` takes for the pass timings. It will later move to its own repository.
+- The root crate (`src/lib.rs`) holds only the wasm-bindgen API the TypeScript app calls:
+  it turns JavaScript values and buffer pointers into engine types and slices.
+- Keep rendering data structs and enums in `crates/raycast-engine/src/helpers.rs`,
+  alongside the existing types; keep rendering behavior in
+  `crates/raycast-engine/src/lib.rs` unless a separate move is requested.
 - Keep movement physics and collision decisions in Rust: wall blocking, roof
   support, ceiling limits, landing and gravity. TypeScript handles input, hover
   state and applying Rust's returned position; do not duplicate collision rules there.
@@ -24,7 +30,8 @@
   pass distances into Rust, as with `walk`, rather than passing frame time.
 - `packages/app/src/vector-game/game/` owns the TypeScript game state, input,
   texture loading and persistent WASM buffers. React renders the canvas and HUD.
-- The world grid is a row-major packed `u64` map, encoded by `World` in `src/world.rs`.
+- The world grid is a row-major packed `u64` map, encoded by `World` in
+  `crates/raycast-engine/src/world.rs`.
   Preserve its wall, door, window and floor/ceiling bit layout; see the comments in
   `gridMap.ts`.
 - Author geometry, sprites and models as placements in `level.ts`; `World` compiles
@@ -55,14 +62,18 @@
 - `pnpm run dev` serves Vite with cross-origin isolation for WASM threads.
 - `pnpm run measure [url]` reads the HUD's per-pass timings in headless Edge or Chrome
   from a running dev server, at four headings, and saves a screenshot of each.
-- `cargo fmt --check` checks Rust formatting. Use targeted tests for geometry
+- `cargo fmt --all --check` checks Rust formatting in both crates. Use targeted tests for geometry
   and movement changes, then check the production build where tools permit.
-- Keep new Rust test bodies in `src/tests/`; implementation files only declare their
-  test modules with `#[cfg(test)]` and `#[path = "tests/..."]`.
+- Keep new Rust test bodies in the crate's `src/tests/`; implementation files only
+  declare their test modules with `#[cfg(test)]` and `#[path = "tests/..."]`.
 - Keep changes limited to the requested feature or fix; avoid optional refactoring
   and leave existing tests and unrelated code in place.
-- `cargo test` runs the existing Rust tests. Add targeted checks as each new
-  feature is implemented.
+- `cargo test` runs the Rust tests of both crates, including snapshot tests that compare
+  `render` output with reference PNGs. After an intended rendering change, regenerate them
+  with `UPDATE_SNAPSHOTS=1 cargo test snapshot` and look at the images before committing.
+  Add targeted checks as each new feature is implemented.
+- `cargo +stable test -p raycast-engine` checks that the engine still builds and passes
+  on stable Rust.
 - Verify rendering and navigation in a browser when possible. Report toolchain
   limitations and distinguish measured FPS from performance expectations.
 

@@ -10,9 +10,10 @@
 //! intersection, and (for example) you don't care to distinguish cases where there are zero or an
 //! infinite number of intersections.
 //!
-//! Here's an example of usage:
+//! Here's an example of usage (from the original crate; this copy is private to the engine, so
+//! the example is not run as a doc-test):
 //!
-//! ```
+//! ```ignore
 //! extern crate geo;
 //! extern crate line_intersection;
 //!

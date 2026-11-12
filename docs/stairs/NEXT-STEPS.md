@@ -50,8 +50,8 @@ version, then build the underlying features in small, separately reviewable step
 
 - [ ] Add broader floor-rendering tests for plane heights, visibility, depth order,
       gaps and thin-wall tops alongside the later renderer work.
-- [ ] Move `draw_ceiling_floor_raycast` and its supporting types from `src/lib.rs`
-      into a dedicated floor-rendering module after the behavior changes are reviewed.
+- [ ] Move `draw_ceiling_floor_raycast` and its supporting types from
+      `crates/raycast-engine/src/lib.rs` into a dedicated floor-rendering module after the behavior changes are reviewed.
       Keep the current name and location while reviewing flight and roof support.
 
 Finish and review each step before starting the next. Keep comments short and

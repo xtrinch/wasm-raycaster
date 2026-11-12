@@ -133,10 +133,10 @@ fn mesh_then_stripe(mesh_y: f32, texture: TextureType, alpha: u8) -> [u8; 3] {
     let mut frame = frame();
     draw(&mut frame, &wall_quad(mesh_y));
 
-    let mut textures = WasmTextureMap::new();
-    textures.populate_from_array(texture, 0, &[255, 255, 255, alpha]);
-    let mut texture_meta = WasmTextureMetaMap::new();
-    texture_meta.populate_from_array(texture, 1, 1, 1);
+    let mut textures = TextureMap::new();
+    textures.insert(texture, 0, &[255, 255, 255, alpha]);
+    let mut texture_meta = TextureMetaMap::new();
+    texture_meta.insert(texture, 1, 1, 1);
     let mut stripes: SmallVec<[Sprite; 1024]> = SmallVec::new();
     stripes.push(Sprite {
         x: 0.5,
@@ -152,7 +152,7 @@ fn mesh_then_stripe(mesh_y: f32, texture: TextureType, alpha: u8) -> [u8; 3] {
         distance_fixed: 0,
     });
     let mut column_depth = vec![f32::INFINITY; WIDTH as usize];
-    draw_sprites_wasm(
+    draw_sprites(
         &camera(),
         &mut frame.image,
         WIDTH,

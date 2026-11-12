@@ -1,7 +1,7 @@
 # How 3D models are drawn
 
 This document follows a 3D model from its file to the screen. Models are drawn by a CPU
-triangle rasterizer in Rust (`draw_meshes` in `src/lib.rs`) and composited with the
+triangle rasterizer in Rust (`draw_meshes` in `crates/raycast-engine/src/lib.rs`) and composited with the
 raycaster's floors, walls, windows and sprites through one shared depth buffer.
 They behave like sprites with a mesh: the grid decides whether they are drawn at all, and
 anything nearer covers them.
@@ -94,7 +94,7 @@ each widened by the player radius of 0.2. Doors stay passable. A blocked step sl
 or y instead, and feet at or above a box's top pass over it. `move_vertical` lets feet land on
 a solid model's top. Models without `solid` are drawn only.
 
-## 3. Baking: `bake_model` in `src/world_helpers.rs`
+## 3. Baking: `bake_model` in `crates/raycast-engine/src/world_helpers.rs`
 
 When a model is added or moved, `bake_model` turns it into world-space triangles:
 
@@ -151,7 +151,7 @@ screen pixel: the distance of the nearest floor, ceiling, roof or model drawn th
 | Sky (`draw_background_image_prescaled`) | every pixel | no | no |
 | Floor, ceiling and roof (`draw_ceiling_floor_raycast`) | its pixels | resets every row to infinity, then stores surface depth | no |
 | Models (`draw_meshes`) | its pixels | yes | skips pixels behind floors, roofs and nearer triangles |
-| Walls, doors, windows, sprites (`draw_sprites_wasm`) | its pixels | no | skips pixels behind floors, roofs and models |
+| Walls, doors, windows, sprites (`draw_sprites`) | its pixels | no | skips pixels behind floors, roofs and models |
 
 Colour and depth are written together, pixel by pixel. No separate model image exists; a
 model's pixels appear in the frame one at a time among everything else, and at every moment a
@@ -250,7 +250,7 @@ For each row of a band that the triangle's bounding box covers:
 
 ## 11. Compositing with walls, windows and sprites
 
-After the mesh pass, `draw_sprites_wasm` draws wall, door and window stripes (one pixel wide,
+After the mesh pass, `draw_sprites` draws wall, door and window stripes (one pixel wide,
 one per screen column per hit) and sprites, farthest first. Each part has one depth
 for its whole height, `projection.distance` from `translate_coordinate_to_camera`: the ray's
 hit point for a stripe, the centre for a sprite. For every pixel it would cover:
@@ -276,7 +276,7 @@ distance: a model standing partly inside a tree is cut off sharply at that dista
 
 ## Tests
 
-`src/tests/mesh.rs`:
+`crates/raycast-engine/src/tests/mesh.rs`:
 
 - `quad_matches_sprite_projection`: top, bottom and depth match a sprite to within one pixel
   and 0.001 depth

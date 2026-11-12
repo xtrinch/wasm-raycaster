@@ -1,3 +1,9 @@
+[workspace]
+members = ["crates/raycast-engine"]
+# Plain cargo test and cargo check cover the engine as well as the game bindings.
+default-members = [".", "crates/raycast-engine"]
+
+# The game: the wasm-bindgen API that the TypeScript app calls, built by wasm-pack.
 [package]
 name = "raycaster"
 version = "0.1.0"
@@ -7,22 +13,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-geo = "0.30.0"
+raycast-engine = { path = "crates/raycast-engine" }
 js-sys = "0.3.77"
-num-traits = "0.2.19"
-rand = "0.9.0"
-getrandom = { version = "0.3.2", features = ["wasm_js"] }
-serde = { version = "1.0.219", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-web-sys = { version= "0.3.77", features= ["console", "Performance", "Window"]}
-rayon = "1.10.0"
-num-complex = "0.4.6"
-hsl = "0.1.1"
+web-sys = { version= "0.3.77", features= ["Performance", "Window"]}
 wasm-bindgen-rayon = { version = "1.3.0", optional = true }
-rustc-hash = "2.1.1"
-smallvec = "1.15.0"
-dashmap = "6.1.0"
 
 
 [features]
@@ -35,6 +31,3 @@ parallel = ["wasm-bindgen-rayon"]
 [package.metadata.wasm-pack.profile.profiling]
 wasm-opt = ['-O4', '-g', '--enable-simd']
 debug = true
-
-[dev-dependencies]
-serde_json = "1"
