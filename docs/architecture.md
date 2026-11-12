@@ -2,14 +2,15 @@
 
 This document describes how the game works: the world and grid, each render pass, what is
 culled where, depth compositing, movement and collision, and the WASM boundary. It matches
-the code as of commit `506d7f9`.
+the code as of commit `a37a07d`.
 
 Related documents:
 
 - [models.md](models.md): the 3D model pipeline in depth, from OBJ files to rasterized
   pixels.
-- [optimization-roadmap.md](optimization-roadmap.md): proposed optimizations. They are not
-  profiled.
+- [optimization-roadmap.md](optimization-roadmap.md): proposed CPU optimizations ranked by
+  the measured pass timings in [section 10](#10-cost-model), the plan for the engine crate,
+  and the WebGPU plan.
 - [stairs/NEXT-STEPS.md](stairs/NEXT-STEPS.md): the plan for wall heights and stairs.
 - The packed grid bit layout is documented once, in the comment in
   `packages/app/src/vector-game/game/gridMap.ts`. It is not repeated here.
@@ -60,6 +61,7 @@ packages/app/                Vite + React frontend
   models/                    posebake recipes for the baked character models
   src/assets/models/         committed OBJ/MTL files
 
+scripts/measure-passes.mjs   pnpm run measure: per-pass timings in a headless browser
 docs/                        this file, models.md, optimization-roadmap.md, stairs/
 ```
 
@@ -167,11 +169,13 @@ stand outside it (several trees do), and rays find them there. See
 ## 5. Rendering pipeline
 
 `render` in `src/lib.rs` is the single per-frame entry point. It receives raw pointers to
-three persistent buffers owned by `Camera`:
+four persistent buffers owned by `Camera`:
 
 - the RGBA pixel buffer (`pixelsRef`, width × height × 4);
-- the per-`column_depth` buffer (width);
-- the per-pixel `depth` buffer (width × height).
+- the per-column `column_depth` buffer (`columnDepthRef`, width);
+- the per-pixel `depth` buffer (`depthRef`, width × height);
+- the pass timings (`passTimesRef`, `RENDER_PASS_COUNT` floats), see
+  [section 3](#3-startup-and-the-frame-loop).
 
 It runs these passes in order:
 
@@ -395,9 +399,13 @@ whole axis-aligned footprint box, up to its top.
   - `pnpm run build:wasm` is a profiling build (`--out-name in`).
   - `build:wasm-gh`, used by CI, is a release build (`--out-name index`).
   - The app imports the `wasm/` directory, and the generated `package.json` resolves it.
-- **Persistent buffers.** `Camera` allocates the pixel, `column_depth` and `depth` buffers once,
-  as `WasmUint8Array` and `WasmFloat32Array`, and passes their `.ptr` into `render` every
-  frame. Rust turns the pointers into slices with `from_raw_parts_mut`.
+- **Persistent buffers.** `Camera` allocates the pixel, `column_depth`, `depth` and pass-time
+  buffers once, as `WasmUint8Array` and `WasmFloat32Array`, and passes their `.ptr` into
+  `render` every frame. Rust turns the pointers into slices with `from_raw_parts_mut`.
+- **Browser calls in Rust.** The render passes call `js_sys::Math::atan2` (sprite angle
+  selection), and `render` reads `performance.now()` through `web_sys` for the pass
+  timings. Both must move out before the passes can live in a browser-free crate (see
+  [optimization-roadmap.md](optimization-roadmap.md#2-the-engine-crate)).
 - **Textures** are uploaded once, as RGBA, into `WasmTextureMap`, keyed by
   `(TextureType, angle)`. `WasmTextureMetaMap` holds their sizes. Both are SipHash `HashMap`s
   that are read during rendering.

@@ -1,193 +1,228 @@
-# CPU optimization, crate split and WebGPU roadmap
+# Optimization, engine crate and WebGPU roadmap
 
-These notes come from reading the code. The HUD now shows per-pass timings; the first
-measurements are in the cost model of [architecture.md](architecture.md). They put the floor
-pass first, at about 4.5–5.5 ms, ahead of every item below, so check the order against them.
+This document lists proposed work: CPU optimizations ranked by the measured per-pass
+timings, the plan for extracting the raycaster into a reusable crate, and the WebGPU plan.
+How each pass works, and what is already culled, is in [architecture.md](architecture.md).
 
-## 1. Remaining CPU optimizations
+## 1. CPU optimizations
 
-Listed roughly from the largest expected win to the smallest.
+### Measured starting point
 
-1. **Walls are drawn through the sprite path.** Every wall, door and window column becomes
-   a one-pixel-wide `SpritePart`. In `draw_sprites_wasm`, every screen row loops over *all*
-   parts and rejects most of them with a y-range check. That costs about
-   rows × (width + windows) checks per frame, plus a sort over all of them. There are two
-   fixes:
-   - Draw opaque walls in their own column pass and keep only windows in the sorted sprite
-     path. This is the better fix; see
-     [Banding versus a wall pass](#banding-versus-a-wall-pass).
-   - Bucket the parts into row bands, as `draw_meshes` already does for triangles.
-2. **Mesh triangle setup has no LOD.** The character models are tens of thousands of
-   triangles. Every visible model is transformed, clipped, sorted and banded every frame,
-   even when it covers 20 pixels. The main lever is distance-based LOD: choose a
-   pre-decimated mesh for each model by its screen size. Culling a whole model by its
-   bounding box before the per-triangle loop is a cheaper step that also helps.
-3. **Ray–wall intersection is more general than it needs to be.** `raycast_column` uses
-   `geo`'s `LineInterval::relate` plus `Euclidean.distance` for every wall slot. Walls are
-   always axis-aligned, so a slab test needs only a couple of divides and compares. This is
-   the innermost loop of the wall pass.
-4. **Allocations and hashing per column and per frame:**
-   - Each column allocates a `occupied_cells` Vec and then copies it with `.to_vec()`.
-   - The window sprites are cloned.
-   - The results go into a SipHash `HashSet`. `rustc-hash` is already a dependency but is
-     unused.
-   - The `HashMap` texture lookups at the start of `render` also use SipHash.
-5. **Overdraw and copies:**
-   - The sky is copied across the full screen and then mostly overwritten by the floor and
-     ceiling.
-   - Presenting a frame makes two full-frame copies on the main thread. The shared buffer
-     is copied into an `ArrayBuffer`, then `putImageData` copies it again
-     (`Camera.drawCanvas`).
-   - Uploading the frame to a WebGL or WebGPU texture would remove one copy.
-   - Moving `render` into a worker with `OffscreenCanvas` would also stop it from blocking
-     input handling.
-6. **SIMD.** `#![feature(portable_simd)]` is enabled, but no code uses it. The
-   floor/ceiling texel × light loop and the sprite blend are the obvious candidates.
+From the cost model in [architecture.md](architecture.md#10-cost-model): `pnpm run measure`,
+headless Edge, 1254 × 627, 8 threads, profiling build, 60-update averages in milliseconds.
+
+| View | Sky | Floors | Walls | Meshes | Sprites | Present |
+|---|---|---|---|---|---|---|
+| North, spawn view, no models | 0.9 | 5.2 | 0.5 | 0.0 | 2.3 | 1.0 |
+| Table and chair in view | 0.7 | 4.4–4.6 | 0.8 | 1.3 | 2.0 | 1.0 |
+| One woman in view, close | 0.7 | 4.4 | 0.5 | 3.4 | 1.7 | 0.8 |
+
+These views are all indoors at spawn height. Outdoor views and views from above the roofs
+are not measured yet. The road texture and the roof views stress the floor pass differently,
+so measure them before ranking floor-pass work by texture cost.
+
+The items below are ordered by the pass they target, largest measured pass first. Every
+saving given is an **estimate** from reading the code, not a measurement.
+
+### 1.1 Floors, ceilings and roofs (4.4–5.2 ms)
+
+1. **Skip floor and ceiling pixels hidden behind walls.** The floor pass runs before the
+   wall raycast, so it shades every floor and ceiling pixel on the screen, including the
+   band between the horizon and each wall's bottom and top edges. The sprite pass then
+   paints the wall over that band. In the spawn view the wall covers roughly half the
+   screen's height, so a large share of the floor pass is likely spent on pixels that are
+   overwritten.
+   - Fix: run the wall raycast first, then skip a floor or ceiling pixel when its distance
+     is at least that column's `column_depth`. Both use the same perpendicular-depth scale
+     (architecture §7). The test is one float compare per pixel and saves the grid read,
+     texture fetch and depth write.
+   - Only skip behind hits that are fully opaque. Windows already don't set
+     `column_depth`, and above wall tops it is ∞, so both cases keep drawing. A door or wall
+     texture with transparent texels must not set the skip distance either, or stale pixels
+     from the previous frame show through.
+   - `column_depth` is the DDA cell-boundary distance, not the exact slot intersection
+     (architecture §11), so the cut-off can be off by part of a cell next to thin walls.
+     Use the exact hit distance for this test, or skip only beyond a margin.
+   - Estimate: up to the hidden fraction of the floor pass, so possibly a few milliseconds
+     in wall-heavy views and nothing in open ones. To check, count skipped pixels per view
+     before and after.
+2. **Draw the sky inside the floor pass.** The sky pass copies the whole panorama window
+   (0.7–0.9 ms), and the floor pass then overwrites most of it. The floor pass already
+   knows which pixels get no surface (the `None` texture case and the rows at the horizon).
+   It can copy the sky texel there instead. With item 1, pixels skipped behind walls need
+   no sky either. Estimate: most of the sky pass.
+3. **Resolve the grid per cell span, not per pixel.** Every pixel reads its grid cell,
+   tests three flag bits and evaluates the texture `match`, although neighbouring pixels on
+   a row usually share a cell. Walking the row cell by cell (the same DDA idea as the wall
+   rays) resolves the texture once per span and leaves only the texel fetch per pixel.
+   Estimate: small to moderate; measure after items 1 and 2.
+4. **Mipmaps for distant surfaces.** There is no mipmapping, so far rows sample the large
+   road texture (874 × 874 RGBA, about 3 MB) with big strides, which misses the cache and
+   aliases. Half-size levels chosen per row by distance would help both speed and quality.
+   This only matters outdoors and from above the roofs; measure those views first.
+
+### 1.2 Meshes (up to 3.4 ms per visible character)
+
+1. **Cull whole models against the view before triangle setup.** Models are found per grid
+   cell, so a model whose cell a ray reached is fully set up even when almost all of it is
+   off-screen. The 1.3 ms mesh pass in the table-and-chair view (under 160 triangles) is
+   probably a character just outside the view; this is unverified. Projecting the model's
+   footprint box and skipping it when it is entirely outside one side of the view, or
+   above or below the screen at the current pitch, is cheap and removes that case.
+2. **Level of detail for characters.** A visible character costs all of its 21.7k–32.2k
+   triangles at any distance. Pre-decimated meshes chosen by screen size would make distant
+   characters cheap. posebake could produce the levels at bake time.
+
+### 1.3 Walls, doors, windows and sprites (1.7–2.3 ms)
+
+Every wall, door and window column becomes a one-pixel-wide `SpritePart`, and the fill loop
+checks every part on every row. Walls go through this path because windows are
+translucent: glass and whatever is seen through it must be drawn far to near together with
+the sprites.
+
+1. **Draw opaque walls and doors in their own column pass.** Each opaque hit becomes one
+   vertical span: no per-row search, no alpha test or blend, and a depth test and write per
+   pixel, as meshes already do. Only sprites and window parts stay in the sorted pass.
+   - Rays already pass through windows, so the wall behind a window is an ordinary opaque
+     hit, and only the glass itself is translucent.
+   - Above wall tops a column can have several opaque hits. The depth test resolves them,
+     so they can be drawn in any order.
+   - A sprite between two walls is then hidden by the nearer wall's depth, not by drawing
+     order, and glass blends over whatever is already drawn behind it.
+   - The order becomes: floors, ceilings and roofs → meshes → opaque wall columns →
+     sprites and windows. The new cost is one depth write per wall pixel. A wall or door
+     texture with transparent texels has to stay in the sorted path.
+   - Storing wall textures column-major would make a vertical span read contiguous memory.
+2. **Row banding instead**, as `draw_meshes` does for triangles, is the cheaper change but
+   only removes the per-row rejections, which are a couple of integer compares per part per
+   row. Estimate: under a millisecond, and nothing when walls fill the screen. Item 1 also
+   cuts the per-pixel cost, so it is the better fix.
+
+### 1.4 Present (0.8–1.0 ms)
+
+`Camera.drawCanvas` makes two full-frame copies on the main thread: the shared WASM buffer
+into an `ArrayBuffer`, then `putImageData`. Uploading the frame as a WebGL or WebGPU texture
+removes one copy; see [section 3](#3-webgpu). Rendering in a worker with `OffscreenCanvas`
+would also stop the frame from blocking input handling.
+
+### 1.5 Not worth doing now
+
+The wall raycast measures 0.5–0.8 ms, so these are small however they turn out:
+
+- **An axis-aligned slab test instead of `geo` intersections** in `raycast_column`. Walls
+  are always axis-aligned. It is still worth doing for the engine crate, where it removes
+  the `geo` dependency and the copied `line_intersection.rs`.
+- **Per-column allocations and hashing.** `raycast_column` allocates `occupied_cells` and
+  copies it with `.to_vec()`, the hits are cloned, and the cells go into a SipHash
+  `HashSet`. This is per-frame bookkeeping of a few hundred entries.
+- **SIMD.** `#![feature(portable_simd)]` is enabled but unused. Revisit for the floor
+  texel loop once items 1.1.1–1.1.3 have changed its shape.
 
 Skip optimizations that only help the finite map, such as whole-map BVHs or precomputed
 visibility, because the map is meant to become infinite.
 
-### Banding versus a wall pass
+## 2. The engine crate
 
-Row banding removes only the y-range rejections. It does not reduce the per-pixel work, and
-a 1-pixel-wide wall part does real work on every row it covers anyway.
+The goal is to publish the raycaster as `raycast-engine` (free on crates.io as of
+2026-11-03), licensed MIT OR Apache-2.0, while the game keeps working.
 
-The rejection is a couple of integer compares per part per row. As an example, take
-1280 × 720 with about 1,400 parts:
+### Why it is worth publishing
 
-- That is roughly 1 M cheap checks per frame.
-- Single-threaded, that is on the order of 1–2 ms.
-- Spread over the Rayon threads, it drops to a few tenths of a millisecond of wall time.
+- Searches in November 2026 found no permissively licensed Rust library with this feature
+  set: thin walls inside cells, doors, blended see-through windows, pitch, flight, roofs
+  seen from above, a per-pixel depth buffer that 3D meshes composite into, and Rayon
+  threads in wasm.
+- The closest Rust crate is `raycaster`, made for Eldiron. It has whole-cell walls only,
+  lists doors as unimplemented, and has had no pushes since March 2023.
+- The closest project overall is `TomentRaycaster` (C/SDL2, GPL-2.0). It has thin walls,
+  see-through doors, flight, multiple floors and threads, but ships as an engine bundled
+  with a full game, and its README does not mention roofs seen from above. It is ahead of
+  this project on multiple floors.
+- So the README should present a reusable Rust and wasm library, not a first of its kind.
+- The triangle rasterizer on its own is not novel (`euc`, `rusterix`, `softrender` and
+  `retrofire` exist), so it is not published separately.
 
-The saving is largest when walls are far away and short, because most rows then reject most
-parts. It is smallest up close, when walls fill the screen and few rows are skipped. Expect
-a sub-millisecond gain, unless measurements show the sprite pass dominated by rejections.
+### Decisions
 
-A dedicated column pass for opaque walls should do better, because it also cuts the
-per-pixel cost:
+- **One crate with everything**, including `draw_meshes`: `World` (the editable level), one
+  `render`, and collision (`walk`, `move_vertical`). No hooks, feature flags or optional
+  modules. How meshes reach the GPU is decided when that work starts.
+- **The game** keeps the wasm bindings and the TypeScript app: input, texture loading, OBJ
+  parsing and the HUD.
+- **Levels are built by `World`**, which is done (PR #7). TypeScript describes the level as
+  placements in `level.ts`. A data-file loader (JSON or RON) can later sit on the same
+  `World` for engine users who do not write TypeScript.
+- **The packed grid stays a first-class, documented part of the engine.** A GPU renderer
+  needs packed data to upload, in chunks for the infinite map, so the engine is not built
+  around a per-cell callback trait.
+- **Repository:** extract the crate as a Cargo workspace in this repo first, with
+  `crates/raycast-engine` and the game staying the root wasm package. Once the API settles,
+  move it to a new engine-first repository with a purpose-built demo, keeping history with
+  `git subtree split --prefix crates/raycast-engine`. No git submodules. After the move the
+  game depends on a git revision or the crates.io release, with a gitignored
+  `.cargo/config.toml` `[patch]` pointing at a local checkout for development.
+- **Assets:** the engine repository and its demo ship only CC0 or own art. Some of the
+  game's textures are Freepik uploads, and the terms for the rest are unknown.
 
-- Each wall column becomes one vertical span, with no per-row search.
-- Opaque walls need no alpha test or blend.
-- Storing wall textures transposed (column-major) makes a vertical span read contiguous
-  memory. Drawing row-major instead jumps between columns and textures on every pixel.
-- The sprite sort only has to cover real sprites and windows, not one part per column.
+### Steps
 
-Walls go through the sprite path because windows are translucent. Glass and anything seen
-through it have to be drawn far to near together with the sprites. A column pass keeps that
-working if it takes only the opaque wall parts and writes their depth:
+1. **Snapshot tests.** Render fixed scenes natively through `render`, built with `World`
+   and procedural textures, and compare them with reference PNGs: walls, a door and a
+   window; a sprite behind glass; a mesh; a roof seen from above while pitched down.
+2. **Workspace split.**
+   - `crates/raycast-engine` holds the world, the render passes and collision, with no
+     `wasm-bindgen`, `js-sys` or `web-sys`. It must build on stable:
+     `cargo +stable check -p raycast-engine`.
+   - The root crate keeps only the wasm bindings (`WasmWorld`, the buffer and texture
+     wrappers) and the raw-pointer `render` entry point.
+   - Replace `js_sys::Math::atan2` with `f64::atan2`, the only browser call in the render
+     passes.
+   - Per-pass timing uses `web_sys` `performance.now()`. Move the timing into the wasm
+     wrapper, or pass in a clock, so the engine stays browser-free.
+   - Drop the unused `#![feature]`s from the engine.
+   - `TextureType` is defined in both crates for now, with a test that the values match.
+3. **API cleanup.** Textures supplied by the caller instead of `TextureType` and the
+   texture `HashMap`s; a `Camera` type instead of `Position` and `plane_y_initial`; output
+   to a frame of colour and depth slices; scratch buffers allocated once in a renderer
+   object.
+4. **Publish.** A README with screenshots, a native example that writes a PNG, a minimal
+   wasm example, and documented limits: one story, at most three segments per cell, 0.1
+   precision. Then release 0.1.
+5. **Move** to the new repository with the demo, as described above.
 
-- Rays already pass through windows (`stop_at_window` is false), so the wall behind a window
-  is an ordinary opaque hit. Only the window part itself is translucent.
-- The column pass draws opaque wall and door parts. It tests each pixel against the depth
-  buffer and writes to it, just as meshes already do. Above wall tops, a column can have
-  several opaque hits; the depth test resolves them, so they can be drawn in any order.
-- The sprite pass then sorts and draws only the sprites and window parts, far to near, and
-  keeps its per-pixel depth test. A sprite between two walls is clipped correctly by the
-  nearer wall's depth, not by the drawing order, and glass blends over whatever is already
-  drawn behind it.
+## 3. WebGPU
 
-The order becomes: floor/ceiling → meshes → opaque wall columns → sprites and windows. The
-new cost is one depth write per wall pixel. Any wall or door texture that has transparent
-texels has to stay in the sorted path.
+Move work over incrementally, starting with a hybrid renderer. `wgpu` keeps the work in
+Rust and is allowed under the no-third-party-engine rule.
 
-## 2. Reusable crates for other projects
+1. **Present on the GPU.** Upload the CPU colour buffer as a texture and draw it with a
+   fullscreen quad. This replaces `putImageData` (item 1.4), and the weapon overlay can be
+   drawn in the same place (architecture §11 notes it is currently overwritten).
+2. **Meshes on the GPU.** Triangles are what the GPU is built for, and the CPU rasterizer
+   scales worst with added content.
+   - Write the CPU depth into the GPU depth buffer, and project meshes so their depth
+     matches the perpendicular-distance scale, so they still sort against walls and roofs.
+   - The sprite pass runs after the meshes, so it either moves to the GPU too or reads the
+     depth back. Sprites are simple quads, so they can move in the same step.
+3. **Floors, ceilings and roofs** as a per-pixel shader. The output depends only on the
+   pixel, the camera and the grid, so it ports almost directly. The packed grid becomes a
+   storage buffer, uploaded in chunks around the player for the infinite map.
+4. **The wall DDA last.** One ray per column works as a compute shader, but it is the most
+   intricate code to port, and it is already the cheapest pass.
 
-Ranked by how useful each would be to other people, weighed against the work needed to
-extract it.
+**Stays on the CPU, in Rust:** `World` and its edits, movement and collision, and finding
+the visible cells and models.
 
-1. **Software triangle rasterizer (`draw_meshes`).** This is the easiest one to publish and
-   the most self-contained, at about 250 lines.
-   - Features: perspective-correct interpolation, near-plane clipping, either winding order,
-     and back-face rejection from vertex normals.
-   - It runs in parallel row bands with Rayon, which works under wasm threads.
-   - It tests against and writes to a caller-supplied depth buffer, so it composes with
-     another renderer's output. Here, that is the raycaster's floors and roofs.
-   - It is not unique. `euc` also renders into caller-owned color and depth buffers and
-     supports shaders. `rusterix` is multi-threaded and tile-based. `softrender` uses Rayon,
-     and `retrofire` targets wasm. What this one adds is small: a minimal API and
-     wasm-thread-friendly row bands. Publishing it is easy, but it would be one more option
-     in a crowded space, not a gap being filled.
-   - To make it general: take a camera matrix or projection callback instead of the
-     raycaster's `Position`, and let the caller choose the shading (currently a flat color
-     with a fixed sun).
-2. **Thin-wall grid raycaster** (`raycast_column`, floor/ceiling/roof casting and sprite
-   projection). This is the most distinctive code, and the most work to extract.
-   - It has sub-cell thin walls, doors, translucent windows, pitch, a vertical camera
-     position, and roofs seen from above.
-   - This looks like a real gap. A search in November 2026 found one comparable Rust crate:
-     `raycaster`, made for Eldiron. It has full-cell walls only, lists doors as unimplemented,
-     and has had no pushes since March 2023. `embedded-3dgfx` targets microcontrollers.
-   - Non-Rust projects come closer, but as games or tutorials rather than libraries:
-     - `TomentRaycaster` (C/SDL2, GPL-2.0) has nearly the whole feature set: offset thin
-       walls, sliding doors, see-through doors and thin walls, look up/down, flight,
-       multiple floors and multithreaded rendering. It ships as an engine plus a full game,
-       and its README does not mention seeing wall tops or roofs from above.
-     - `lodev-enhance` (C++ tutorial) has doors, thin walls with transparent pixels, blended
-       glass windows and a 2D depth buffer. It has no flight, multiple floors or threads.
-     - `raycast.js` has elevation and free look; `BeshRay` lists thin walls as a TODO.
-   - So the gap is narrower than "nothing like it". What remains open is a
-     permissively licensed Rust library that does this, with roofs seen from above, a
-     per-pixel depth buffer that other renderers can draw into, and wasm-thread support.
-     `TomentRaycaster` is ahead on multiple floors, which this project does not support.
-   - Before publishing, it needs to be decoupled from this game:
-     - Replace the packed `u64` layout with a trait the caller implements, for example
-       "walls in this cell" and "surfaces in this cell".
-     - Replace the `TextureType` enum and texture `HashMap`s with caller-supplied textures.
-     - Output to plain `&mut [u8]` RGBA and `&mut [f32]` depth slices.
-   - The raw-pointer wasm entry point would stay in this repo as a thin wrapper.
-3. **Grid character controller** (`walk`, `walk_step`, `move_vertical` and the
-   collision-box queries). It provides substepped walking, wall blocking, box collision,
-   gravity, landing and support height. It is useful, but tied to this game's rules, so it
-   fits best as an optional module of crate 2, not as its own crate.
-
-Not worth publishing:
-
-- `line_intersection.rs` is a copy of the existing `line_intersection` crate.
-- The `Wasm*Array` buffer wrappers are thin glue around `wasm-bindgen`.
-- The sky panorama is a strided row copy.
-- Model baking already uses the published `posebake` crate.
-
-Extracting any of these crates first requires a Cargo workspace inside this repo, with the
-renderer, physics and wasm bindings in separate crates. That split also prepares the
-WebGPU work: a GPU renderer becomes a sibling crate instead of a rewrite of `lib.rs`.
-
-## 3. Moving work to WebGPU
-
-Move work over incrementally, starting with a hybrid renderer.
-
-1. **Present and composite on the GPU.** Upload the CPU color and depth buffers as textures
-   and draw them with a fullscreen quad. This removes `putImageData`, and the weapon overlay
-   can be drawn in the same place. It is low risk and prepares step 2.
-2. **Draw meshes on the GPU first.** Triangles are what the GPU is built for, and the CPU
-   rasterizer is the part that scales worst with added content.
-   - Write the CPU depth into the GPU depth buffer.
-   - Draw the meshes with a projection that matches the existing perpendicular-distance
-     depth, so they still sort correctly against walls and roofs.
-   - Sprites drawn after the meshes must either move to the GPU too or read the depth back.
-     Sprites are trivial to draw as quads, so they can move in the same step.
-3. **Then move the floor/ceiling/roof pass** into a per-pixel shader. Its output depends
-   only on the pixel, the camera and the grid, so it ports almost directly. The grid becomes
-   a storage buffer; for the infinite map, upload it in chunks streamed around the player.
-4. **Port the wall DDA last.** Casting one ray per column works fine as a compute shader,
-   but it is the most intricate code to port. Once the other passes have moved, the CPU
-   cost it leaves behind is small.
-
-**Stays on the CPU, in Rust:**
-
-- movement and collision
-- gathering the visible cells and models
-- level compilation
-
-`wgpu` keeps this work in Rust and is allowed under the no-third-party-engine rule. On
-wasm, `wgpu` objects are not `Send`, so GPU work stays on one thread (the main thread or a
-worker), separate from the Rayon pool.
+On wasm, `wgpu` objects are not `Send`, so GPU work stays on one thread (the main thread or
+a worker), separate from the Rayon pool.
 
 ## Suggested order
 
-1. Add per-pass timing, so the order of the work is based on measurements.
-2. Make the cheap CPU fixes: the wall column pass, the ray–wall test, and the hashing and
-   allocation changes.
-3. Split the repo into a workspace, then extract the rasterizer crate.
-4. Move presentation to the GPU, then the meshes.
-
-Step 1 costs the least and shows whether the GPU is needed at all.
+1. Measure the views that are missing: outdoors, and from above the roofs.
+2. Floor-pass items 1.1.1 and 1.1.2, then model culling (1.2.1). They target the two
+   largest passes and do not change any API.
+3. Engine steps 1–2 (snapshot tests, workspace split). The snapshot tests also guard the
+   floor-pass changes, so they can come first if those changes feel risky.
+4. The opaque wall column pass (1.3.1).
+5. GPU present, then GPU meshes, if the CPU numbers still fall short of the target frame
+   time.
