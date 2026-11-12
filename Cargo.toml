@@ -37,4 +37,5 @@ wasm-opt = ['-O4', '-g', '--enable-simd']
 debug = true
 
 [dev-dependencies]
+png = "0.17"
 serde_json = "1"

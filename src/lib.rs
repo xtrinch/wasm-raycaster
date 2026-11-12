@@ -1354,6 +1354,10 @@ mod mesh_tests;
 #[path = "tests/collision.rs"]
 mod collision_tests;
 
+#[cfg(test)]
+#[path = "tests/snapshots.rs"]
+mod snapshot_tests;
+
 #[inline(never)]
 pub fn draw_background_image_prescaled(
     position: &Position,

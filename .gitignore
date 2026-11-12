@@ -4,3 +4,6 @@ target
 wasm
 reference
 packages/app/models/sources/
+
+# Rendered frames from failed snapshot tests
+*.actual.png
