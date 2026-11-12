@@ -1,5 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useContext } from "react";
+import { TIMED_PASS_NAMES } from "../game/gameLoop";
 import { GameContext } from "../state/gameContext";
 import MapDetail from "./mapDetail";
 import MapPerson from "./mapPerson";
@@ -13,6 +14,7 @@ const Map = () => {
   const playerPosition = gameContext.gameLoop?.player?.position;
   const fps = gameContext.gameLoop?.fps;
   const minFps = gameContext.gameLoop?.getMinFPS();
+  const passTimes = gameContext.gameLoop?.passTimes ?? [];
 
   if (!map || !playerPosition || !size) {
     return <></>;
@@ -24,6 +26,11 @@ const Map = () => {
     >
       <div className="text-white">{fps} FPS</div>
       <div className="text-white">{minFps} min FPS</div>
+      {passTimes.map((time, pass) => (
+        <div key={TIMED_PASS_NAMES[pass]} className="text-white whitespace-nowrap">
+          {TIMED_PASS_NAMES[pass]} {time.toFixed(2)} ms
+        </div>
+      ))}
       <MapPerson playerPosition={{ ...playerPosition }} size={size} />
       <MapDetail map={map} size={size} />
     </div>
